@@ -267,7 +267,7 @@
 
 /* ===== 🏗️ 主容器 ===== */
 #the_ghost_face_control_panel {
-    position: fixed;
+    /* position: fixed; */
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
@@ -312,11 +312,6 @@
     backdrop-filter: blur(10px);
     border: 1px solid var(--ghost-primary);
     
-    /* 智能定位：始终居中且不超出屏幕 */
-    position: fixed;
-    top: max(20px, calc(50vh - 42.5vh));
-    left: 50%;
-    transform: translateX(-50%);
     
     /* 确保面板可以正确滚动 */
     display: flex;
@@ -1406,3 +1401,4 @@
   visibility: visible !important;
   opacity: 1 !important;
 }
+、
