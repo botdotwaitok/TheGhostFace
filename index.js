@@ -136,6 +136,18 @@ function setupGlobalExports() {
     }
 }
 
+// 防止旧悬浮面板被打开
+const __openPanel_orig = window.openPanel; 
+window.openPanel = (...args) => {
+  const inDrawer = document.querySelector('#ghostface_drawer_content #the_ghost_face_control_panel');
+  if (inDrawer) {
+    console.log('[鬼面] 抽屉模式下忽略旧悬浮 openPanel');
+    return;
+  }
+  return __openPanel_orig?.(...args);
+};
+
+
 // 确保事件系统可用的函数
 function ensureEventSystem() {
     try {
