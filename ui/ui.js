@@ -481,48 +481,6 @@ export function handleThemeToggle() {
     logger.info(`🎨 主题已切换为: ${nextTheme}`);
 }
 
-// 切换面板显示
-export function togglePanel() {
-    const content = document.getElementById(`${PANEL_ID}_content`);
-    if (!content) return;
-
-    if (isPanelOpen) {
-        closePanel();
-    } else {
-        openPanel();
-    }
-}
-
-export function openPanel() {
-    const content = document.getElementById(`${PANEL_ID}_content`);
-    if (!content) return;
-
-    content.classList.add('ghost-panel-show');
-    content.style.visibility = 'visible';
-    content.style.opacity = '1';
-    isPanelOpen = true;
-
-    // 更新消息计数
-    updateMessageCount();
-
-    // 确保日志区域可以正常滚动
-    const logContent = document.getElementById(`${PANEL_ID}_log_content`);
-    if (logContent) {
-        logContent.scrollTop = logContent.scrollHeight;
-    }
-}
-
-//关闭面板
-export function closePanel() {
-    const content = document.getElementById(`${PANEL_ID}_content`);
-    if (!content) return;
-    content.classList.remove('ghost-panel-show');
-    content.style.opacity = '0';
-    content.style.visibility = 'hidden';
-    content.style.visibility = 'hidden';
-    isPanelOpen = false;
-}
-
 // 切换自动模式
 export function toggleAutoMode() {
     autoTriggerEnabled = !autoTriggerEnabled;
