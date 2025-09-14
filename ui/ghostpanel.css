@@ -1387,3 +1387,22 @@
   overflow: auto;
 }
 
+/* 1) 阻止旧悬浮面板在启动时闪一下（全局先隐藏） */
+#the_ghost_face_control_panel {
+  display: none !important;
+}
+
+/* 2) 只有当面板在抽屉容器里时才显示，并改为流式布局（让抽屉按内容高度展开） */
+#ghostface_drawer_content #the_ghost_face_control_panel,
+#ghostface_drawer_content #the_ghost_face_control_panel_content {
+  display: block !important;
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
