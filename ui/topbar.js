@@ -26,7 +26,7 @@ export function injectGhostFaceCSS() {
     const link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
-    link.href = `${extensionFolderPath}/assets/ghostface.css`;
+    link.href = `${extensionFolderPath}/ui/ghostfacepanel.css`;
     document.head.appendChild(link);
   }
 }
@@ -92,6 +92,7 @@ function toggleDrawerFallback() {
 }
 
 export async function createGhostFaceDrawer() {
+  injectGhostFaceCSS();
   const settings = ensureSettings();
   const location = settings.iconLocation || 'topbar';
 
@@ -180,3 +181,4 @@ async function waitAndMountLegacyPanel() {
     }
   }, 100);
 }
+
