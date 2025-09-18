@@ -291,3 +291,6 @@ if (typeof window !== 'undefined') {
     }
 }
 
+// 导出必要的内容给ST
+export { MODULE_NAME };
+
