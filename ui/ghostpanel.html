@@ -8,6 +8,10 @@
                 👻 鬼面控制台
             </h3>
             <div style="display: flex; gap: 8px;">
+                <button id="the_ghost_face_guide_btn" class="ghost-button"
+                    style="padding: 4px 8px; min-height: 28px; font-size: 12px;">
+                    使用说明
+                </button>
                 <button id="the_ghost_face_user_profile" class="ghost-button"
                     style="padding: 4px 8px; min-height: 28px; font-size: 12px;">
                     👤 未登录
@@ -53,7 +57,8 @@
                 <div class="ghost-toggle-group">
                     <div id="the_ghost_face_custom_wb_container"
                         style="margin-top: 5px; margin-bottom: 10px; padding-left: 5px;">
-                        <label style="color: #aaa; font-size: 13px; margin-bottom: 4px; display: block;">
+                        <label
+                            style="color: var(--SmartThemeBodyColor); font-size: 13px; margin-bottom: 4px; display: block;">
                             为当前角色指定世界书
                         </label>
                         <select id="the_ghost_face_custom_wb_select" class="ghost-select"
@@ -92,17 +97,18 @@
                 </div>
                 <!-- 触发设置 -->
                 <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; font-size: 12px; margin-bottom: 8px; display: block;">
+                    <label
+                        style="color: var(--SmartThemeBodyColor); font-size: 12px; margin-bottom: 8px; display: block;">
                         触发设置
                     </label>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div>
-                            <label style="color: #aaa; font-size: 12px;">Token阈值</label>
+                            <label style="color: var(--SmartThemeBodyColor); font-size: 12px;">Token阈值</label>
                             <input id="the_ghost_face_token_threshold" type="number" min="40000" max="8000000"
                                 value="100000" class="ghost-input">
                         </div>
                         <div>
-                            <label style="color: #aaa; font-size: 12px;">消息阈值(条)</label>
+                            <label style="color: var(--SmartThemeBodyColor); font-size: 12px;">消息阈值(条)</label>
                             <input id="the_ghost_face_control_panel_interval_input" type="number" min="0" max="250"
                                 value="50" class="ghost-input">
                         </div>
@@ -112,18 +118,19 @@
 
                 <!-- 指定范围总结 -->
                 <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; font-size: 12px; margin-bottom: 8px; display: block;">
+                    <label
+                        style="color: var(--SmartThemeBodyColor); font-size: 12px; margin-bottom: 8px; display: block;">
                         指定范围总结
                     </label>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div>
-                            <label style="color: #aaa; font-size: 12px;">起始楼层</label>
+                            <label style="color: var(--SmartThemeBodyColor); font-size: 12px;">起始楼层</label>
                             <input id="the_ghost_face_control_panel_manual_start" type="number" min="1" value="1"
                                 class="ghost-input" placeholder="开始">
                         </div>
                         <div>
-                            <label style="color: #aaa; font-size: 12px;">结束楼层</label>
+                            <label style="color: var(--SmartThemeBodyColor); font-size: 12px;">结束楼层</label>
                             <input id="the_ghost_face_control_panel_manual_end" type="number" min="1" value=""
                                 class="ghost-input" placeholder="结束">
                         </div>
@@ -145,7 +152,7 @@
                 <div
                     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 20px;">
                     <div>
-                        <label style="color: #aaa; font-size: 12px;">分段大小(楼/段)</label>
+                        <label style="color: var(--SmartThemeBodyColor); font-size: 12px;">分段大小(楼/段)</label>
                         <input id="the_ghost_face_control_panel_chunk_size" type="number" min="10" max="100" value="50"
                             class="ghost-input">
                     </div>
@@ -160,21 +167,34 @@
                 <!-- 自定义 API 配置 -->
                 <div class="ghost-settings-card">
                     <div style="margin-bottom: 10px;">
-                        <div style="font-size: 12px; color: #ccc;">自定义 API 配置</div>
+                        <div style="font-size: 12px; color: var(--SmartThemeBodyColor);">自定义 API 配置</div>
                     </div>
                     <div id="the_ghost_face_control_panel_custom_api_config" style="display: block;">
                         <div style="margin-bottom: 8px;">
-                            <label style="color: #aaa; font-size: 12px; margin-bottom: 3px; display: block;">
-                                API基础URL
+                            <label
+                                style="color: var(--SmartThemeBodyColor); font-size: 12px; margin-bottom: 3px; display: block;">
+                                API提供商
                             </label>
+                            <select id="the_ghost_face_control_panel_custom_api_provider" class="ghost-select"
+                                style="font-size: 10px; padding: 4px 6px; width: 100%; margin-bottom: 6px;">
+                                <option value="">请选择提供商</option>
+                                <option value="https://api.openai.com/v1">OpenAI 官方</option>
+                                <option value="https://generativelanguage.googleapis.com/v1beta">Gemini / Google
+                                </option>
+                                <option value="https://api.deepseek.com/v1">DeepSeek</option>
+                                <option value="https://api.x.ai/v1">Grok (xAI)</option>
+                                <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+                                <option value="custom">✏️ 自定义URL</option>
+                            </select>
                             <input id="the_ghost_face_control_panel_custom_api_url" type="text"
-                                placeholder="https://api.openai.com/v1" class="ghost-input"
-                                style="font-size: 10px; padding: 6px 8px;">
+                                placeholder="https://your-api-provider.com/v1" class="ghost-input"
+                                style="font-size: 10px; padding: 6px 8px; display: none;">
                         </div>
 
                         <!-- API密钥 -->
                         <div style="margin-bottom: 8px;">
-                            <label style="color: #aaa; font-size: 12px; margin-bottom: 3px; display: block;">
+                            <label
+                                style="color: var(--SmartThemeBodyColor); font-size: 12px; margin-bottom: 3px; display: block;">
                                 API密钥
                             </label>
                             <input id="the_ghost_face_control_panel_custom_api_key" type="password" placeholder="sk-..."
@@ -183,7 +203,8 @@
 
                         <!-- 模型选择 -->
                         <div style="margin-bottom: 8px;">
-                            <label style="color: #aaa; font-size: 12px; margin-bottom: 3px; display: block;">
+                            <label
+                                style="color: var(--SmartThemeBodyColor); font-size: 12px; margin-bottom: 3px; display: block;">
                                 模型
                             </label>
                             <div style="display: grid; grid-template-columns: 1fr auto; gap: 6px;">

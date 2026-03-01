@@ -1695,3 +1695,103 @@ input[type="number"].ghost-input {
     color: white !important;
     border-color: transparent !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   使用说明 (User Guide) Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ghost-guide-area {
+    margin-bottom: 15px;
+    max-height: 60vh;
+    overflow-y: auto;
+    border-radius: var(--ghost-border-radius);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
+    backdrop-filter: blur(12px);
+    animation: ghostFadeIn 0.3s ease-out;
+}
+
+.ghost-guide-area::-webkit-scrollbar {
+    width: 5px;
+}
+
+.ghost-guide-area::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ghost-guide-area::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+    border-radius: 3px;
+}
+
+.ghost-guide-content {
+    padding: 16px;
+}
+
+.ghost-guide-header {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--SmartThemeBodyColor);
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--ghost-border-radius);
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 4%, transparent));
+    border-left: 3px solid var(--SmartThemeQuoteColor);
+}
+
+.ghost-guide-section {
+    margin-bottom: 14px;
+}
+
+.ghost-guide-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--SmartThemeQuoteColor);
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+}
+
+.ghost-guide-item {
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 25%, transparent);
+    transition: border-color 0.2s ease;
+}
+
+.ghost-guide-item:hover {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+}
+
+.ghost-guide-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--SmartThemeEmColor);
+    margin-bottom: 4px;
+}
+
+.ghost-guide-item-desc {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.9;
+}
+
+.ghost-guide-item-desc b {
+    color: var(--SmartThemeEmColor);
+}
+
+.ghost-guide-footer {
+    margin-top: 14px;
+    padding: 12px 14px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--SmartThemeEmColor);
+    border-top: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+}

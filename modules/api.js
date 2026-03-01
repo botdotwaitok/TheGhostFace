@@ -62,7 +62,26 @@ export function updateApiConfigUI() {
         configDiv.style.display = (useCustomApi || useMomentCustomApi) ? 'block' : 'none';
     }
 
-    if (urlInput) {
+    // Sync provider dropdown with saved URL
+    const providerSelect = document.getElementById('the_ghost_face_control_panel_custom_api_provider');
+    if (providerSelect && urlInput) {
+        const savedUrl = customApiConfig.url || '';
+        // Check if saved URL matches a preset option
+        const presetOption = Array.from(providerSelect.options).find(opt => opt.value && opt.value !== 'custom' && opt.value === savedUrl);
+        if (presetOption) {
+            providerSelect.value = savedUrl;
+            urlInput.style.display = 'none';
+            urlInput.value = savedUrl;
+        } else if (savedUrl) {
+            providerSelect.value = 'custom';
+            urlInput.style.display = 'block';
+            urlInput.value = savedUrl;
+        } else {
+            providerSelect.value = '';
+            urlInput.style.display = 'none';
+            urlInput.value = '';
+        }
+    } else if (urlInput) {
         urlInput.value = customApiConfig.url || '';
     }
 
@@ -127,6 +146,34 @@ export function setupCustomApiEvents() {
                 window.logger.info('🤖 朋友圈独立API开关:', useMomentCustomApi ? '已启用' : '已禁用');
             } else {
                 console.log('🤖 朋友圈独立API开关:', useMomentCustomApi ? '已启用' : '已禁用');
+            }
+        });
+    }
+
+    // API提供商下拉选择
+    const providerSelect = document.getElementById('the_ghost_face_control_panel_custom_api_provider');
+    const urlInput_provider = document.getElementById('the_ghost_face_control_panel_custom_api_url');
+    if (providerSelect && urlInput_provider) {
+        providerSelect.addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (value === 'custom') {
+                // Show custom input, let user type
+                urlInput_provider.style.display = 'block';
+                urlInput_provider.focus();
+            } else if (value) {
+                // Preset provider selected
+                urlInput_provider.style.display = 'none';
+                urlInput_provider.value = value;
+                customApiConfig.url = value;
+                saveCustomApiSettings();
+                updateApiStatusDisplay();
+            } else {
+                // "请选择提供商" placeholder
+                urlInput_provider.style.display = 'none';
+                urlInput_provider.value = '';
+                customApiConfig.url = '';
+                saveCustomApiSettings();
+                updateApiStatusDisplay();
             }
         });
     }

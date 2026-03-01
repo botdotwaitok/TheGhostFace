@@ -560,6 +560,17 @@ export function setupPanelEvents() {
     setupWorldbookManagerEvents();
 
 
+    // 使用说明按钮
+    const guideBtn = document.getElementById('the_ghost_face_guide_btn');
+    const guideArea = document.getElementById('the_ghost_face_guide_area');
+    if (guideBtn && guideArea) {
+        guideBtn.addEventListener('click', () => {
+            const isOpen = guideArea.style.display !== 'none';
+            guideArea.style.display = isOpen ? 'none' : 'block';
+            guideBtn.textContent = isOpen ? '使用说明' : '收起说明';
+        });
+    }
+
     // 💬 初始化迷你聊天窗口
     gf_chat.initChat();
 
