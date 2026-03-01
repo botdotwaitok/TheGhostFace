@@ -208,20 +208,30 @@ async function initializeGhostFace() {
         }
 
         // 第4步：初始化核心系统
+        let coreInitialized = false;
         if (typeof core.initializeGhostFace === 'function') {
-            await core.initializeGhostFace();
-            console.log('🧠 [鬼面] 核心系统初始化完成');
+            const initResult = await core.initializeGhostFace();
+            // initResult is undefined (returns void on failure) or true on success
+            if (initResult) {
+                console.log('🧠 [鬼面] 核心系统初始化完成');
+                coreInitialized = true;
+            } else {
+                console.log('🧠 [鬼面] 核心系统由于无聊天处于挂起等待状态...');
+            }
         } else {
             throw new Error('核心初始化函数不可用');
         }
 
 
 
-        // 标记为已初始化
-        window.ghostFaceInitialized = true;
+        // 只在核心初始化成功时标记系统（不要覆盖挂起状态）
+        if (coreInitialized) {
+            window.ghostFaceInitialized = true;
+        }
 
         // 第5步：初始化朋友圈模块 (含本地存储加载)
         try {
+            // 确保朋友圈独立初始化，不被核心系统的等待阻塞
             await moments.initialize();
             console.log('📱 [鬼面] 朋友圈模块已启动');
 
