@@ -102,7 +102,7 @@ app.use((err, _req, res, _next) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🌐 GhostFace Moments Server running on port ${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/health`);
-    console.log(`   External IP:  http://74.208.78.209:${PORT}/health (Check this!)`);
+    console.log(`   External IP:  http://YOUR_SERVER_IP:${PORT}/health (Check this!)`);
     console.log(`   API base:     http://localhost:${PORT}/api`);
     console.log(`   Auth:         Bearer token required\n`);
 });
