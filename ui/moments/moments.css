@@ -1,0 +1,1057 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   📱 朋友圈 (Moments) Module Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Full-screen Overlay ─────────────────────────────────────────────── */
+.moments-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.moments-overlay.moments-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.moments-container {
+    width: 100vw;
+    max-width: 100%;
+    height: 100vh;
+    max-height: 100%;
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 20px));
+    border: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.4),
+        0 0 80px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 var(--white20a);
+    transform: translateY(20px) scale(0.95);
+    transition: transform 0.35s cubic-bezier(0.68, -0.25, 0.265, 1.25);
+}
+
+@media (min-width: 768px) {
+    .moments-container {
+        width: 600px;
+        max-width: 90vw;
+        height: 90vh;
+        max-height: 900px;
+        border-radius: 20px;
+        border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+    }
+}
+
+.moments-visible .moments-container {
+    transform: translateY(0) scale(1);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.moments-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--SmartThemeBorderColor);
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+    flex-shrink: 0;
+}
+
+.moments-header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.moments-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+    white-space: nowrap;
+}
+
+.moments-subtitle {
+    font-size: 11px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.moments-header-right {
+    display: flex;
+    gap: 6px;
+}
+
+.moments-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.moments-icon-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    transform: scale(1.08);
+}
+
+.moments-close-btn:hover {
+    background: var(--ghost-error);
+    color: #fff;
+    border-color: transparent;
+}
+
+/* ── Settings & Friends Panels ───────────────────────────────────────── */
+.moments-settings-panel,
+.moments-friends-panel {
+    overflow-y: auto;
+    max-height: 45vh;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    animation: slideDown 0.25s ease;
+}
+
+.moments-settings-card {
+    padding: 16px 20px;
+}
+
+.moments-settings-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+    margin-bottom: 12px;
+}
+
+.moments-setting-row {
+    margin-bottom: 12px;
+}
+
+.moments-setting-row label {
+    display: block;
+    font-size: 11px;
+    color: var(--SmartThemeEmColor);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.moments-input {
+    width: 100%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    border-radius: 10px;
+    color: var(--SmartThemeBodyColor);
+    padding: 8px 12px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.moments-input:focus {
+    outline: none;
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+}
+
+.moments-id-row {
+    display: flex;
+    gap: 6px;
+}
+
+.moments-id-input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.moments-small-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.moments-small-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    transform: scale(1.05);
+}
+
+.moments-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.moments-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    border-radius: 2px;
+    outline: none;
+}
+
+.moments-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor);
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s ease;
+}
+
+.moments-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.moments-slider-val {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--SmartThemeQuoteColor);
+    min-width: 36px;
+    text-align: right;
+}
+
+.moments-settings-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.moments-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.moments-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+.moments-btn-primary {
+    background: var(--SmartThemeQuoteColor);
+    color: #fff;
+    border-color: transparent;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.moments-btn-primary:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 85%, white);
+}
+
+.moments-btn-toggle {
+    flex: 1;
+}
+
+.moments-btn-enabled {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.2), rgba(46, 204, 113, 0.35)) !important;
+    border-color: rgba(46, 204, 113, 0.4) !important;
+    color: #2ecc71 !important;
+}
+
+/* ── Friend List ─────────────────────────────────────────────────────── */
+.moments-friends-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 8px;
+}
+
+.moments-friend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+}
+
+.moments-friend-item:last-child {
+    border-bottom: none;
+}
+
+.moments-friend-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--SmartThemeBodyColor);
+    overflow: hidden;
+}
+
+.moments-friend-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.moments-friend-info {
+    flex: 1;
+}
+
+.moments-friend-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+
+.moments-friend-id {
+    font-size: 10px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.6;
+    font-family: monospace;
+}
+
+.moments-friend-remove {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    font-size: 11px;
+}
+
+.moments-friend-remove:hover {
+    background: var(--ghost-error) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+/* ── Compose Area ────────────────────────────────────────────────────── */
+.moments-compose {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
+    align-items: flex-start;
+    flex-shrink: 0;
+}
+
+.moments-compose-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--SmartThemeBodyColor);
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.moments-compose-input-wrapper {
+    flex: 1;
+}
+
+.moments-compose-input {
+    width: 100%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    border-radius: 12px;
+    color: var(--SmartThemeBodyColor);
+    padding: 8px 12px;
+    font-size: 13px;
+    resize: none;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.moments-compose-input:focus {
+    outline: none;
+    border-color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+}
+
+.moments-post-btn {
+    align-self: flex-end;
+    white-space: nowrap;
+    min-width: 50px;
+}
+
+/* ── Scrollable Content Area ─────────────────────────────────────────── */
+.moments-content-scrollable {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    -webkit-overflow-scrolling: touch;
+}
+
+.moments-content-scrollable::-webkit-scrollbar {
+    width: 6px;
+}
+
+.moments-content-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.moments-content-scrollable::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    border-radius: 3px;
+}
+
+/* ── Feed ─────────────────────────────────────────────────────────────── */
+.moments-feed {
+    padding: 8px 0;
+}
+
+/* ── Post Card (WeChat Moments style) ────────────────────────────────── */
+.moments-post-card {
+    display: flex;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+    transition: background 0.15s ease;
+}
+
+.moments-post-card:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.moments-post-avatar {
+    flex-shrink: 0;
+}
+
+.moments-avatar-img {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+.moments-avatar-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+}
+
+.moments-post-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.moments-post-author {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--SmartThemeQuoteColor);
+    margin-bottom: 4px;
+}
+
+.moments-post-content {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--SmartThemeBodyColor);
+    word-break: break-word;
+    margin-bottom: 8px;
+}
+
+/* ── Media Tags (Post Parsing) ───────────────────────────────────────── */
+.moments-media-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.moments-media-card:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.moments-media-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.moments-media-content {
+    font-size: 13px;
+    color: var(--SmartThemeEmColor);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+/* Color Variations for different media types */
+.media-image .moments-media-icon {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    box-shadow: 0 4px 10px rgba(79, 172, 254, 0.4);
+}
+
+.media-video .moments-media-icon {
+    background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%);
+    box-shadow: 0 4px 10px rgba(255, 8, 68, 0.4);
+}
+
+.media-music .moments-media-icon {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+}
+
+.media-news .moments-media-icon {
+    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+    box-shadow: 0 4px 10px rgba(246, 211, 101, 0.4);
+}
+
+.moments-post-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.moments-post-time {
+    font-size: 11px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.6;
+}
+
+.moments-post-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.moments-post-actions button {
+    background: none;
+    border: none;
+    color: var(--SmartThemeEmColor);
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+}
+
+.moments-post-actions button:hover {
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.moments-like-btn.moments-liked {
+    color: #e74c3c !important;
+}
+
+.moments-like-btn.moments-liked i {
+    animation: bounceScale 0.3s ease;
+}
+
+/* ── Comments Section ────────────────────────────────────────────────── */
+.moments-comment-section {
+    margin-top: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.moments-comments-list {
+    margin-bottom: 8px;
+}
+
+.moments-comment-item {
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 3px 0;
+}
+
+.moments-comment-author {
+    color: var(--SmartThemeQuoteColor);
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.moments-comment-text {
+    color: var(--SmartThemeBodyColor);
+    word-break: break-word;
+}
+
+.moments-no-comments {
+    font-size: 12px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.5;
+    text-align: center;
+    padding: 4px;
+}
+
+.moments-comment-compose {
+    display: flex;
+    gap: 6px;
+}
+
+.moments-comment-compose .moments-input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 8px;
+}
+
+.moments-comment-compose .moments-small-btn {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    font-size: 11px;
+}
+
+/* ── Empty State ─────────────────────────────────────────────────────── */
+.moments-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.6;
+    font-size: 14px;
+}
+
+.moments-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.moments-empty-hint {
+    font-size: 12px;
+    margin-top: 8px;
+    opacity: 0.7;
+}
+
+/* ── Toast Notifications ─────────────────────────────────────────────── */
+.moments-toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.moments-toast {
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(20px);
+    color: var(--SmartThemeBodyColor);
+    padding: 10px 20px;
+    border-radius: 12px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.25s ease;
+}
+
+.moments-toast-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.moments-toast-hide {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+/* ── Moments button in Ghost Panel ───────────────────────────────────── */
+/* Styling is now handled by the unified .ghost-panel-toggle class
+   in ghostpanel.css — default is subtle, .active gets QuoteColor glow. */
+
+/* ── Auth and Profile System ────────────────────────────────────────── */
+.moments-auth-container {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Auth Tabs & Form */
+.moments-auth-switch {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    padding: 6px;
+    border-radius: 12px;
+}
+
+.moments-auth-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--SmartThemeEmColor);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.moments-auth-tab:hover {
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.moments-auth-tab.active {
+    background: var(--SmartThemeQuoteColor);
+    color: #fff;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+}
+
+.moments-auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.moments-form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.moments-form-group .moments-input {
+    padding: 14px 16px;
+    font-size: 14px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+    transition: all 0.3s ease;
+}
+
+.moments-form-group .moments-input:focus {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    transform: translateY(-1px);
+}
+
+.moments-auth-form .moments-btn-primary {
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 12px;
+    margin-top: 8px;
+    letter-spacing: 1px;
+    background: linear-gradient(135deg, var(--SmartThemeQuoteColor), color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, black));
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.moments-auth-form .moments-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+}
+
+.moments-error-msg {
+    color: var(--ghost-error);
+    font-size: 13px;
+    text-align: center;
+    margin-top: -4px;
+}
+
+.moments-error-msg:empty {
+    display: none;
+}
+
+/* User Profile Card */
+.moments-profile-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.moments-profile-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.moments-profile-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--SmartThemeBodyColor);
+    font-size: 28px;
+    flex-shrink: 0;
+    border: 2px solid var(--SmartThemeBorderColor);
+}
+
+.moments-profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.moments-profile-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.moments-profile-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1;
+}
+
+.moments-profile-id {
+    font-size: 12px;
+    color: var(--SmartThemeEmColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    padding: 4px 10px;
+    border-radius: 12px;
+    width: fit-content;
+    font-family: monospace;
+}
+
+#moments_logout_btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ghost-error) 15%, transparent);
+    color: var(--ghost-error);
+    border: 1px solid color-mix(in srgb, var(--ghost-error) 30%, transparent);
+    font-size: 16px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#moments_logout_btn:hover {
+    background: var(--ghost-error);
+    color: #fff;
+    transform: scale(1.05);
+}
+
+/* Settings - Avatar Upload Area */
+.moments-avatar-setting {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    margin-top: 8px;
+}
+
+.moments-avatar-preview-wrapper {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 2px solid var(--SmartThemeQuoteColor);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.moments-avatar-preview-wrapper img.moments-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.moments-avatar-preview-wrapper .moments-avatar-placeholder {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.moments-avatar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+#moments_upload_avatar_btn {
+    border-radius: 10px;
+    padding: 0 16px;
+    width: auto;
+    gap: 8px;
+    font-weight: 600;
+}
+
+#moments_clear_avatar_btn:hover {
+    background: var(--ghost-error);
+    color: #fff;
+    border-color: transparent;
+}
+
+
+/* ===== Floating Icon ===== */
+.moments-floating-icon {
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 99999;
+    transition: transform 0.2s, bottom 0.2s, left 0.2s, right 0.2s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
+
+    /* Bubble Base */
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.moments-floating-icon::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse at 30% 25%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 40%),
+        radial-gradient(ellipse at 70% 75%, rgba(180, 220, 255, 0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(200, 240, 255, 0.15) 0%, transparent 70%);
+    box-shadow:
+        inset 0 0 15px rgba(120, 200, 255, 0.25),
+        inset 0 0 30px rgba(200, 150, 255, 0.15),
+        inset -4px -4px 10px rgba(255, 180, 220, 0.2),
+        0 0 10px rgba(180, 220, 255, 0.4),
+        0 0 20px rgba(200, 180, 255, 0.2);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.moments-floating-icon::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: 50%;
+    background:
+        conic-gradient(from 200deg at 35% 35%,
+            rgba(255, 100, 150, 0.12),
+            rgba(255, 200, 100, 0.1),
+            rgba(100, 255, 200, 0.1),
+            rgba(100, 150, 255, 0.12),
+            rgba(200, 100, 255, 0.1),
+            rgba(255, 100, 150, 0.12));
+    pointer-events: none;
+    z-index: 2;
+}
+
+.moments-floating-icon:hover {
+    transform: scale(1.1);
+}
+
+.moments-floating-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: red;
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border: 2px solid var(--SmartThemeBlurTintColor, #fff);
+}
+
+/* Mobile adjustments — move to middle-RIGHT to avoid SillyTavern's UI completely */
+@media (max-width: 768px) {
+    .moments-floating-icon {
+        top: 50%;
+        bottom: auto;
+        left: auto;
+        right: 80px;
+        transform: translateY(-50%);
+        width: 70px;
+        height: 70px;
+        font-size: 20px;
+        z-index: 999999 !important;
+        display: flex;
+    }
+}

@@ -1,0 +1,1697 @@
+:root {
+    /* 📐 Layout Variables (theme-independent) */
+    --ghost-button-size: 48px;
+    --ghost-border-radius: 12px;
+    --ghost-border-radius-small: 8px;
+    --ghost-border-radius-large: 16px;
+    --ghost-border-radius-round: 50%;
+
+    /* 🚦 Status Colors (universal) */
+    --ghost-success: #4caf50;
+    --ghost-success-light: #81c784;
+    --ghost-error: #f44336;
+    --ghost-error-light: #ef5350;
+    --ghost-warning: #ff9800;
+    --ghost-warning-light: #ffb74d;
+
+    /* ⚡ Animation Variables */
+    --ghost-transition-ultra-fast: 0.1s ease;
+    --ghost-transition-fast: 0.2s ease;
+    --ghost-transition-medium: 0.3s ease;
+    --ghost-transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    --ghost-transition-bounce: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ===== ✨ Animation Definitions ===== */
+
+@keyframes ghostFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.9);
+        filter: blur(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+    }
+}
+
+@keyframes ghostPulse {
+
+    0%,
+    100% {
+        box-shadow:
+            0 4px 20px var(--SmartThemeShadowColor),
+            0 0 30px var(--SmartThemeShadowColor),
+            inset 0 1px 0 var(--white20a);
+    }
+
+    50% {
+        box-shadow:
+            0 8px 40px var(--SmartThemeShadowColor),
+            0 0 60px var(--SmartThemeShadowColor),
+            inset 0 1px 0 var(--white30a);
+    }
+}
+
+@keyframes successGlow {
+    0% {
+        box-shadow: 0 0 0 0 var(--ghost-success);
+    }
+
+    50% {
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0.4);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 var(--ghost-success);
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        max-height: 500px;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bounceScale {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes scanGlow {
+    0% {
+        box-shadow: inset 0 0 0 0 var(--SmartThemeBodyColor);
+    }
+
+    50% {
+        box-shadow: inset 0 0 20px 0 var(--SmartThemeBodyColor);
+    }
+
+    100% {
+        box-shadow: inset 0 0 0 0 var(--SmartThemeBodyColor);
+    }
+}
+
+/* ===== 🏗️ Main Container ===== */
+
+#the_ghost_face_control_panel_status {
+    display: none !important;
+}
+
+#the_ghost_face_control_panel_content {
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    border: 1px solid var(--SmartThemeBorderColor);
+
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ghost-panel-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    min-height: 0;
+}
+
+/* ===== Panel Header ===== */
+#the_ghost_face_control_panel_header {
+    padding: 15px 20px;
+    background: var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    border-radius: var(--ghost-border-radius) var(--ghost-border-radius) 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+#the_ghost_face_control_panel_header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+/* Close button */
+#the_ghost_face_control_panel_close {
+    background: var(--black30a);
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    border-radius: var(--ghost-border-radius-round);
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--ghost-transition-fast);
+}
+
+#the_ghost_face_control_panel_close:hover {
+    background: var(--ghost-error);
+    transform: scale(1.1);
+}
+
+/* ===== 🎯 Button System ===== */
+
+/* ===== 🎯 Button System ===== */
+
+.ghost-button {
+    border: none;
+    border-radius: 20px;
+    /* Pill shape */
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+
+    font-size: 13px;
+    font-weight: 600;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+
+    padding: 8px 16px;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(4px);
+}
+
+.ghost-button:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ghost-button:active {
+    transform: translateY(1px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
+    box-shadow: none;
+}
+
+.ghost-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    filter: grayscale(0.5);
+}
+
+/* ===== Button Variants ===== */
+
+/* ===== Button Variants ===== */
+
+.ghost-primary-button {
+    background: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBodyColor);
+    /* Usually contrasting enough, or force white if needed */
+    border: 1px solid transparent;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.ghost-primary-button:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 85%, white);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Helper for primary styling via class */
+.ghost-primary {
+    background: var(--SmartThemeQuoteColor) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+    /* Force white text for primary actions */
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.ghost-secondary {
+    background: transparent !important;
+    border: 1px solid var(--SmartThemeBorderColor) !important;
+}
+
+.ghost-action-button {
+    border-radius: 8px;
+    /* Slightly squarer for small actions */
+    font-size: 12px;
+    padding: 6px 12px;
+    min-height: 32px;
+}
+
+/* ===== Functional Button States ===== */
+
+/* New Styles for Toggle/Settings Buttons to match pill design */
+
+.ghost-auto-toggle[data-auto-enabled="true"] {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.2), rgba(46, 204, 113, 0.4)) !important;
+    border-color: rgba(46, 204, 113, 0.5) !important;
+    color: #2ecc71 !important;
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.15);
+}
+
+.ghost-auto-toggle[data-auto-enabled="false"] {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent) !important;
+    color: var(--SmartThemeBodyColor) !important;
+    opacity: 0.8;
+}
+
+.ghost-auto-toggle[data-auto-enabled="true"]:hover {
+    box-shadow: 0 0 20px rgba(46, 204, 113, 0.3);
+    transform: translateY(-1px);
+}
+
+.ghost-auto-toggle[data-auto-enabled="false"]:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent) !important;
+    opacity: 1;
+}
+
+/* ===== Panel Toggle Buttons (Settings / Moments / Worldbook) ===== */
+.ghost-panel-toggle {
+    background: transparent;
+    border: 1px solid var(--SmartThemeBorderColor);
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ghost-panel-toggle:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-color: var(--SmartThemeBodyColor);
+}
+
+.ghost-panel-toggle.active {
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent)) !important;
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent) !important;
+}
+
+.ghost-panel-toggle.active:hover {
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent)) !important;
+    box-shadow: 0 0 15px color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+}
+
+/* ===== Button Layout ===== */
+
+.ghost-main-actions-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 480px) {
+    .ghost-main-actions {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+
+.ghost-main-actions-vertical .ghost-button {
+    width: 100%;
+    min-height: 50px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 16px;
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+/* ===== Button Internal Elements ===== */
+
+.button-icon {
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.button-text {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.ghost-action-button .button-text {
+    font-size: 10px;
+}
+
+/* ===== Settings Card System ===== */
+
+.ghost-settings-area {
+    display: none;
+    animation: slideDown 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ghost-settings-area.show {
+    display: block;
+}
+
+.ghost-settings-card {
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 50%, transparent);
+    /* Glassy */
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 16px;
+    /* Smooth corners */
+    margin-bottom: 20px;
+    padding: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ghost-settings-card:hover {
+    border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 40%, transparent);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    background: var(--black30a);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+}
+
+.card-icon {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+
+.card-content {
+    padding: 16px;
+}
+
+/* ===== Input Grid System ===== */
+
+.input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 480px) {
+    .input-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.range-input-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+}
+
+@media (max-width: 480px) {
+    .range-input-container {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto;
+        gap: 8px;
+    }
+
+    .range-arrow {
+        display: none;
+    }
+
+    .range-input-container .ghost-button {
+        grid-column: 1 / -1;
+        margin-top: 8px;
+    }
+}
+
+.range-arrow {
+    color: var(--SmartThemeBodyColor);
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    text-align: center;
+    opacity: 0.7;
+}
+
+/* ===== Special Animation Effects ===== */
+
+.ghost-button::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: var(--white20a);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+    pointer-events: none;
+}
+
+.ghost-button:active::after {
+    width: 300px;
+    height: 300px;
+    transition: width 0.1s, height 0.1s;
+}
+
+.ghost-button.loading {
+    pointer-events: none;
+    opacity: 0.8;
+}
+
+.ghost-button.loading .button-icon::before {
+    content: '⏳';
+    animation: ghostRotate 1s linear infinite;
+}
+
+.ghost-button.loading .button-text {
+    opacity: 0.7;
+}
+
+/* ===== Form Controls ===== */
+.ghost-form-group {
+    margin-bottom: 20px;
+}
+
+.ghost-form-label {
+    color: var(--SmartThemeEmColor);
+    font-size: 13px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.ghost-input,
+.ghost-select {
+    width: 100%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: none;
+    border-radius: 8px;
+    /* Slightly rounded */
+    border-bottom: 2px solid transparent;
+    color: var(--SmartThemeBodyColor);
+    padding: 10px 12px;
+    font-size: 13px;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-sizing: border-box;
+}
+
+.ghost-input:focus,
+.ghost-select:focus {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    border-bottom-color: var(--SmartThemeQuoteColor);
+    /* Highlight on focus */
+    outline: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ghost-input::placeholder {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+}
+
+/* Specific overrides */
+input[type="number"].ghost-input {
+    font-family: monospace;
+    font-weight: 600;
+}
+
+.ghost-select {
+    cursor: pointer;
+    appearance: none;
+    /* Remove default arrow if we want custom, but keeping simple for now */
+    background-image: linear-gradient(45deg, transparent 50%, var(--SmartThemeBodyColor) 50%),
+        linear-gradient(135deg, var(--SmartThemeBodyColor) 50%, transparent 50%);
+    background-position: calc(100% - 20px) calc(1em + 2px),
+        calc(100% - 15px) calc(1em + 2px);
+    background-size: 5px 5px,
+        5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 30px;
+    /* Space for custom arrow */
+}
+
+.ghost-select:hover {
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.ghost-select option {
+    background: var(--SmartThemeBlurTintColor);
+
+    color: var(--SmartThemeBodyColor);
+}
+
+/* ===== Status Card ===== */
+/* ===== Status Card ===== */
+.ghost-status-card {
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 50%, transparent);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ghost-status-info {
+    color: var(--SmartThemeEmColor);
+    font-size: 12px;
+    line-height: 1.5;
+    flex: 1;
+}
+
+.ghost-status-info div {
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px dotted color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+    padding-bottom: 2px;
+}
+
+.ghost-status-info div:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* Status text colors */
+.status-enabled {
+    color: var(--ghost-success) !important;
+}
+
+.status-disabled {
+    color: var(--ghost-error) !important;
+}
+
+.count-high {
+    color: var(--ghost-warning);
+    font-weight: bold;
+}
+
+/* ===== Settings Area ===== */
+#the_ghost_face_control_panel_settings_area {
+    transition: all 0.3s ease;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+#the_ghost_face_control_panel_settings_area.show {
+    display: block !important;
+    animation: slideDown 0.3s ease;
+}
+
+#the_ghost_face_control_panel_settings_area[style*="display: none"] {
+    display: none !important;
+}
+
+.ghost-fixed-content {
+    flex-shrink: 0;
+}
+
+/* ===== 📋 Log System ===== */
+
+.ghost-log-section {
+    flex: 1;
+    min-height: 200px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+    background: var(--white);
+    border-radius: var(--ghost-border-radius) var(--ghost-border-radius) 0 0;
+    overflow: visible;
+
+}
+
+.ghost-log-section.expanded {
+    flex: 2 !important;
+    min-height: 300px !important;
+}
+
+.ghost-log-section.collapsed {
+    flex: 0 0 200px !important;
+    min-height: 200px !important;
+}
+
+/* ===== Log Header ===== */
+.ghost-log-header {
+    padding: 12px 20px;
+    background: var(--SmartThemeBorderColor);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.ghost-log-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--white20a), transparent);
+    animation: scanEffect 3s ease-in-out infinite;
+}
+
+@keyframes scanEffect {
+
+    0%,
+    100% {
+        left: -100%;
+    }
+
+    50% {
+        left: 100%;
+    }
+}
+
+.log-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--SmartThemeBodyColor);
+    position: relative;
+    z-index: 1;
+}
+
+.log-icon {
+    font-size: 16px;
+    animation: ghostPulse 2s ease-in-out infinite;
+}
+
+.ghost-log-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+/* Clear button */
+.ghost-log-clear {
+    background: var(--SmartThemeBorderColor);
+    border: 1px solid var(--SmartThemeBodyColor);
+    color: var(--SmartThemeBodyColor);
+    padding: 6px 12px;
+    border-radius: var(--ghost-border-radius-small);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--ghost-transition-fast);
+    position: relative;
+    z-index: 1;
+}
+
+.ghost-log-clear:hover {
+    background: var(--white20a);
+    color: var(--SmartThemeBodyColor);
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px var(--black50a);
+}
+
+.ghost-log-clear:active {
+    transform: scale(0.98);
+    transition: all var(--ghost-transition-ultra-fast);
+}
+
+/* ===== Log Content ===== */
+.ghost-log-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 20px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--SmartThemeEmColor);
+    background: var(--black30a);
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+}
+
+.ghost-log-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.ghost-log-content::-webkit-scrollbar-track {
+    background: var(--black30a);
+    border-radius: 4px;
+}
+
+.ghost-log-content::-webkit-scrollbar-thumb {
+    background: var(--grey7070a);
+    border-radius: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    transition: all var(--ghost-transition-fast);
+}
+
+.ghost-log-content::-webkit-scrollbar-thumb:hover {
+    background: var(--SmartThemeBodyColor);
+}
+
+/* ===== Log Entry Styles (Simple Plain Text) ===== */
+
+.log-line {
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 1px 4px;
+    color: var(--SmartThemeBodyColor);
+    word-break: break-word;
+    font-family: 'Courier New', monospace;
+}
+
+.log-line.log-placeholder {
+    color: var(--SmartThemeEmColor);
+    font-style: italic;
+    opacity: 0.6;
+    padding: 20px 4px;
+    font-family: inherit;
+}
+
+/* Level colors — subtle text tinting */
+/* ===== 🔐 Login Modal ===== */
+
+.ghost-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.ghost-modal-backdrop.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.ghost-modal-container {
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 400px;
+    padding: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    transform: translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ghost-modal-backdrop.show .ghost-modal-container {
+    transform: translateY(0);
+}
+
+.ghost-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    padding-bottom: 12px;
+    margin-bottom: 4px;
+}
+
+.ghost-modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+
+.ghost-modal-close {
+    background: transparent;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.ghost-modal-close:hover {
+    opacity: 1;
+}
+
+.ghost-auth-tabs {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.ghost-auth-tab {
+    flex: 1;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.6;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.ghost-auth-tab.active {
+    opacity: 1;
+    border-bottom-color: var(--SmartThemeQuoteColor);
+}
+
+.ghost-auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ghost-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.ghost-error-message {
+    color: var(--ghost-error);
+    font-size: 12px;
+    margin-top: -8px;
+    min-height: 16px;
+}
+
+.log-line.log-debug {
+    opacity: 0.6;
+}
+
+.log-line.log-info {
+    color: var(--SmartThemeBodyColor);
+}
+
+.log-line.log-warn {
+    color: var(--ghost-warning, #ff9800);
+}
+
+.log-line.log-error {
+    color: var(--ghost-error, #f44336);
+}
+
+.log-line.log-success {
+    color: var(--ghost-success, #4caf50);
+}
+
+
+/* Mobile performance */
+@media (max-width: 480px) {
+    * {
+        transition-duration: 0.2s !important;
+    }
+
+    #the_ghost_face_control_panel_content {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    .ghost-button {
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .ghost-button:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    }
+}
+
+/* ===== Drawer Mount Overrides ===== */
+
+#the_ghost_face_control_panel.gf-legacy-mounted {
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    z-index: auto !important;
+    filter: none !important;
+}
+
+#the_ghost_face_control_panel.gf-legacy-mounted #the_ghost_face_control_panel_content {
+    position: static !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    overflow: hidden;
+}
+
+#the_ghost_face_control_panel.gf-legacy-mounted .ghost-panel-body {
+    max-height: calc(80vh - 64px);
+    overflow: auto;
+}
+
+#the_ghost_face_control_panel:not(.gf-legacy-mounted) {
+    display: none;
+}
+
+#ghostface_drawer_content #the_ghost_face_control_panel,
+#ghostface_drawer_content #the_ghost_face_control_panel_content {
+    display: block !important;
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* ===== 💬 Mini Chat Window ===== */
+
+.ghost-chat-section {
+    margin-bottom: 15px;
+}
+
+.ghost-chat-toggle {
+    width: 100%;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 600;
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 5%, transparent)) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent) !important;
+}
+
+.ghost-chat-toggle:hover {
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent)) !important;
+}
+
+.ghost-chat-toggle-active {
+    border-color: var(--SmartThemeQuoteColor) !important;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+}
+
+/* Chat Area Container */
+.ghost-chat-area {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--ghost-border-radius);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
+    backdrop-filter: blur(12px);
+    animation: slideDown 0.3s ease;
+}
+
+/* Scrollable Messages Area */
+.ghost-chat-messages {
+    max-height: 300px;
+    min-height: 120px;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+.ghost-chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.ghost-chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ghost-chat-messages::-webkit-scrollbar-thumb {
+    background: var(--grey7070a);
+    border-radius: 3px;
+}
+
+/* Welcome Message */
+.ghost-chat-welcome {
+    text-align: center;
+    color: var(--SmartThemeEmColor);
+    font-size: 12px;
+    font-style: italic;
+    padding: 20px 10px;
+    opacity: 0.7;
+}
+
+/* Chat Bubbles */
+.ghost-chat-bubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+    animation: ghostFadeIn 0.25s ease-out;
+    white-space: pre-wrap;
+}
+
+.ghost-chat-bubble-user {
+    align-self: flex-end;
+    background: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBodyColor);
+    border-bottom-right-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ghost-chat-bubble-ai {
+    align-self: flex-start;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+    border-bottom-left-radius: 4px;
+}
+
+/* ===== Code Blocks inside Chat Bubbles ===== */
+
+.ghost-code-block {
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.ghost-code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+}
+
+.ghost-code-lang {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--SmartThemeEmColor);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ghost-code-copy-btn {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+    color: var(--SmartThemeBodyColor);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.ghost-code-copy-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+    transform: scale(1.05);
+}
+
+.ghost-code-copy-btn:active {
+    transform: scale(0.97);
+}
+
+.ghost-code-copy-btn.ghost-code-copied {
+    background: color-mix(in srgb, var(--ghost-success, #4caf50) 20%, transparent);
+    border-color: var(--ghost-success, #4caf50);
+    color: var(--ghost-success, #4caf50);
+}
+
+.ghost-code-block pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: 'Courier New', Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ghost-code-block code {
+    font-family: inherit;
+    color: var(--SmartThemeBodyColor);
+}
+
+
+/* Action Buttons Bar */
+.ghost-chat-actions {
+    align-self: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+    padding-left: 4px;
+    animation: ghostFadeIn 0.3s ease-out;
+}
+
+.ghost-chat-action-btn {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.ghost-chat-action-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ghost-chat-action-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.ghost-chat-action-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.ghost-chat-action-running {
+    background: color-mix(in srgb, var(--ghost-warning) 15%, transparent) !important;
+    border-color: var(--ghost-warning) !important;
+    color: var(--ghost-warning) !important;
+}
+
+.ghost-chat-action-done {
+    background: color-mix(in srgb, var(--ghost-success) 15%, transparent) !important;
+    border-color: var(--ghost-success) !important;
+    color: var(--ghost-success) !important;
+}
+
+.ghost-chat-action-failed {
+    background: color-mix(in srgb, var(--ghost-error) 15%, transparent) !important;
+    border-color: var(--ghost-error) !important;
+    color: var(--ghost-error) !important;
+}
+
+/* Input Bar */
+.ghost-chat-input-bar {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.ghost-chat-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.ghost-chat-send-btn {
+    flex-shrink: 0;
+    min-height: 36px !important;
+    padding: 6px 16px !important;
+    font-size: 12px !important;
+}
+
+/* Typing Indicator */
+.ghost-chat-typing {
+    align-self: flex-start;
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    border-radius: 16px;
+    border-bottom-left-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+}
+
+.ghost-chat-typing span {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--SmartThemeEmColor);
+    animation: ghostChatTypingDot 1.4s ease-in-out infinite;
+}
+
+.ghost-chat-typing span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.ghost-chat-typing span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes ghostChatTypingDot {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+    }
+
+    30% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ===== 🔘 Toggle Switch ===== */
+
+.ghost-toggle-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding: 12px;
+    border-radius: var(--ghost-border-radius);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+}
+
+.ghost-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.ghost-toggle-label {
+    font-size: 13px;
+    color: var(--SmartThemeBodyColor);
+    user-select: none;
+}
+
+/* The switch track */
+.ghost-toggle-switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 44px;
+    height: 24px;
+}
+
+.ghost-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.ghost-toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    border-radius: 24px;
+    transition: all 0.3s ease;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+}
+
+/* The knob */
+.ghost-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--SmartThemeBodyColor);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Checked state */
+.ghost-toggle-switch input:checked+.ghost-toggle-slider {
+    background: var(--ghost-success, #4caf50);
+    border-color: var(--ghost-success, #4caf50);
+}
+
+.ghost-toggle-switch input:checked+.ghost-toggle-slider::before {
+    transform: translateX(20px);
+    background: #fff;
+}
+
+/* Hover glow */
+.ghost-toggle-row:hover .ghost-toggle-slider {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+}
+
+/* ===== 📊 Progress Bar ===== */
+
+.ghost-progress-section {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: var(--ghost-border-radius);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+    animation: ghostFadeIn 0.3s ease-out;
+}
+
+.ghost-progress-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    overflow: hidden;
+}
+
+.ghost-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg,
+            var(--SmartThemeQuoteColor),
+            color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, #fff));
+    transition: width 0.4s ease;
+    position: relative;
+}
+
+.ghost-progress-text {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--SmartThemeEmColor);
+    text-align: center;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   📚 世界书管理器 (Worldbook Manager) Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.wb-manager-header {
+    padding: 15px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border-radius: var(--ghost-border-radius);
+    margin-bottom: 20px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+}
+
+.wb-manager-header h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 18px;
+    color: var(--SmartThemeBodyColor);
+    font-weight: 600;
+}
+
+.wb-list-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.wb-tag {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+    color: var(--SmartThemeQuoteColor);
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+}
+
+.wb-orders-overview {
+    padding-top: 15px;
+    border-top: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+}
+
+.wb-orders-overview h4 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: var(--SmartThemeBodyColor);
+}
+
+.wb-available-orders {
+    font-family: monospace;
+    font-size: 14px;
+    color: var(--ghost-success);
+    line-height: 1.5;
+    margin: 0;
+    word-break: break-all;
+}
+
+.wb-entries-list h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 16px;
+    color: var(--SmartThemeBodyColor);
+}
+
+.wb-entries-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 5px;
+}
+
+.wb-entry-card {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 2%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+
+.wb-entry-card:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
+}
+
+.wb-entry-header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.wb-entry-order {
+    background: var(--SmartThemeQuoteColor);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.wb-entry-keys {
+    font-size: 14px;
+    color: var(--SmartThemeEmColor);
+    font-style: italic;
+}
+
+.wb-entry-source {
+    font-size: 13px;
+    color: var(--SmartThemeEmColor);
+    opacity: 0.6;
+    margin-left: auto;
+}
+
+.wb-entry-comment {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+    margin-bottom: 6px;
+}
+
+.wb-entry-content-preview {
+    font-size: 12px;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.8;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+
+/* Enhancements: Groups and Editing */
+.wb-group-section {
+    margin-bottom: 12px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 2%, transparent);
+    overflow: hidden;
+}
+
+.wb-group-title {
+    margin: 0;
+    padding: 14px 18px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--SmartThemeQuoteColor);
+    cursor: pointer;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s ease;
+}
+
+.wb-group-title:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.wb-group-icon {
+    font-size: 14px;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    color: var(--SmartThemeEmColor);
+}
+
+.wb-group-content {
+    padding: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 20%, transparent);
+}
+
+.wb-orders-overview {
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+}
+
+.wb-orders-label {
+    font-size: 14px;
+    color: var(--SmartThemeEmColor);
+    margin-right: 8px;
+}
+
+.wb-entry-edit-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed color-mix(in srgb, var(--SmartThemeBorderColor) 20%, transparent);
+}
+
+.wb-edit-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--SmartThemeEmColor);
+    white-space: nowrap;
+}
+
+.wb-edit-label input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+/* Custom Type Switch for Worldbook Entries */
+.wb-type-switch .ghost-toggle-slider {
+    background: var(--ghost-success, #4caf50) !important;
+    border-color: var(--ghost-success, #4caf50) !important;
+}
+
+.wb-type-switch .ghost-toggle-slider::before {
+    background: #fff !important;
+}
+
+.wb-type-switch input:checked+.ghost-toggle-slider {
+    background: #2196f3 !important;
+    /* Blue for Constant */
+    border-color: #2196f3 !important;
+}
+
+.wb-type-switch input:checked+.ghost-toggle-slider::before {
+    background: #fff !important;
+    /* Transformation is handled by default ghost-toggle-switch rules */
+}
+
+.wb-edit-pos,
+.wb-edit-depth,
+.wb-edit-order {
+    padding: 6px 8px !important;
+    font-size: 14px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    border-radius: 6px !important;
+    width: auto;
+}
+
+.wb-edit-depth,
+.wb-edit-order {
+    width: 70px;
+    text-align: center;
+}
+
+.wb-save-btn {
+    margin-left: auto;
+    padding: 6px 16px !important;
+    font-size: 14px !important;
+    min-height: 30px !important;
+    border-radius: 6px;
+}
+
+.ghost-success-btn {
+    background: var(--ghost-success, #2ecc71) !important;
+    color: white !important;
+    border-color: transparent !important;
+}

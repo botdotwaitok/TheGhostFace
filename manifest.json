@@ -1,0 +1,16 @@
+{
+  "display_name": "TheGhostFace",
+  "loading_order": 100,
+  "js": "index.js",
+  "css": "ui/ghostpanel.css",
+  "assets": [
+    "ui/ghostpanel.html"
+  ],
+  "author": "robot",
+  "version": "3.9.0",
+  "homePage": "https://github.com/botdotwaitok",
+  "generate_interceptor": "memory_lorebook",
+  "requires": [],
+  "optional": [],
+  "description": "鬼面弱智对话总结工具"
+}

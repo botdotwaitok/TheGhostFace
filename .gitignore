@@ -1,0 +1,4 @@
+# Server secrets and database
+server/.env
+server/data.db
+server/node_modules/
