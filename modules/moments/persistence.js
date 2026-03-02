@@ -125,7 +125,7 @@ export function createLocalPost(content, authorName = null, authorAvatar = null,
     const stUserName = _getUserNameFallback();
 
     if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
-        finalAuthorId = `char_${authorName}`;
+        finalAuthorId = _getLocalCharAuthorId();
         finalAuthorUsername = authorName;
     }
 
@@ -213,7 +213,7 @@ export function addLocalComment(postId, content, authorName = null, replyToId = 
     const stUserName = _getUserNameFallback();
 
     if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
-        finalAuthorId = `char_${authorName}`;
+        finalAuthorId = _getLocalCharAuthorId();
         finalAuthorUsername = authorName;
     }
 
@@ -298,7 +298,7 @@ export async function deleteComment(postId, commentId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Internal helper
+// Internal helpers
 // ═══════════════════════════════════════════════════════════════════════
 
 function _getUserNameFallback() {
@@ -307,5 +307,14 @@ function _getUserNameFallback() {
         return context.name1 || 'User';
     } catch {
         return 'User';
+    }
+}
+
+function _getLocalCharAuthorId() {
+    try {
+        const context = getContext();
+        return context.characterId != null ? `char_${context.characterId}` : 'char_unknown';
+    } catch {
+        return 'char_unknown';
     }
 }

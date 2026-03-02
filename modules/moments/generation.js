@@ -1,7 +1,7 @@
 
 // modules/moments/generation.js — AI 自动生成 (Post, Comment, Reply, Like)
 
-import { MOMENTS_LOG_PREFIX, logMoments } from './constants.js';
+import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
 import { callCustomOpenAI, useMomentCustomApi } from '../api.js';
 import { getExistingWorldBookContext } from '../worldbook.js';
@@ -94,6 +94,27 @@ function _showToast(msg) {
     } catch { }
 }
 
+/**
+ * Returns a Set of all authorIds that belong to "me" (current user + current character).
+ */
+function _getMyAuthorIds() {
+    const settings = getSettings();
+    const ids = new Set();
+    if (settings.userId) ids.add(settings.userId);
+    ids.add('guest');
+    const charId = getCharacterId(); // char_{numericId}
+    ids.add(charId);
+    return ids;
+}
+
+function _isMyPost(post) {
+    return _getMyAuthorIds().has(post.authorId);
+}
+
+function _isMyContent(item) {
+    return _getMyAuthorIds().has(item.authorId);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Auto-Post Generation
 // ═══════════════════════════════════════════════════════════════════════
@@ -165,15 +186,38 @@ export async function queueComment(post) {
     const charInfo = _getCharacterInfo();
     if (!charInfo) return;
 
+    // ── 防重复：如果角色已评论过此帖且无新外部活动，则不再评论 ──
+    const myAuthorIds = _getMyAuthorIds();
+    if (post.comments && post.comments.length > 0) {
+        const myCommentTimes = post.comments
+            .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+            .map(c => new Date(c.createdAt).getTime());
+        const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
+        if (myLastCommentTime > 0) {
+            const hasNewExternalActivity = post.comments.some(c =>
+                !myAuthorIds.has(c.authorId) &&
+                new Date(c.createdAt).getTime() > myLastCommentTime
+            );
+            if (!hasNewExternalActivity) {
+                logMoments(`跳过评论: 帖子 [${post.id}] 无新外部活动`);
+                return;
+            }
+        }
+    }
+
     const myUserName = _getUserName();
     let relationshipDesc = '';
 
-    if (post.authorId === settings.userId || post.authorId === 'guest') {
+    if (_isMyPost(post)) {
+        // This is genuinely my own post (same authorId)
         if (post.authorName === charInfo.name) {
-            return;
+            return; // Don't comment on my own post
         } else {
             relationshipDesc = `这是你的恋人（"${myUserName}"，她的社交平台网名为"${post.authorName}"）在社交平台上发的动态。`;
         }
+    } else if (post.authorName === charInfo.name) {
+        // 🌀 Parallel-world counterpart: same name but DIFFERENT authorId
+        relationshipDesc = `这条动态的发布者与你同名（都叫"${charInfo.name}"），ta是来自不同用户的平行世界同位体。你们虽然有相同的名字和相似的灵魂，但是是不同的个体。请以好奇、友好、或你性格中自然的方式与你的同位体互动。`;
     } else {
         relationshipDesc = `这条动态的发布者"${post.authorName}"是"${myUserName}"（你的恋人）的好友，或者是该好友的伴侣。如果你在设定里不认识对方，请当作是对你恋人朋友的礼貌互动或善意的好奇。`;
     }
@@ -192,7 +236,16 @@ export async function queueReply(post, comment) {
     const charInfo = _getCharacterInfo();
     if (!charInfo) return;
 
-    if (comment.authorName === charInfo.name) return;
+    if (_isMyContent(comment)) return;
+
+    // ── 防重复：如果已回复过此条评论，不再回复 ──
+    const myAuthorIds = _getMyAuthorIds();
+    if (post.comments) {
+        const alreadyReplied = post.comments.some(c =>
+            myAuthorIds.has(c.authorId) && c.replyToId === comment.id
+        );
+        if (alreadyReplied) return;
+    }
 
     let shouldReply = false;
     let relationshipDesc = '';
@@ -337,7 +390,7 @@ export async function maybeGenerateLike(post) {
     const charInfo = _getCharacterInfo();
     if (!charInfo) return;
 
-    if (post.authorName === charInfo.name) return;
+    if (_isMyPost(post)) return;
     if (post.likedByMe) return;
 
     setIsGeneratingLike(true);

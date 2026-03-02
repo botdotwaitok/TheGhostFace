@@ -1,7 +1,7 @@
 
 // modules/moments/momentsWorldInfo.js — LLM 集成 (World Info & Chat Output Parsing)
 
-import { MOMENTS_LOG_PREFIX, logMoments } from './constants.js';
+import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getFeedCache } from './state.js';
 import { addComment } from './apiClient.js';
 import { createLocalPost } from './persistence.js';
@@ -39,6 +39,16 @@ function _getUserName() {
     } catch {
         return 'User';
     }
+}
+
+function _getMyAuthorIds() {
+    const settings = getSettings();
+    const ids = new Set();
+    if (settings.userId) ids.add(settings.userId);
+    ids.add('guest');
+    const charId = getCharacterId();
+    ids.add(charId);
+    return ids;
 }
 
 async function _getBase64FromUrl(url) {
@@ -103,19 +113,33 @@ export async function updateMomentsWorldInfo() {
         const recentPosts = feedCache.slice(0, 5);
         const charInfo = _getCharacterInfo();
         const myCharName = charInfo ? charInfo.name : null;
+        const myAuthorIds = _getMyAuthorIds();
 
         const feedText = recentPosts.map(p => {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const shortId = p.id.split('_').pop().slice(-5);
 
-            let postReplied = myCharName && p.comments && p.comments.some(c => c.authorName === myCharName && !c.replyToId);
-            let text = `【帖子】[ID:${shortId}] [${p.authorName}] (${timeStr}): ${p.content}${postReplied ? ' [你已评论]' : ''}`;
+            let postReplied = p.comments?.some(c => myAuthorIds.has(c.authorId) && !c.replyToId);
+            // 检测帖子是否有新的外部活动（自角色上次评论后）
+            let noNewActivity = false;
+            if (postReplied && p.comments) {
+                const myCommentTimes = p.comments
+                    .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+                    .map(c => new Date(c.createdAt).getTime());
+                const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
+                noNewActivity = myLastCommentTime > 0 && !p.comments.some(c =>
+                    !myAuthorIds.has(c.authorId) &&
+                    new Date(c.createdAt).getTime() > myLastCommentTime
+                );
+            }
+            const isCounterpart = myCharName && p.authorName === myCharName && !myAuthorIds.has(p.authorId);
+            let text = `【帖子】[ID:${shortId}] [${p.authorName}]${isCounterpart ? ' [⚡同位体]' : ''} (${timeStr}): ${p.content}${postReplied ? (noNewActivity ? ' [你已评论][无新互动，请勿再评论此帖]' : ' [你已评论]') : ''}`;
 
             if (p.comments && p.comments.length > 0) {
                 const recentComments = p.comments.slice(-5).map(c => {
                     const cShortId = c.id.split('_').pop().slice(-5);
                     const replyStr = c.replyToName ? ` 回复 ${c.replyToName}` : '';
-                    let commentReplied = myCharName && p.comments.some(replyC => replyC.authorName === myCharName && replyC.replyToId === c.id);
+                    let commentReplied = p.comments.some(replyC => myAuthorIds.has(replyC.authorId) && replyC.replyToId === c.id);
                     return `  - 【评论】[ID:${cShortId}] ${c.authorName}${replyStr}: ${c.content}${commentReplied ? ' [你已回复]' : ''}`;
                 }).join('\n');
                 text += '\n' + recentComments;
@@ -133,7 +157,7 @@ export async function updateMomentsWorldInfo() {
 - 评论动态格式：(评论 ID: 你的评论内容)
 
 ⚠️格式严格警告：
-1. 绝对不要对已经被标记了"[你已评论]"或"[你已回复]"的内容进行任何回复！那代表你已经回复过了！如果再次回复会让别人觉得奇怪，所以绝对不可以！
+1. 绝对不要对已经被标记了"[你已评论]"或"[你已回复]"的内容进行任何回复！那代表你已经回复过了！如果再次回复会让别人觉得奇怪，所以绝对不可以！特别是被标记了"[无新互动，请勿再评论此帖]"的帖子，绝对禁止再次评论或在该帖下查找可以回复的评论！
 2. 绝对不要在括号内或外添加 【帖子】[ID:xxx]、【评论】[ID:xxx] 或 [角色名 回复] 等前缀，直接写内容！
 3. 错误示范：(朋友圈: 评论xxx) 【评论】[ID:123] 回复: 内容...
 4. 正确评论示范：(评论 92808: 居然是这样！太有趣了。)
@@ -273,13 +297,32 @@ export async function handleMainChatOutput(content) {
                     const charInfo = _getCharacterInfo();
 
                     if (charInfo && charInfo.name && targetPost.comments) {
+                        const myAuthorIds = _getMyAuthorIds();
                         let isDuplicate = false;
                         if (targetComment) {
-                            isDuplicate = targetPost.comments.some(c => c.authorName === charInfo.name && c.replyToId === targetComment.id);
+                            isDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && c.replyToId === targetComment.id);
                         } else {
-                            isDuplicate = targetPost.comments.some(c => c.authorName === charInfo.name && !c.replyToId);
+                            isDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && !c.replyToId);
                         }
-                        let exactTextDuplicate = targetPost.comments.some(c => c.authorName === charInfo.name && c.content === text);
+                        let exactTextDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && c.content === text);
+
+                        // ── 防重复：帖子无新外部活动时阻止评论 ──
+                        if (!isDuplicate && !targetComment) {
+                            const myCommentTimes = targetPost.comments
+                                .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+                                .map(c => new Date(c.createdAt).getTime());
+                            const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
+                            if (myLastCommentTime > 0) {
+                                const hasNewExternalActivity = targetPost.comments.some(c =>
+                                    !myAuthorIds.has(c.authorId) &&
+                                    new Date(c.createdAt).getTime() > myLastCommentTime
+                                );
+                                if (!hasNewExternalActivity) {
+                                    isDuplicate = true;
+                                    console.warn(`${MOMENTS_LOG_PREFIX} Blocking comment: no new external activity on post [${targetId}].`);
+                                }
+                            }
+                        }
 
                         if (isDuplicate || exactTextDuplicate) {
                             console.warn(`${MOMENTS_LOG_PREFIX} Prevents duplicate reply or exact same text for ID [${targetId}].`);

@@ -2,6 +2,7 @@
 // modules/moments/notifications.js — 通知管理
 
 import { getSettings } from './state.js';
+import { getCharacterId } from './constants.js';
 import { saveSettings } from './settings.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -35,7 +36,8 @@ export function getNotificationType(post, comment) {
     }
 
     // 3. Is it a comment on my post? (and not a reply to someone else)
-    const isMyPost = post.authorId === settings.userId || post.authorName === myName || (myCharName && post.authorName === myCharName);
+    const myAuthorIds = _getMyAuthorIds();
+    const isMyPost = myAuthorIds.has(post.authorId);
     if (isMyPost && !comment.replyToId) return 'comment';
 
     return null;
@@ -113,4 +115,14 @@ function _getCharNameFallback() {
     } catch {
         return null;
     }
+}
+
+function _getMyAuthorIds() {
+    const settings = getSettings();
+    const ids = new Set();
+    if (settings.userId) ids.add(settings.userId);
+    ids.add('guest');
+    const charId = getCharacterId();
+    ids.add(charId);
+    return ids;
 }
