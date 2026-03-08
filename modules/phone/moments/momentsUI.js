@@ -1350,7 +1350,11 @@ export function showToast(msg) {
         container = document.createElement('div');
         container.id = 'moments_toast_container';
         container.className = 'moments-toast-container';
-        document.body.appendChild(container);
+        // Append inside the phone UI so the toast is visible within the phone viewport
+        const phoneParent = document.getElementById('phone_overlay')
+            || document.getElementById('moments_panel_overlay')
+            || document.body;
+        phoneParent.appendChild(container);
     }
 
     const toast = document.createElement('div');
