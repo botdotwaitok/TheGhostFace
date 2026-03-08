@@ -273,89 +273,136 @@ function buildBubbleRow(role, content, thought, msgIndex, reactions) {
 
 /**
  * Parse text for special message patterns and render as styled cards.
+ * Supports both full-match (entire message is a token) and embedded tokens
+ * within mixed text (e.g. "给你~ [礼物:小玩具球]").
  * Falls back to plain text bubble.
  */
 function parseSpecialMessages(text) {
-    // Voice message: [语音消息:内容(时长)]
-    const voiceMatch = text.match(/^\[语音消息[:：](.+?)(?:\((\d+)秒\))?\]$/);
-    if (voiceMatch) {
-        const desc = voiceMatch[1].trim();
-        const dur = voiceMatch[2] || '??';
-        return `
-        <div class="chat-bubble">
-            <div class="chat-special-card" style="padding: 10px 14px; min-width: auto;">
-                <div style="flex:1; display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                    <div style="font-size: 14px;">▶ ${escHtml(desc)}</div>
-                    <div class="chat-voice-duration" style="opacity:0.6; font-size:12px;">${dur}″</div>
-                </div>
-            </div>
-        </div>`;
+    // ── Special token definitions (order matters: first match wins) ──
+    const SPECIAL_PATTERNS = [
+        {
+            // Voice message: [语音消息:内容(时长)]
+            regex: /\[语音消息[:：](.+?)(?:\((\d+)秒\))?\]/,
+            render: (m) => {
+                const desc = m[1].trim();
+                const dur = m[2] || '??';
+                return `
+                <div class="chat-bubble">
+                    <div class="chat-special-card" style="padding: 10px 14px; min-width: auto;">
+                        <div style="flex:1; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                            <div style="font-size: 14px;">▶ ${escHtml(desc)}</div>
+                            <div class="chat-voice-duration" style="opacity:0.6; font-size:12px;">${dur}″</div>
+                        </div>
+                    </div>
+                </div>`;
+            },
+        },
+        {
+            // Image: [图片:描述]
+            regex: /\[图片[:：](.+?)\]/,
+            render: (m) => `
+                <div class="chat-bubble">
+                    <div class="chat-special-card">
+                        <div class="chat-special-icon image"><i class="fa-solid fa-image"></i></div>
+                        <div class="chat-special-content">
+                            ${escHtml(m[1].trim())}
+                            <div class="chat-special-label">图片</div>
+                        </div>
+                    </div>
+                </div>`,
+        },
+        {
+            // Share: [分享:标题]
+            regex: /\[分享[:：](.+?)\]/,
+            render: (m) => `
+                <div class="chat-bubble">
+                    <div class="chat-special-card">
+                        <div class="chat-special-icon share"><i class="fa-solid fa-share-from-square"></i></div>
+                        <div class="chat-special-content">
+                            ${escHtml(m[1].trim())}
+                            <div class="chat-special-label">分享</div>
+                        </div>
+                    </div>
+                </div>`,
+        },
+        {
+            // Gift: [礼物:道具名称]
+            regex: /\[礼物[::：](.+?)\]/,
+            render: (m) => {
+                const giftName = m[1].trim();
+                const charName = getCharacterInfo()?.name || '角色';
+                return getGiftEventCardHtml(giftName, charName);
+            },
+        },
+        {
+            // Prank event card: [恶作剧:描述]
+            regex: /\[恶作剧[:：](.+?)\]/,
+            render: (m) => `
+                <div class="chat-bubble">
+                    <div class="chat-special-card prank">
+                        <div class="chat-special-icon prank"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <div class="chat-special-content">
+                            ${escHtml(m[1].trim())}
+                            <div class="chat-special-label">恶作剧</div>
+                        </div>
+                    </div>
+                </div>`,
+        },
+        {
+            // Robbery intent card: [抢劫意愿:想法/理由]
+            regex: /\[抢劫意愿[:：](.+?)\]/,
+            render: (m) => {
+                const thought = m[1].trim();
+                const charName = getCharacterInfo()?.name || '角色';
+                return getRobberyIntentCardHtml(thought, charName);
+            },
+        },
+    ];
+
+    // ── Try full-match first (entire text is exactly one special token) ──
+    for (const pattern of SPECIAL_PATTERNS) {
+        const fullRe = new RegExp(`^${pattern.regex.source}$`);
+        const fullMatch = text.match(fullRe);
+        if (fullMatch) return pattern.render(fullMatch);
     }
 
-    // (Transfer removed — replaced by in-chat inventory)
+    // ── Scan for embedded special tokens within mixed text ──
+    // Try each pattern individually to find the first embedded token
+    let firstMatch = null;
+    let matchedPattern = null;
 
-    // Image: [图片:描述]
-    const imageMatch = text.match(/^\[图片[:：](.+)\]$/);
-    if (imageMatch) {
-        return `
-        <div class="chat-bubble">
-            <div class="chat-special-card">
-                <div class="chat-special-icon image"><i class="fa-solid fa-image"></i></div>
-                <div class="chat-special-content">
-                    ${escHtml(imageMatch[1].trim())}
-                    <div class="chat-special-label">图片</div>
-                </div>
-            </div>
-        </div>`;
+    for (const pattern of SPECIAL_PATTERNS) {
+        const m = text.match(pattern.regex);
+        if (m && (firstMatch === null || m.index < firstMatch.index)) {
+            firstMatch = m;
+            matchedPattern = pattern;
+        }
     }
 
-    // Share: [分享:标题]
-    const shareMatch = text.match(/^\[分享[:：](.+)\]$/);
-    if (shareMatch) {
-        return `
-        <div class="chat-bubble">
-            <div class="chat-special-card">
-                <div class="chat-special-icon share"><i class="fa-solid fa-share-from-square"></i></div>
-                <div class="chat-special-content">
-                    ${escHtml(shareMatch[1].trim())}
-                    <div class="chat-special-label">分享</div>
-                </div>
-            </div>
-        </div>`;
+    if (firstMatch && matchedPattern) {
+        const htmlParts = [];
+        const tokenStart = firstMatch.index;
+        const tokenEnd = tokenStart + firstMatch[0].length;
+
+        // Text before the token → plain bubble
+        const before = text.slice(0, tokenStart).trim();
+        if (before) {
+            htmlParts.push(`<div class="chat-bubble">${escHtml(before)}</div>`);
+        }
+
+        // Render the matched token as its special card
+        htmlParts.push(matchedPattern.render(firstMatch));
+
+        // Text after the token → plain bubble
+        const after = text.slice(tokenEnd).trim();
+        if (after) {
+            htmlParts.push(`<div class="chat-bubble">${escHtml(after)}</div>`);
+        }
+
+        return htmlParts.join('');
     }
 
-    // Gift: [礼物:道具名称]
-    const giftMatch = text.match(/^\[礼物[::：](.+?)\]$/);
-    if (giftMatch) {
-        const giftName = giftMatch[1].trim();
-        const charName = getCharacterInfo()?.name || '角色';
-        return getGiftEventCardHtml(giftName, charName);
-    }
-
-    // Prank event card: [恶作剧:描述]
-    const prankMatch = text.match(/^\[恶作剧[:：](.+)\]$/);
-    if (prankMatch) {
-        return `
-        <div class="chat-bubble">
-            <div class="chat-special-card prank">
-                <div class="chat-special-icon prank"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-                <div class="chat-special-content">
-                    ${escHtml(prankMatch[1].trim())}
-                    <div class="chat-special-label">恶作剧</div>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    // Robbery intent card: [抢劫意愿:想法/理由]
-    const robIntentMatch = text.match(/^\[抢劫意愿[:：](.+?)\]$/);
-    if (robIntentMatch) {
-        const thought = robIntentMatch[1].trim();
-        const charName = getCharacterInfo()?.name || '角色';
-        return getRobberyIntentCardHtml(thought, charName);
-    }
-
-    // Plain text bubble
+    // ── No special tokens found → plain text bubble ──
     return `<div class="chat-bubble">${escHtml(text)}</div>`;
 }
 
@@ -405,8 +452,9 @@ function bindChatEvents() {
             if (isDeleteMode) return;
             const row = e.target.closest('.chat-bubble-row[data-msg-index]');
             if (!row) return;
-            // Don't trigger on reaction badge clicks
-            if (e.target.closest('.chat-reaction-badge') || e.target.closest('.chat-reaction-picker')) return;
+            // Don't trigger on interactive elements (buttons, links, etc.)
+            if (e.target.closest('button') || e.target.closest('a') ||
+                e.target.closest('.chat-reaction-badge') || e.target.closest('.chat-reaction-picker')) return;
             _longPressTarget = row;
             _didLongPress = false;
             // Prevent native text selection & context menu on mobile
@@ -486,7 +534,16 @@ function bindChatEvents() {
                 return;
             }
 
+            // ─── Robbery choice buttons (event delegation) ───
+            const robberyBtn = e.target.closest('.robbery-choice-btn');
+            if (robberyBtn) {
+                handleRobberyChoice(robberyBtn);
+                return;
+            }
+
             // Thought toggle — only affects the clicked message
+            // Skip if clicking on interactive elements inside special cards
+            if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.chat-special-card')) return;
             const col = e.target.closest('.chat-bubble-column');
             if (col && col.closest('.char')) {
                 const thought = col.querySelector('.chat-thought-bubble');
@@ -689,6 +746,74 @@ function bindChatEvents() {
 
     // Render buff bar (Phase 2)
     renderBuffBar();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Robbery Choice Handler (event delegation — works for history & live)
+// ═══════════════════════════════════════════════════════════════════════
+
+async function handleRobberyChoice(btn) {
+    // Prevent double-click
+    if (btn.dataset.handled) return;
+    btn.dataset.handled = '1';
+
+    const action = btn.dataset.action;
+    const cardId = btn.dataset.cardId;
+    const choicesDiv = document.getElementById(`${cardId}_choices`);
+    const statusDiv = document.getElementById(`${cardId}_status`);
+    const messagesArea = document.getElementById('chat_messages_area');
+    const charName = getCharacterInfo()?.name || '角色';
+
+    // Hide all choice buttons
+    if (choicesDiv) choicesDiv.style.display = 'none';
+
+    if (action === 'stop') {
+        if (statusDiv) {
+            statusDiv.textContent = '🛑 你拦住了角色，这次就算了。';
+            statusDiv.style.display = 'block';
+        }
+        return;
+    }
+
+    if (action === 'watch') {
+        if (statusDiv) {
+            statusDiv.textContent = '👀 你选择吃瓜围观……但角色还是去了。';
+            statusDiv.style.display = 'block';
+        }
+    }
+
+    // Both 'encourage' and 'watch' trigger the robbery
+    try {
+        const candidates = await getRandomVictimList();
+        if (!candidates || candidates.length === 0) {
+            if (statusDiv) {
+                statusDiv.textContent = '⚠️ 找不到可以抢劫的目标（需要Moments好友）';
+                statusDiv.style.display = 'block';
+            }
+            return;
+        }
+
+        if (action === 'encourage' && statusDiv) {
+            statusDiv.textContent = `😈 你鼓励了角色出击！正在行动…`;
+            statusDiv.style.display = 'block';
+        }
+
+        // Execute robbery (auto-retries on protected targets)
+        const result = await triggerRobbery(candidates, charName, `${cardId}_status`);
+
+        // Show result card
+        if (messagesArea && result && !result.error) {
+            messagesArea.insertAdjacentHTML('beforeend',
+                `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName)}</div></div>`);
+            scrollToBottom(true);
+        }
+    } catch (e) {
+        console.warn('[RobberySystem] robbery choice error:', e);
+        if (statusDiv) {
+            statusDiv.textContent = '⚠️ 执行出错，请重新打开聊天再试。';
+            statusDiv.style.display = 'block';
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1375,73 +1500,8 @@ async function sendAllMessages() {
             }
         } catch (e) { console.warn('[GiftSystem] gift detection error:', e); }
 
-        // ─── Phase 7: Detect robbery intent messages + bind choice buttons ───
-        try {
-            for (const cmsg of charMessages) {
-                const robIntentRegex = /\[抢劫意愿[:：](.+?)\]/g;
-                if (robIntentRegex.test(cmsg.text)) {
-                    // Bind choice button click handlers via event delegation
-                    if (messagesArea) {
-                        const charName = getCharacterInfo()?.name || '角色';
-                        messagesArea.querySelectorAll('.robbery-choice-btn:not([data-bound])').forEach(btn => {
-                            btn.setAttribute('data-bound', '1');
-                            btn.addEventListener('click', async () => {
-                                const action = btn.dataset.action;
-                                const cardId = btn.dataset.cardId;
-                                const choicesDiv = document.getElementById(`${cardId}_choices`);
-                                const statusDiv = document.getElementById(`${cardId}_status`);
-
-                                // Disable all buttons
-                                if (choicesDiv) choicesDiv.style.display = 'none';
-
-                                if (action === 'stop') {
-                                    if (statusDiv) {
-                                        statusDiv.textContent = '🛑 你拦住了角色，这次就算了。';
-                                        statusDiv.style.display = 'block';
-                                    }
-                                    return;
-                                }
-
-                                if (action === 'watch') {
-                                    if (statusDiv) {
-                                        statusDiv.textContent = '👀 你选择吃瓜围观……但角色还是去了。';
-                                        statusDiv.style.display = 'block';
-                                    }
-                                }
-
-                                // Both 'encourage' and 'watch' trigger the robbery
-                                const candidates = await getRandomVictimList();
-                                if (!candidates || candidates.length === 0) {
-                                    if (statusDiv) {
-                                        statusDiv.textContent = '⚠️ 找不到可以抢劫的目标（需要Moments好友）';
-                                        statusDiv.style.display = 'block';
-                                    }
-                                    return;
-                                }
-
-                                if (action === 'encourage' && statusDiv) {
-                                    statusDiv.textContent = `😈 你鼓励了角色出击！正在行动…`;
-                                    statusDiv.style.display = 'block';
-                                }
-
-                                // Execute robbery (auto-retries on protected targets)
-                                const result = await triggerRobbery(candidates, charName, `${cardId}_status`);
-
-                                // Show result card
-                                if (messagesArea && result && !result.error) {
-                                    messagesArea.insertAdjacentHTML('beforeend',
-                                        `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName)}</div></div>`);
-                                    scrollToBottom(true);
-
-                                    // Note: Moments broadcast removed to save token usage
-                                    // (GF Bot DMs already notify both parties)
-                                }
-                            });
-                        });
-                    }
-                }
-            }
-        } catch (e) { console.warn('[RobberySystem] robbery detection error:', e); }
+        // Phase 7: Robbery button binding is now handled via event delegation
+        // in bindChatEvents() → handleRobberyChoice(). No manual binding needed here.
 
         renderBuffBar();
 
