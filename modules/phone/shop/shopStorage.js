@@ -437,6 +437,25 @@ export function deleteReviewBySignature(itemId, signature) {
 }
 
 /**
+ * Delete a remote-only review by its server-assigned ID.
+ * Calls the remote API and also removes from local storage if present.
+ * @param {string} itemId
+ * @param {string} serverId
+ */
+export function deleteReviewByServerId(itemId, serverId) {
+    // Remove from local storage if it happens to be there
+    const all = loadReviews();
+    if (all[itemId]) {
+        all[itemId] = all[itemId].filter(r => (r.id || r._id) !== serverId);
+        saveReviews(all);
+    }
+    // Delete from server
+    deleteShopReview(itemId, serverId).catch(e => {
+        console.warn('[Shop] Failed to delete remote review by serverId:', e);
+    });
+}
+
+/**
  * Fetch remote reviews and merge with local ones.
  * Deduplicates by (author + date + text).
  * Returns merged array sorted newest-first.

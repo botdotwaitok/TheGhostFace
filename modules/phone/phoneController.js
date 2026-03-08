@@ -10,7 +10,7 @@ import { openFriendsApp } from './friends/friendsApp.js';
 import { openDiaryApp } from './diary/diaryApp.js';
 import { openChatApp } from './chat/chatApp.js';
 import { openShopApp } from './shop/shopApp.js';
-import { openLeaderboardApp } from './leaderboard/leaderboardApp.js';
+
 import { openTarotApp } from './tarot/tarotApp.js';
 
 // ─── State ───
@@ -61,14 +61,7 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link4.href = `${baseDir}/shop/shop.css`;
         document.head.appendChild(link4);
     }
-    // Leaderboard CSS
-    if (!document.getElementById('gf-leaderboard-styles')) {
-        const link5 = document.createElement('link');
-        link5.id = 'gf-leaderboard-styles';
-        link5.rel = 'stylesheet';
-        link5.href = `${baseDir}/leaderboard/leaderboard.css`;
-        document.head.appendChild(link5);
-    }
+
     // Tarot CSS
     if (!document.getElementById('gf-tarot-styles')) {
         const link6 = document.createElement('link');
@@ -188,15 +181,7 @@ export function initPhone() {
         onOpen: () => openShopApp(),
     });
 
-    // ── 排行榜 (Leaderboard) ──
-    registerApp({
-        id: 'leaderboard',
-        name: '排行榜',
-        icon: 'fa-solid fa-ranking-star',
-        color: '#c084fc',
-        glow: 'rgba(124, 58, 237, 0.4)',
-        onOpen: () => openLeaderboardApp(),
-    });
+
 
     // ── 日记本 (Diary) ──
     registerApp({

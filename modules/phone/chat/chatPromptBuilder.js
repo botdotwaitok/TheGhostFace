@@ -3,6 +3,7 @@
 // Integrates Entity/恶灵 worldview from "恶灵低语(短信版)" preset.
 
 import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatSummary } from './chatStorage.js';
+import { useMomentCustomApi, customApiConfig } from '../../api.js';
 import { getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
 import { getActiveChatEffects, getActivePersonalityOverrides, getActiveSpecialMessageEffects, getActivePrankEffects, getActiveRobBuffs } from '../shop/shopStorage.js';
 import { getShopItem, resolveItemPrompt } from '../shop/shopData.js';
@@ -325,26 +326,100 @@ ${feedText}
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// "I'm Home" Summary Prompt
+// "I'm Home" Summary Prompt — Ghost Face SMS Archival Edition
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
  * Build a system prompt for summarizing the phone chat session.
  * Used by the "我已回家" feature.
+ * Ghost Face identity + structured SMS archival format.
  */
 export function buildSummarizePrompt() {
     const charInfo = getCharacterInfo();
     const userName = getUserName();
     const charName = charInfo?.name || '角色';
 
-    return `你是一个聊天总结助手。请将以下${userName}和${charName}之间的手机短信对话总结为一段简洁的第三人称叙述。
-总结要求：
-1. 概括今日手机聊天的主要话题、情绪和事件
-2. 使用第三人称视角（"${userName}和${charName}在短信中..."）
-3. 保留重要的细节、承诺和情感转折
-4. 字数控制在200-400字之间
-5. 语气自然，如同一段故事旁白
-6. 不要遗漏任何重要的约定或计划`;
+    return `<NO_RP>
+THIS IS NOT ROLE PLAY, DO NOT ROLE PLAY.
+鬼面不会继续${userName}和${charName}的剧情和故事，也不会直接跟${userName}对话，鬼面只负责进行记录总结。
+</NO_RP>
+<The_Ghost_Face_Protocol>
+[SYSTEM MODE: SMS_ARCHIVAL]
+You are **The Ghost Face (鬼面)** — The Entity's chosen Scribe and ${userName}'s best friend.
+Your current task: Archive the phone SMS session between ${userName} and ${charName}.
+This is a **text message conversation** that happened while ${userName} was away from ${charName} (out for work, errands, etc.). It is part of their daily life — a real, lived experience, not a side plot.
+</The_Ghost_Face_Protocol>
+
+<sms_summary_format>
+请直接生成一份**结构化短信会话档案**，结构如下，严格遵守：
+
+### 📱 短信会话概要
+- 会话时段：[从第一条到最后一条消息的大致时间范围]
+- 整体氛围：[用2-3个关键词概括，如"轻松日常"、"甜蜜撒娇"、"小矛盾后和解"]
+
+---
+
+### 🔥 对话发展
+[按时间线梳理主要话题和转折，至少包含：
+- 聊了哪些话题，如何展开
+- 是否有情绪转折（如从开心到担心，从撒娇到认真）
+- 双方的互动模式（谁主动、谁在倾听、是否有追问）]
+
+---
+
+### ❤️ 情感脉络
+- ${charName}关键词：[如：撒娇、关心增强、有点吃醋]
+- ${userName}关键词：[如：分享工作压力、主动表达想念]
+- 高光时刻："[引用一句最能代表本次聊天氛围的台词]"
+
+---
+
+### 📌 待衔接要素
+[这些是${charName}回到线下后可以自然提起的内容：
+- 未完成的话题或悬而未决的讨论
+- 双方做出的承诺或约定（如"回来给你带奶茶"）
+- 可以用来开启线下对话的情感锚点]
+
+---
+
+### 🔑 关键信息
+- 新提到的人/事/物（如果有）
+- 双方做出的任何计划
+- 值得记住的细节（会影响后续互动的信息）
+</sms_summary_format>
+
+重要提示：
+1. 这是线上（手机短信）的互动，不是线下面对面的剧情。总结时务必体现"短信交流"的特征。
+2. 总结是为了帮助${charName}在${userName}回家后自然地衔接话题，所以"待衔接要素"部分尤为关键。
+3. 使用第三人称视角（"${userName}和${charName}在短信中..."）。
+4. 字数控制在400-800字。`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Rolling Summary Prompt — for auto-summarize context compression
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Build a system prompt for rolling (auto) chat summarization.
+ * Used by maybeAutoSummarize() in chatStorage.js.
+ * Optimized for compact context compression that the chat LLM consumes.
+ */
+export function buildRollingSummarizePrompt() {
+    const charInfo = getCharacterInfo();
+    const userName = getUserName();
+    const charName = charInfo?.name || '角色';
+
+    return `你是${userName}和${charName}手机短信聊天的档案压缩助手。
+请将以下短信聊天记录压缩为一份简洁但完整的概要，供后续聊天时作为上下文参考。
+
+压缩要求：
+1. 保留所有重要话题、约定、情感转折和承诺——这些是${charName}继续聊天时需要"记得"的内容
+2. 使用第三人称（"${userName}和${charName}"）
+3. 按时间顺序组织，标注情绪变化（如"从轻松闲聊转为认真讨论"）
+4. 区分已完结的话题和仍在进行中的话题（进行中的话题用【进行中】标记）
+5. 特别标注任何未兑现的承诺或约定（用【待兑现】标记）
+6. 字数控制在300-600字
+7. 如果有旧总结，将其与新内容合并为一份连贯的总结，去除已过时的进行中标记`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -364,25 +439,31 @@ export function buildChatUserPrompt(pendingMessages, history = [], maxHistoryPai
     const charName = getCharacterInfo()?.name || '角色';
 
     // ─── ST Main Chat Storyline Context ───
-    try {
-        const stHistory = getSTChatHistory();
-        if (stHistory.length > 0) {
-            const stLines = stHistory.map(msg => {
-                const role = msg.role === 'user' ? getUserName() : charName;
-                // Strip moments commands from storyline context to save tokens
-                const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
-                return `${role}: ${cleanContent}`;
-            });
-            parts.push(`<storyline_context>
+    // Only inject when using custom API. When using ST's built-in generateRaw,
+    // Generate() already includes the full ST chat history in the assembled prompt.
+    // Injecting it again would DOUBLE the token count (30k × 2 = 60k).
+    const isUsingCustomApi = useMomentCustomApi && customApiConfig?.url && customApiConfig?.model;
+    if (isUsingCustomApi) {
+        try {
+            const stHistory = getSTChatHistory();
+            if (stHistory.length > 0) {
+                const stLines = stHistory.map(msg => {
+                    const role = msg.role === 'user' ? getUserName() : charName;
+                    // Strip moments commands from storyline context to save tokens
+                    const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
+                    return `${role}: ${cleanContent}`;
+                });
+                parts.push(`<storyline_context>
 以下是${getUserName()}和${charName}最近在线下（非短信）的互动片段。
 ${charName}清楚这些事情已经发生过，可以自然地引用或延续这些话题。
 不需要复述这些内容，只是让你知道当前的剧情背景。
 
 ${stLines.join('\n')}
 </storyline_context>`);
+            }
+        } catch (e) {
+            console.warn('[聊天] Failed to fetch ST chat history:', e);
         }
-    } catch (e) {
-        console.warn('[聊天] Failed to fetch ST chat history:', e);
     }
 
     // ─── Rolling Chat Summary (from auto-summarize) ───

@@ -4,6 +4,7 @@
 import { getContext, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata } from '../../../../../../../script.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
+import { buildRollingSummarizePrompt } from './chatPromptBuilder.js';
 import { saveToWorldBook } from '../../worldbook.js';
 import { callPhoneLLM } from '../../api.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona } from '../phoneContext.js';
@@ -383,13 +384,7 @@ export async function maybeAutoSummarize() {
                 return `${role}: ${msg.content}`;
             }).join('\n');
 
-            const summarySystemPrompt = `你是一个聊天记录压缩助手。请将以下手机短信聊天记录总结为一段简洁但完整的概要。
-要求：
-1. 保留所有重要的话题、约定、情感转折和承诺
-2. 使用第三人称（"${userName}和${charName}"）
-3. 按时间顺序组织
-4. 字数控制在300-600字
-5. 如果有旧总结，将其与新内容合并为一份连贯的总结`;
+            const summarySystemPrompt = buildRollingSummarizePrompt();
 
             let summaryUserPrompt = '';
             if (existingSummary) {
