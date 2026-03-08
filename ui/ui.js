@@ -13,7 +13,8 @@ import * as gf_chat from '../modules/chat.js';
 import * as backup from '../modules/backup.js';
 
 import { ghostFacePanelTemplate } from './panelTemplate.js';
-import { openMomentsPanel, initMomentsUI } from './moments/momentsUI.js';
+import { openMomentsPanel, initMomentsUI } from '../modules/phone/moments/momentsUI.js';
+import { openPhone, initPhone } from '../modules/phone/phoneController.js';
 import { setupWorldbookManagerEvents, renderWorldbookManagerPanel } from './worldbookManagerUI.js';
 
 export { initMomentsUI };
@@ -513,30 +514,29 @@ export function setupPanelEvents() {
 
     // (Removed: dead click-outside handler — closePanel() was undefined and isPanelOpen was never true)
 
-    // 朋友圈按钮
-    const momentsBtn = document.getElementById('the_ghost_face_moments_btn');
-    if (momentsBtn) {
-        momentsBtn.addEventListener('click', () => {
-            momentsBtn.classList.add('active');
-            openMomentsPanel();
+    // 手机按钮
+    const phoneBtn = document.getElementById('the_ghost_face_phone_btn');
+    if (phoneBtn) {
+        phoneBtn.addEventListener('click', () => {
+            phoneBtn.classList.add('active');
+            openPhone();
         });
 
-        // Watch for the overlay closing so we can remove .active
-        const _watchOverlay = () => {
-            const overlay = document.getElementById('moments_overlay');
+        // Watch for the phone overlay closing so we can remove .active
+        const _watchPhoneOverlay = () => {
+            const overlay = document.getElementById('phone_overlay');
             if (!overlay) {
-                // Overlay not yet in DOM — retry once after panel mounts
-                setTimeout(_watchOverlay, 500);
+                setTimeout(_watchPhoneOverlay, 500);
                 return;
             }
             const obs = new MutationObserver(() => {
-                if (!overlay.classList.contains('moments-visible')) {
-                    momentsBtn.classList.remove('active');
+                if (!overlay.classList.contains('phone-visible')) {
+                    phoneBtn.classList.remove('active');
                 }
             });
             obs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
         };
-        _watchOverlay();
+        _watchPhoneOverlay();
     }
 
     // 世界书管理按钮
@@ -573,6 +573,9 @@ export function setupPanelEvents() {
 
     // 💬 初始化迷你聊天窗口
     gf_chat.initChat();
+
+    // 📱 初始化手机模块
+    initPhone();
 
     // 📦 备份事件绑定
     backup.setupBackupEvents();

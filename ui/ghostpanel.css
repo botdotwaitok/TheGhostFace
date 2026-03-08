@@ -788,7 +788,7 @@ input[type="number"].ghost-input {
     transition: all var(--ghost-transition-fast);
 }
 
-.ghost-log-content::-webkit-scrollbar-thumb:hover {
+.ghost-log-content:hover::-webkit-scrollbar-thumb {
     background: var(--SmartThemeBodyColor);
 }
 

@@ -110,6 +110,68 @@ router.get('/feed/:userId', (req, res) => {
     }
 });
 
+// ─── GET /api/posts/user/:userId ────────────────────────────────────
+// Get all posts by a specific user (for profile page).
+// Query params: page (default 1), limit (default 20)
+router.get('/user/:userId', (req, res) => {
+    try {
+        const { userId } = req.params;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = (page - 1) * limit;
+
+        const db = getDb();
+
+        // Get posts by this user
+        const posts = db.prepare(`
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM likes WHERE postId = p.id) as likeCount,
+                   (SELECT COUNT(*) FROM comments WHERE postId = p.id) as commentCount,
+                   u.username as authorUsername
+            FROM posts p
+            LEFT JOIN users u ON p.authorId = u.id
+            WHERE p.authorId = ?
+            ORDER BY p.createdAt DESC
+            LIMIT ? OFFSET ?
+        `).all(userId, limit, offset);
+
+        // Attach comments to each post
+        if (posts.length > 0) {
+            const postIds = posts.map(p => p.id);
+            const commentPlaceholders = postIds.map(() => '?').join(',');
+            const comments = db.prepare(
+                `SELECT c.*, u.username as authorUsername FROM comments c LEFT JOIN users u ON c.authorId = u.id WHERE c.postId IN (${commentPlaceholders}) ORDER BY c.createdAt ASC`
+            ).all(...postIds);
+
+            const commentsByPostId = {};
+            comments.forEach(c => {
+                if (!commentsByPostId[c.postId]) commentsByPostId[c.postId] = [];
+                commentsByPostId[c.postId].push(c);
+            });
+
+            posts.forEach(p => {
+                p.likedByMe = false; // Profile view doesn't track "liked by viewer"
+                p.comments = commentsByPostId[p.id] || [];
+            });
+        }
+
+        // Get total count for pagination
+        const totalRow = db.prepare('SELECT COUNT(*) as total FROM posts WHERE authorId = ?').get(userId);
+
+        res.json({
+            ok: true,
+            posts,
+            count: posts.length,
+            total: totalRow.total,
+            page,
+            limit,
+        });
+    } catch (err) {
+        console.error('[Posts] user posts error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── GET /api/posts/:postId ─────────────────────────────────────────
 // Get a single post with its comments and likes
 router.get('/:postId', (req, res) => {

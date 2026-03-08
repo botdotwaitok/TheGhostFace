@@ -13,7 +13,10 @@ import * as utils from './modules/utils.js';
 import * as worldbook from './modules/worldbook.js';
 import * as api from './modules/api.js';
 import * as gf_chat from './modules/chat.js';
-import * as moments from './modules/moments/moments.js';
+import * as moments from './modules/phone/moments/moments.js';
+import * as diary from './modules/phone/diary/diaryApp.js';
+import { isDiaryEnabled, getDiaryMode } from './modules/phone/diary/diaryApp.js';
+import { getDiarySystemPrompt, updateDiaryWorldInfo } from './modules/phone/diary/diaryWorldInfo.js';
 import * as worldbookManager from './modules/worldbookManager.js';
 
 
@@ -252,6 +255,10 @@ async function initializeGhostFace() {
                             const lastMsg = chat[chat.length - 1];
                             if (!lastMsg.is_user) {
                                 mainLLMPosted = await moments.handleMainChatOutput(lastMsg.mes);
+                                // Parse diary entries from main LLM output (auto mode only)
+                                if (isDiaryEnabled() && getDiaryMode() === 'auto') {
+                                    diary.handleDiaryChatOutput(lastMsg.mes);
+                                }
                             }
                         }
 
@@ -282,6 +289,15 @@ async function initializeGhostFace() {
                 if (prompt && typeof extension_prompts !== 'undefined') {
                     extension_prompts.push(prompt);
                     console.log('📱 [鬼面] 已注入朋友圈系统指令');
+                }
+
+                // Inject diary system prompt (auto mode only)
+                if (isDiaryEnabled() && getDiaryMode() === 'auto') {
+                    const diaryPrompt = getDiarySystemPrompt();
+                    if (diaryPrompt && typeof extension_prompts !== 'undefined') {
+                        extension_prompts.push(diaryPrompt);
+                        console.log('📔 [鬼面] 已注入日记本系统指令');
+                    }
                 }
             }
         } catch (momentsErr) {

@@ -56,6 +56,25 @@ function migrations() {
             console.log('[DB] Migrating: Adding settings to users');
             db.prepare("ALTER TABLE users ADD COLUMN settings TEXT DEFAULT '{}'").run();
         }
+        if (!columns.includes('discordId')) {
+            console.log('[DB] Migrating: Adding discordId to users');
+            db.prepare("ALTER TABLE users ADD COLUMN discordId TEXT").run();
+            db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_discordId ON users(discordId)").run();
+        }
+
+        // Profile page fields
+        if (!columns.includes('signature')) {
+            console.log('[DB] Migrating: Adding signature to users');
+            db.prepare("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''").run();
+        }
+        if (!columns.includes('coverImageUrl')) {
+            console.log('[DB] Migrating: Adding coverImageUrl to users');
+            db.prepare("ALTER TABLE users ADD COLUMN coverImageUrl TEXT DEFAULT ''").run();
+        }
+        if (!columns.includes('pinnedContent')) {
+            console.log('[DB] Migrating: Adding pinnedContent to users');
+            db.prepare("ALTER TABLE users ADD COLUMN pinnedContent TEXT DEFAULT '[]'").run();
+        }
 
     } catch (err) {
         console.error('[DB] Migration failed:', err);
@@ -132,6 +151,20 @@ function initTables() {
         CREATE INDEX IF NOT EXISTS idx_comments_postId ON comments(postId);
         CREATE INDEX IF NOT EXISTS idx_friends_userId  ON friends(userId);
         CREATE INDEX IF NOT EXISTS idx_sessions_token  ON sessions(token);
+
+        CREATE TABLE IF NOT EXISTS shop_reviews (
+            id          TEXT PRIMARY KEY,
+            itemId      TEXT NOT NULL,
+            author      TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            rating      INTEGER NOT NULL DEFAULT 5,
+            isCharacter INTEGER NOT NULL DEFAULT 0,
+            userId      TEXT DEFAULT 'anonymous',
+            date        TEXT,
+            createdAt   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_shop_reviews_itemId ON shop_reviews(itemId);
     `);
     console.log('[DB] Tables initialized');
 }

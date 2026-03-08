@@ -79,12 +79,21 @@ const postsRouter = require('./routes/posts');
 const uploadRouter = require('./routes/upload');
 const authRouter = require('./routes/auth');
 const backupRouter = require('./routes/backup');
+const walletRouter = require('./routes/wallet');
+const discordManageRouter = require('./routes/discord-manage');
+const { router: shopRouterHandler, registerPublicShopRoute } = require('./routes/shop');
+// ── Public shop catalog (no auth needed for SillyTavern plugin) ─────────────
+registerPublicShopRoute(app);
+
 
 app.use('/api/users', usersRouter);
 app.use('/api/posts', postsRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/backup', backupRouter);
+app.use('/api/wallet', walletRouter);
+app.use('/api/discord-manage', discordManageRouter);
+app.use('/api/shop', shopRouterHandler);
 
 // ── 404 catch-all ───────────────────────────────────────────────────
 app.use((_req, res) => {

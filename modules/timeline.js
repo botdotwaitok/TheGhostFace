@@ -246,11 +246,11 @@ async function callLLM(prompt, maxTokens = 2048) {
 
     // ST 内置 provider
     const context = await getContext();
-    if (!context || typeof context.generateQuietPrompt !== 'function') {
-        throw new Error('[时间线] ST context.generateQuietPrompt 不可用');
+    if (!context || typeof context.generateRaw !== 'function') {
+        throw new Error('[时间线] ST context.generateRaw 不可用');
     }
     return Promise.race([
-        context.generateQuietPrompt(prompt, true, false, ''),
+        context.generateRaw(prompt, '', false, false, ''),
         timeout,
     ]);
 }

@@ -1,4 +1,4 @@
-﻿// summarizer.js
+// summarizer.js
 import { getContext, extension_settings, } from '../../../../extensions.js';
 import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../../script.js';
 import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
@@ -300,12 +300,13 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
                 ]);
             } else {
                 // 使用 ST 内置 provider
-                if (typeof context.generateQuietPrompt !== 'function') {
-                    throw new Error('context.generateQuietPrompt 不是函数');
+                if (typeof context.generateRaw !== 'function') {
+                    throw new Error('context.generateRaw 不是函数');
                 }
-                const generatePromise = context.generateQuietPrompt(
+                const generatePromise = context.generateRaw(
                     currentPrompt,
-                    true,
+                    '',
+                    false,
                     false,
                     ""
                 );
@@ -1356,8 +1357,8 @@ export async function handleLargeSummary({ startIndex = null, endIndex = null } 
                     timeout,
                 ]);
             } else {
-                if (typeof ctx.generateQuietPrompt !== 'function') throw new Error('生成接口不可用');
-                const gen = ctx.generateQuietPrompt(prompt, true, false, "");
+                if (typeof ctx.generateRaw !== 'function') throw new Error('生成接口不可用');
+                const gen = ctx.generateRaw(prompt, '', false, false, "");
                 out = await Promise.race([gen, timeout]);
             }
 

@@ -49,10 +49,10 @@ export const ghostFacePanelTemplate = String.raw`
                         </div>
 
                         <div class="ghost-guide-item">
-                            <div class="ghost-guide-item-title">📱 朋友圈</div>
+                            <div class="ghost-guide-item-title">📱 打开手机</div>
                             <div class="ghost-guide-item-desc">
-                                打开朋友圈社交面板！你的角色和好友的角色会在这里发动态、互动。就像微信朋友圈一样，但是是属于恶灵老板的幻境居民们的~
-                                <br>💡 详细玩法看下面「朋友圈专区」！
+                                打开你的虚拟手机！里面有朋友圈、聊天、日记本、商城、占卜、排行榜等丰富的App，就像真正的iPhone一样~
+                                <br>💡 所有App现已全部上线！点击聊天界面上的悬浮手机图标或控制台的「打开手机」按钮即可使用。
                             </div>
                         </div>
 
@@ -100,16 +100,16 @@ export const ghostFacePanelTemplate = String.raw`
                         </div>
 
                         <div class="ghost-guide-item">
-                            <div class="ghost-guide-item-title">💬 朋友圈自定义API</div>
+                            <div class="ghost-guide-item-title">💬 手机自定义API</div>
                             <div class="ghost-guide-item-desc">
-                                和上面使用相同的API设置，关闭则使用主LLM系统（没错，朋友圈拥有两套工作系统）。
+                                和上面使用相同的API设置，关闭则使用主LLM系统（没错，手机模块拥有独立的工作系统）。
                             </div>
                         </div>
 
                         <div class="ghost-guide-item">
-                            <div class="ghost-guide-item-title">🫧 显示朋友圈悬浮泡泡</div>
+                            <div class="ghost-guide-item-title">📱 显示手机悬浮入口</div>
                             <div class="ghost-guide-item-desc">
-                                控制聊天界面上那个可以拖动的朋友圈悬浮图标是否显示。关了就只能从控制台按钮进入朋友圈。
+                                控制聊天界面上那个可以拖动的手机悬浮图标是否显示。关了就只能从控制台按钮打开手机。
                             </div>
                         </div>
                     </div>
@@ -243,11 +243,24 @@ export const ghostFacePanelTemplate = String.raw`
                     </div>
 
                     <div class="ghost-guide-section">
-                        <div class="ghost-guide-section-title">📱 朋友圈专区</div>
+                        <div class="ghost-guide-section-title">📱 鬼面手机</div>
 
                         <div class="ghost-guide-item">
                             <div class="ghost-guide-item-desc">
-                                朋友圈是鬼面插件的社交功能！你的角色和好友的角色可以在这里发动态、点赞、评论，就像真正的社交媒体一样~
+                                打开手机后你会看到一个iOS风格的桌面，上面排列着所有App。
+                                手机拥有独立的工作系统，可以配置使用独立API或主LLM，所有App共享同一个角色上下文。
+                                <br>下面是每个App的详细介绍~
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">📸 朋友圈</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                鬼面的社交功能！你的角色和好友的角色可以在这里发动态、点赞、评论，就像真正的社交媒体一样~
+                                角色会根据聊天剧情自动生成动态，好友互动完全实时同步。
                             </div>
                         </div>
 
@@ -276,7 +289,7 @@ export const ghostFacePanelTemplate = String.raw`
                             <div class="ghost-guide-item-title">🏷️ 网名设置</div>
                             <div class="ghost-guide-item-desc">
                                 <b>你的网名</b>：在朋友圈里显示的你的名字（留空则用用户名）<br>
-                                <b>当前角色网名</b>：你的角色在朋友圈里的显示名(留空则用角色原名)
+                                <b>当前角色网名</b>：你的角色在朋友圈里的显示名（留空则用角色原名）
                             </div>
                         </div>
 
@@ -298,22 +311,188 @@ export const ghostFacePanelTemplate = String.raw`
                         </div>
 
                         <div class="ghost-guide-item">
-                            <div class="ghost-guide-item-title">✏️ 发帖区域</div>
+                            <div class="ghost-guide-item-title">✏️ 发帖 & 📰 动态流</div>
                             <div class="ghost-guide-item-desc">
-                                在顶部的输入框里写内容，点「发布」就能发朋友圈动态~
+                                在顶部输入框写内容点「发布」即可发朋友圈~ 动态流里可以点赞❤️、展开评论💬、回复别人的评论。
+                                <br>角色也会自动发帖，你还会收到iOS风格的推送通知哦！
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">💬 聊天</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                iMessage风格的聊天App！在手机里和你对象聊天，本质上是恶灵短信版。
+                                <br>💡 这里的聊天是本体剧情上异地时启用，和本体剧情丝滑连接。
                             </div>
                         </div>
 
                         <div class="ghost-guide-item">
-                            <div class="ghost-guide-item-title">📰 动态流</div>
+                            <div class="ghost-guide-item-title">💬 基本操作</div>
                             <div class="ghost-guide-item-desc">
-                                这里会显示所有人的动态！可以点赞❤️、展开评论💬、回复别人的评论。和真正的社交媒体一样好玩~
+                                <b>发送消息</b>：输入内容后点发送按钮或按回车<br>
+                                <b>🥝 猕猴桃按钮</b>：添加到待发消息列表，可以一次攒多条再发送<br>
+                                <b>长按/双击气泡</b>：弹出表情回应选择器，可以给消息点 emoji 回应<br>
+                                <b>点击角色气泡</b>：展开/折叠内心想法
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">➕ 更多功能</div>
+                            <div class="ghost-guide-item-desc">
+                                点左下角的 + 按钮打开功能面板：<br>
+                                <b>🎤 语音</b>：发送文字描述的语音消息<br>
+                                <b>🖼 图片</b>：发送文字描述的图片<br>
+                                <b>📦 道具</b>：打开道具背包，在聊天中使用商城购买的道具<br>
+                                <b>🔗 分享</b>：发送分享卡片<br>
+                                <b>🏠 我已回家</b>：总结聊天内容，回到线下互动模式
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">⋯ 右上角菜单</div>
+                            <div class="ghost-guide-item-desc">
+                                <b>重新生成</b>：重新生成角色的最后一条回复<br>
+                                <b>删除消息</b>：进入批量选择模式，可以勾选多条消息一次性删除<br>
+                                <b>清空聊天记录</b>：清空所有手机聊天记录
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">📔 日记本</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                情侣日记本！和角色一起记录你们每天的故事~ 你写下心情和内容后，角色会用ta的视角回应你的日记，就像真正的交换日记一样。
+                                <br>💡 每天只有一篇日记，多次书写会自动续写到当天的日记中。
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">✍️ 写日记</div>
+                            <div class="ghost-guide-item-desc">
+                                点右上角的羽毛笔按钮打开写作面板。选择今天的心情emoji，写下内容，还可以添加标签~
+                                <br>发布后角色会自动回应你的日记，等待ta的回信是最甜蜜的时刻 ♡
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">🔍 搜索 & 📅 日历</div>
+                            <div class="ghost-guide-item-desc">
+                                <b>搜索</b>：按关键词搜索所有日记内容<br>
+                                <b>日历</b>：以日历视图浏览日记，有日记的日期会高亮显示，点击即可跳转
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">🎨 个性化设置</div>
+                            <div class="ghost-guide-item-desc">
+                                点右上角 ⋯ 按钮打开设置面板：<br>
+                                <b>主题</b>：暖阳、樱花、薰衣草、墨绿等多款预设主题<br>
+                                <b>字体</b>：多种中英文手写字体可选，支持自定义Google Fonts<br>
+                                <b>颜色</b>：背景、卡片、标题、正文等颜色全部可自定义<br>
+                                <b>排版</b>：字号和行高可微调，唉就是这个抄袭裂隙邮局的源代码爽<br>
+                                <b>打印</b>：可以把精选日记打印出来珍藏！<br>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">🏪 商城</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                Amazon风格的虚拟商城！使用社区赚取的「暗金细胞」购买各种道具，这些道具可以在聊天中使用，影响你对象的行为和回复~
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">💰 暗金细胞</div>
+                            <div class="ghost-guide-item-desc">
+                                商城使用的虚拟货币，通过在社区中的各种活动来赚取。左上角显示余额，点击可刷新~
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">🏷️ 商品分类 & 📦 物品库</div>
+                            <div class="ghost-guide-item-desc">
+                                商品按分类排列，点击商品卡片查看详情和购买。
+                                购买后的道具进入右上角的物品库，在物品库中可以使用道具，激活后的效果会在聊天中自动生效~
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">⭐ 评价系统</div>
+                            <div class="ghost-guide-item-desc">
+                                每件商品都可以写评价！更有趣的是——你可以让你对象以被使用者的视角来写评价，ta会用自己的性格和口吻写出真实、有趣的使用体验 ✨
+                            </div>
+                        </div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-title">🎁 特殊系统</div>
+                            <div class="ghost-guide-item-desc">
+                                <b>🎁 送礼</b>：你对象会在聊天中给你送礼物<br>
+                                <b>🎭 恶作剧</b>：使用恶作剧道具在聊天中整蛊你对象<br>
+                                <b>💀 抢劫</b>：你对象有时候会尝试抢劫其她用户的暗金细胞！
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">🏆 排行榜</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                查看社区里各路人马的排行榜！看看谁的对象最大方、谁最爱搞事情~
+                                <br><br>
+                                <b>🎁 送礼榜</b>：最慷慨者排行，看看谁的对象最大方<br>
+                                <b>🔪 土匪榜</b>：恶名昭著的抢劫排行，谁的对象最会搞钱<br>
+                                <b>🤡 倒楣榜</b>：被反杀次数排行，看看谁运气最差~
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">🔮 占卜</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                来自黎明杀机的两位灵媒——<b>Sable Ward</b> 和 <b>Mikaela Reid</b>，被恶灵从迷雾中派来为你进行塔罗占卜！
+                                <br>输入你心中的困惑，她们会抽取三张塔罗牌（过去→现在→未来），用各自独特的风格为你解读牌面。
+                                <br><br>
+                                <b>Sable</b>：冷酷深邃的神秘学者，擅长揭示深层真相<br>
+                                <b>Mikaela</b>：温暖明亮的故事编织者，善于找到希望<br>
+                                <br>💡 占卜对话不会保存，刷新页面后自动消失——这正是占卜的神秘之处 🌙
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">👥 好友</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                管理你的好友列表！查看好友信息、添加新好友、删除好友都在这里~
+                                <br>💡 添加好友后你们就可以在朋友圈互相看到动态啦！
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ghost-guide-section">
+                        <div class="ghost-guide-section-title">⚙️ 手机设置</div>
+
+                        <div class="ghost-guide-item">
+                            <div class="ghost-guide-item-desc">
+                                自定义你的手机外观！可以更换壁纸、调整昼夜模式。
                             </div>
                         </div>
                     </div>
 
                     <div class="ghost-guide-footer">
-                        ——以上就是全部啦！📸✨
+                        ——以上就是全部啦！📱✨
                         <br><span style="opacity:0.5;">「让摄像机转起来吧，宝贝。你的故事，由我来记录。」</span>
                     </div>
                 </div>
@@ -331,9 +510,9 @@ export const ghostFacePanelTemplate = String.raw`
                     设置菜单
                 </button>
 
-                <!-- 朋友圈按钮 -->
-                <button id="the_ghost_face_moments_btn" class="ghost-button ghost-panel-toggle">
-                    朋友圈
+                <!-- 手机按钮 -->
+                <button id="the_ghost_face_phone_btn" class="ghost-button ghost-panel-toggle">
+                    打开手机
                 </button>
 
                 <!-- 世界书管理按钮 -->
@@ -383,14 +562,14 @@ export const ghostFacePanelTemplate = String.raw`
                         </div>
                     </label>
                     <label class="ghost-toggle-row" for="the_ghost_face_control_panel_moment_custom_api_checkbox">
-                        <span class="ghost-toggle-label">朋友圈自定义API</span>
+                        <span class="ghost-toggle-label">手机自定义API</span>
                         <div class="ghost-toggle-switch">
                             <input type="checkbox" id="the_ghost_face_control_panel_moment_custom_api_checkbox">
                             <span class="ghost-toggle-slider"></span>
                         </div>
                     </label>
                     <label class="ghost-toggle-row" for="the_ghost_face_control_panel_show_float_bubble_checkbox">
-                        <span class="ghost-toggle-label">显示朋友圈悬浮泡泡</span>
+                        <span class="ghost-toggle-label">显示手机悬浮入口</span>
                         <div class="ghost-toggle-switch">
                             <input type="checkbox" id="the_ghost_face_control_panel_show_float_bubble_checkbox" checked>
                             <span class="ghost-toggle-slider"></span>

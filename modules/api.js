@@ -621,3 +621,38 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         throw new Error('API响应格式异常');
     }
 }
+
+/**
+ * Unified LLM call for phone module apps.
+ * Routes to custom API or ST main LLM based on the `useCustomApi` toggle.
+ * All phone apps (chat, diary, etc.) should use this instead of `callCustomOpenAI` directly.
+ *
+ * @param {string} systemPrompt - System prompt
+ * @param {string} userPrompt - User prompt
+ * @param {{ maxTokens?: number }} options
+ * @returns {Promise<string>} LLM response text
+ */
+export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null } = {}) {
+    if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
+        // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
+        console.log('📱 [Phone LLM] 使用自定义API (手机端API开关)');
+        return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens });
+    }
+
+    // ─── ST Main LLM path ───
+    console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
+    const context = getContext();
+    if (typeof context.generateRaw !== 'function') {
+        throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
+    }
+
+    // Combine system + user prompts into a single raw prompt (no preset is loaded)
+    let combinedPrompt = '';
+    if (systemPrompt && systemPrompt.trim()) {
+        combinedPrompt += systemPrompt.trim() + '\n\n';
+    }
+    combinedPrompt += userPrompt;
+
+    const result = await context.generateRaw(combinedPrompt, '', false, false, '');
+    return result?.trim() || '';
+}

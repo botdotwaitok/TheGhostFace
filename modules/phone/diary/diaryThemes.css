@@ -1,0 +1,400 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   GF Phone — 日记本主题 (Diary Themes)
+   Separate file for easy theme expansion
+   Each theme overrides the base diary.css color palette
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 🌸 樱花 (Sakura) ─── */
+.diary-theme-sakura {
+    background: linear-gradient(170deg, #fff5f7 0%, #ffe4ec 40%, #ffd6e7 100%) !important;
+}
+
+.diary-theme-sakura .diary-header {
+    background: linear-gradient(to bottom, rgba(255, 245, 247, 0.95), rgba(255, 245, 247, 0.8));
+}
+
+.diary-theme-sakura .diary-header-title {
+    color: #8b3a5c;
+}
+
+.diary-theme-sakura .diary-header-subtitle {
+    color: #d4728a;
+}
+
+.diary-theme-sakura .diary-stats {
+    background: rgba(255, 255, 255, 0.75);
+}
+
+.diary-theme-sakura .diary-stats-title {
+    color: #8b3a5c;
+}
+
+.diary-theme-sakura .diary-stats-count {
+    color: #d4728a;
+}
+
+.diary-theme-sakura .diary-stats-streak-num {
+    color: #e8527a;
+}
+
+.diary-theme-sakura .diary-entry-card {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow:
+        0 2px 12px rgba(212, 114, 138, 0.08),
+        0 0.5px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.diary-theme-sakura .diary-date-line {
+    background: linear-gradient(90deg, transparent, rgba(212, 114, 138, 0.3), transparent);
+}
+
+.diary-theme-sakura .diary-date-label {
+    color: #d4728a;
+}
+
+.diary-theme-sakura .diary-btn-compose {
+    background: linear-gradient(135deg, #ff7eb3, #e8527a);
+    box-shadow: 0 4px 14px rgba(232, 82, 122, 0.4);
+}
+
+.diary-theme-sakura .diary-segment-user .diary-segment-content {
+    color: #5a2d40;
+}
+
+.diary-theme-sakura .diary-segment-char .diary-segment-content {
+    color: #7a4060;
+}
+
+.diary-theme-sakura .diary-compose-overlay {
+    background: linear-gradient(170deg, #fff5f7 0%, #ffe4ec 50%, #ffd6e7 100%);
+}
+
+.diary-theme-sakura .diary-detail-overlay {
+    background: linear-gradient(170deg, #fff5f7 0%, #ffe4ec 50%, #ffd6e7 100%);
+}
+
+.diary-theme-sakura .diary-calendar-overlay {
+    background: linear-gradient(170deg, #fff5f7 0%, #ffe4ec 50%, #ffd6e7 100%);
+}
+
+.diary-theme-sakura .diary-search-overlay {
+    background: linear-gradient(170deg, #fff5f7 0%, #ffe4ec 50%, #ffd6e7 100%);
+}
+
+/* Sakura Dark Mode */
+.phone-dark-mode .diary-theme-sakura {
+    background: linear-gradient(170deg, #1f1218 0%, #251520 40%, #201320 100%) !important;
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-header {
+    background: linear-gradient(to bottom, rgba(31, 18, 24, 0.95), rgba(31, 18, 24, 0.8));
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-header-title {
+    color: #f5d0e0;
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-entry-card {
+    background: rgba(50, 30, 40, 0.85);
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-compose-overlay,
+.phone-dark-mode .diary-theme-sakura .diary-detail-overlay,
+.phone-dark-mode .diary-theme-sakura .diary-calendar-overlay,
+.phone-dark-mode .diary-theme-sakura .diary-search-overlay {
+    background: linear-gradient(170deg, #1f1218 0%, #251520 50%, #201320 100%);
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-segment-user .diary-segment-content {
+    color: #e0c0d0;
+}
+
+.phone-dark-mode .diary-theme-sakura .diary-segment-char .diary-segment-content {
+    color: #c4a0b8;
+}
+
+/* ─── 💜 薰衣草 (Lavender) ─── */
+.diary-theme-lavender {
+    background: linear-gradient(170deg, #f5f0ff 0%, #ede0ff 40%, #e8d8ff 100%) !important;
+}
+
+.diary-theme-lavender .diary-header {
+    background: linear-gradient(to bottom, rgba(245, 240, 255, 0.95), rgba(245, 240, 255, 0.8));
+}
+
+.diary-theme-lavender .diary-header-title {
+    color: #5a3d8c;
+}
+
+.diary-theme-lavender .diary-header-subtitle {
+    color: #9b7cc4;
+}
+
+.diary-theme-lavender .diary-stats {
+    background: rgba(255, 255, 255, 0.75);
+}
+
+.diary-theme-lavender .diary-stats-title {
+    color: #5a3d8c;
+}
+
+.diary-theme-lavender .diary-stats-count {
+    color: #9b7cc4;
+}
+
+.diary-theme-lavender .diary-stats-streak-num {
+    color: #7c3aed;
+}
+
+.diary-theme-lavender .diary-entry-card {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow:
+        0 2px 12px rgba(124, 58, 237, 0.06),
+        0 0.5px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.diary-theme-lavender .diary-date-line {
+    background: linear-gradient(90deg, transparent, rgba(155, 124, 196, 0.3), transparent);
+}
+
+.diary-theme-lavender .diary-date-label {
+    color: #9b7cc4;
+}
+
+.diary-theme-lavender .diary-btn-compose {
+    background: linear-gradient(135deg, #b794f4, #7c3aed);
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+}
+
+.diary-theme-lavender .diary-btn-settings {
+    background: rgba(90, 61, 140, 0.08);
+    color: #9b7cc4;
+}
+
+.diary-theme-lavender .diary-btn-tool {
+    background: rgba(90, 61, 140, 0.08);
+    color: #9b7cc4;
+}
+
+.diary-theme-lavender .diary-segment-user .diary-segment-author {
+    background: linear-gradient(135deg, rgba(183, 148, 244, 0.15), rgba(124, 58, 237, 0.1));
+    color: #7c3aed;
+}
+
+.diary-theme-lavender .diary-segment-user .diary-segment-content {
+    color: #3d2860;
+}
+
+.diary-theme-lavender .diary-segment-char .diary-segment-content {
+    color: #4a3680;
+}
+
+.diary-theme-lavender .diary-compose-overlay {
+    background: linear-gradient(170deg, #f5f0ff 0%, #ede0ff 50%, #e8d8ff 100%);
+}
+
+.diary-theme-lavender .diary-detail-overlay {
+    background: linear-gradient(170deg, #f5f0ff 0%, #ede0ff 50%, #e8d8ff 100%);
+}
+
+.diary-theme-lavender .diary-calendar-overlay {
+    background: linear-gradient(170deg, #f5f0ff 0%, #ede0ff 50%, #e8d8ff 100%);
+}
+
+.diary-theme-lavender .diary-search-overlay {
+    background: linear-gradient(170deg, #f5f0ff 0%, #ede0ff 50%, #e8d8ff 100%);
+}
+
+.diary-theme-lavender .diary-compose-submit {
+    background: linear-gradient(135deg, #b794f4, #7c3aed);
+}
+
+.diary-theme-lavender .diary-mood-option.mood-selected {
+    border-color: #b794f4;
+    background: rgba(183, 148, 244, 0.12);
+    box-shadow: 0 4px 12px rgba(183, 148, 244, 0.2);
+}
+
+.diary-theme-lavender .diary-card-action-btn.liked {
+    color: #7c3aed;
+}
+
+.diary-theme-lavender .diary-tag {
+    background: rgba(155, 124, 196, 0.1);
+    color: #9b7cc4;
+}
+
+/* Lavender Dark Mode */
+.phone-dark-mode .diary-theme-lavender {
+    background: linear-gradient(170deg, #151020 0%, #1a1528 40%, #161224 100%) !important;
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-header {
+    background: linear-gradient(to bottom, rgba(21, 16, 32, 0.95), rgba(21, 16, 32, 0.8));
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-header-title {
+    color: #d8c4f0;
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-entry-card {
+    background: rgba(35, 28, 50, 0.85);
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-compose-overlay,
+.phone-dark-mode .diary-theme-lavender .diary-detail-overlay,
+.phone-dark-mode .diary-theme-lavender .diary-calendar-overlay,
+.phone-dark-mode .diary-theme-lavender .diary-search-overlay {
+    background: linear-gradient(170deg, #151020 0%, #1a1528 50%, #161224 100%);
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-segment-user .diary-segment-content {
+    color: #d0c0e8;
+}
+
+.phone-dark-mode .diary-theme-lavender .diary-segment-char .diary-segment-content {
+    color: #b8a8d8;
+}
+
+/* ─── 🌿 墨绿 (Forest) ─── */
+.diary-theme-forest {
+    background: linear-gradient(170deg, #f0f7f0 0%, #e0f0e4 40%, #d4ead8 100%) !important;
+}
+
+.diary-theme-forest .diary-header {
+    background: linear-gradient(to bottom, rgba(240, 247, 240, 0.95), rgba(240, 247, 240, 0.8));
+}
+
+.diary-theme-forest .diary-header-title {
+    color: #2d5a3d;
+}
+
+.diary-theme-forest .diary-header-subtitle {
+    color: #5d9a6f;
+}
+
+.diary-theme-forest .diary-stats {
+    background: rgba(255, 255, 255, 0.75);
+}
+
+.diary-theme-forest .diary-stats-title {
+    color: #2d5a3d;
+}
+
+.diary-theme-forest .diary-stats-count {
+    color: #5d9a6f;
+}
+
+.diary-theme-forest .diary-stats-streak-num {
+    color: #2d8a50;
+}
+
+.diary-theme-forest .diary-entry-card {
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow:
+        0 2px 12px rgba(45, 138, 80, 0.06),
+        0 0.5px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.diary-theme-forest .diary-date-line {
+    background: linear-gradient(90deg, transparent, rgba(93, 154, 111, 0.3), transparent);
+}
+
+.diary-theme-forest .diary-date-label {
+    color: #5d9a6f;
+}
+
+.diary-theme-forest .diary-btn-compose {
+    background: linear-gradient(135deg, #6dd5a0, #2d8a50);
+    box-shadow: 0 4px 14px rgba(45, 138, 80, 0.35);
+}
+
+.diary-theme-forest .diary-btn-settings {
+    background: rgba(45, 90, 61, 0.08);
+    color: #5d9a6f;
+}
+
+.diary-theme-forest .diary-btn-tool {
+    background: rgba(45, 90, 61, 0.08);
+    color: #5d9a6f;
+}
+
+.diary-theme-forest .diary-segment-user .diary-segment-author {
+    background: linear-gradient(135deg, rgba(109, 213, 160, 0.15), rgba(45, 138, 80, 0.1));
+    color: #2d8a50;
+}
+
+.diary-theme-forest .diary-segment-user .diary-segment-content {
+    color: #264030;
+}
+
+.diary-theme-forest .diary-segment-char .diary-segment-content {
+    color: #2d5040;
+}
+
+.diary-theme-forest .diary-compose-overlay {
+    background: linear-gradient(170deg, #f0f7f0 0%, #e0f0e4 50%, #d4ead8 100%);
+}
+
+.diary-theme-forest .diary-detail-overlay {
+    background: linear-gradient(170deg, #f0f7f0 0%, #e0f0e4 50%, #d4ead8 100%);
+}
+
+.diary-theme-forest .diary-calendar-overlay {
+    background: linear-gradient(170deg, #f0f7f0 0%, #e0f0e4 50%, #d4ead8 100%);
+}
+
+.diary-theme-forest .diary-search-overlay {
+    background: linear-gradient(170deg, #f0f7f0 0%, #e0f0e4 50%, #d4ead8 100%);
+}
+
+.diary-theme-forest .diary-compose-submit {
+    background: linear-gradient(135deg, #6dd5a0, #2d8a50);
+}
+
+.diary-theme-forest .diary-mood-option.mood-selected {
+    border-color: #6dd5a0;
+    background: rgba(109, 213, 160, 0.12);
+    box-shadow: 0 4px 12px rgba(109, 213, 160, 0.2);
+}
+
+.diary-theme-forest .diary-card-action-btn.liked {
+    color: #2d8a50;
+}
+
+.diary-theme-forest .diary-tag {
+    background: rgba(93, 154, 111, 0.1);
+    color: #5d9a6f;
+}
+
+/* Forest Dark Mode */
+.phone-dark-mode .diary-theme-forest {
+    background: linear-gradient(170deg, #0f1a14 0%, #121e16 40%, #101c14 100%) !important;
+}
+
+.phone-dark-mode .diary-theme-forest .diary-header {
+    background: linear-gradient(to bottom, rgba(15, 26, 20, 0.95), rgba(15, 26, 20, 0.8));
+}
+
+.phone-dark-mode .diary-theme-forest .diary-header-title {
+    color: #c4e8d0;
+}
+
+.phone-dark-mode .diary-theme-forest .diary-entry-card {
+    background: rgba(25, 40, 30, 0.85);
+}
+
+.phone-dark-mode .diary-theme-forest .diary-compose-overlay,
+.phone-dark-mode .diary-theme-forest .diary-detail-overlay,
+.phone-dark-mode .diary-theme-forest .diary-calendar-overlay,
+.phone-dark-mode .diary-theme-forest .diary-search-overlay {
+    background: linear-gradient(170deg, #0f1a14 0%, #121e16 50%, #101c14 100%);
+}
+
+.phone-dark-mode .diary-theme-forest .diary-segment-user .diary-segment-content {
+    color: #b8d8c4;
+}
+
+.phone-dark-mode .diary-theme-forest .diary-segment-char .diary-segment-content {
+    color: #a0c8b0;
+}

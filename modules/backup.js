@@ -2,7 +2,7 @@
 // 功能：本地下载 PNG/JSON/JSONL + 通过 GhostFace Moments 服务器发送邮件
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { this_chid, characters, getRequestHeaders, saveSettingsDebounced } from '../../../../../script.js';
-import { getSettings } from './moments/state.js';
+import { getSettings } from './phone/moments/state.js';
 
 // 使用全局 logger（如果可用），否则回退到 console
 const logger = {

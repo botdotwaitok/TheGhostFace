@@ -121,7 +121,7 @@ router.get('/:id/friends', (req, res) => {
     try {
         const db = getDb();
         const friends = db.prepare(`
-            SELECT u.id, u.displayName, u.avatarUrl, u.bio, f.createdAt as friendsSince
+            SELECT u.id, u.displayName, u.avatarUrl, u.bio, u.discordId, f.createdAt as friendsSince
             FROM friends f
             JOIN users u ON u.id = f.friendId
             WHERE f.userId = ?
@@ -161,6 +161,113 @@ router.put('/:id/settings', (req, res) => {
         res.json({ ok: true, message: 'Settings updated successfully' });
     } catch (err) {
         console.error('[Users] update settings error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── PUT /api/users/:id/profile ─────────────────────────────────────
+// Update profile page fields: signature, coverImageUrl, pinnedContent
+// Body: { signature?, coverImageUrl?, pinnedContent? }
+router.put('/:id/profile', (req, res) => {
+    try {
+        const db = getDb();
+        const userId = req.params.id;
+
+        // Build dynamic update — only set fields that are provided
+        const updates = [];
+        const params = [];
+
+        if (req.body.signature !== undefined) {
+            updates.push('signature = ?');
+            params.push(req.body.signature);
+        }
+        if (req.body.coverImageUrl !== undefined) {
+            updates.push('coverImageUrl = ?');
+            params.push(req.body.coverImageUrl);
+        }
+        if (req.body.pinnedContent !== undefined) {
+            updates.push('pinnedContent = ?');
+            params.push(typeof req.body.pinnedContent === 'string'
+                ? req.body.pinnedContent
+                : JSON.stringify(req.body.pinnedContent));
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No profile fields to update' });
+        }
+
+        params.push(userId);
+        const result = db.prepare(
+            `UPDATE users SET ${updates.join(', ')} WHERE id = ?`
+        ).run(...params);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+        res.json({ ok: true, user });
+    } catch (err) {
+        console.error('[Users] update profile error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── PUT /api/users/:id/discord ─────────────────────────────────────
+// Bind Discord ID via verification code from Petbot.
+// Body: { code: string }
+router.put('/:id/discord', async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code || !code.trim()) {
+            return res.status(400).json({ error: '请输入绑定码' });
+        }
+
+        const trimmedCode = code.trim().toUpperCase();
+
+        // Verify the code with Petbot API
+        const PETBOT_API_URL = (process.env.PETBOT_API_URL || 'http://127.0.0.1:8900').replace(/\/+$/, '');
+        const PETBOT_API_TOKEN = process.env.PETBOT_API_TOKEN || '';
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (PETBOT_API_TOKEN) {
+            headers['Authorization'] = `Bearer ${PETBOT_API_TOKEN}`;
+        }
+
+        const verifyResp = await fetch(`${PETBOT_API_URL}/api/verify-bind-code`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ code: trimmedCode }),
+        });
+
+        const verifyData = await verifyResp.json();
+        if (!verifyResp.ok) {
+            return res.status(verifyResp.status).json({
+                error: verifyData.error || '绑定码验证失败'
+            });
+        }
+
+        const discordId = String(verifyData.user_id);
+        const db = getDb();
+        const userId = req.params.id;
+
+        // Check if this Discord ID is already bound to another user
+        const existing = db.prepare('SELECT id FROM users WHERE discordId = ? AND id != ?').get(discordId, userId);
+        if (existing) {
+            return res.status(409).json({ error: '此 Discord 账号已绑定到其他用户' });
+        }
+
+        const result = db.prepare('UPDATE users SET discordId = ? WHERE id = ?').run(discordId, userId);
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ ok: true, discordId });
+    } catch (err) {
+        console.error('[Users] bind discord error:', err);
+        if (err.message?.includes('UNIQUE constraint')) {
+            return res.status(409).json({ error: '此 Discord 账号已绑定到其他用户' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });

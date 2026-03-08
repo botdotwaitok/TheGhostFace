@@ -1,0 +1,1562 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   GF Phone — iOS 18 Light Style Phone Simulator
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Full-screen Overlay ─── */
+.phone-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    /* dynamic viewport — excludes browser chrome */
+    z-index: 99998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s cubic-bezier(.4, 0, .2, 1);
+}
+
+.phone-overlay.phone-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ─── Phone Container (the "device") ─── */
+.phone-container {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    width: 100vw;
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    /* dynamic viewport — excludes browser chrome */
+    max-height: 100%;
+    border-radius: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    border: none;
+    box-shadow: none;
+    transform: translateY(20px) scale(0.95);
+    transition: transform 0.35s cubic-bezier(0.68, -0.25, 0.265, 1.25);
+}
+
+@media (min-width: 768px) {
+    .phone-container {
+        width: 600px;
+        max-width: 90vw;
+        height: 90vh;
+        max-height: 900px;
+        border-radius: 55px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.05),
+            0 30px 80px rgba(0, 0, 0, 0.15),
+            0 10px 40px rgba(0, 0, 0, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+}
+
+.phone-overlay.phone-visible .phone-container {
+    transform: translateY(0) scale(1);
+}
+
+/* ─── Status Bar ─── */
+.phone-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 26px 6px;
+    color: #111;
+    text-shadow: none;
+    user-select: none;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+}
+
+.phone-status-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.phone-status-time {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    line-height: 1;
+}
+
+.phone-status-time:hover {
+    opacity: 0.7;
+}
+
+.phone-status-silent {
+    font-size: 12px;
+    margin-top: 1px;
+}
+
+.phone-status-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Cellular Signal */
+.phone-signal-icon {
+    display: flex;
+    align-items: flex-end;
+    gap: 1.5px;
+    height: 11px;
+    margin-right: 2px;
+    margin-bottom: 2px;
+}
+
+.phone-signal-icon .signal-bar {
+    width: 3px;
+    background: #111;
+    border-radius: 1px;
+}
+
+.phone-signal-icon .signal-bar:nth-child(1) {
+    height: 4px;
+}
+
+.phone-signal-icon .signal-bar:nth-child(2) {
+    height: 6px;
+}
+
+.phone-signal-icon .signal-bar:nth-child(3) {
+    height: 8px;
+    opacity: 0.25;
+}
+
+.phone-signal-icon .signal-bar:nth-child(4) {
+    height: 11px;
+    opacity: 0.25;
+}
+
+.phone-wifi-icon {
+    font-size: 13px;
+    margin-right: 2px;
+}
+
+/* Battery with Percentage */
+.phone-battery-icon {
+    position: relative;
+    width: 28px;
+    height: 14px;
+    background: #111;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 2px;
+}
+
+.phone-battery-icon::after {
+    content: '';
+    position: absolute;
+    right: -2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.5px;
+    height: 5px;
+    background: #111;
+    border-radius: 0 1.5px 1.5px 0;
+}
+
+.phone-battery-percentage {
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    transform: scale(0.9);
+    line-height: 1;
+    margin-top: 1px;
+    margin-left: 1px;
+}
+
+/* (Removed close btn) */
+
+/* ─── Home Screen ─── */
+.phone-home-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 38px 22px 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+}
+
+.phone-home-screen::-webkit-scrollbar {
+    display: none;
+}
+
+/* ─── App Grid ─── */
+.phone-app-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px 10px;
+    padding: 4px 0 24px;
+    justify-items: center;
+}
+
+/* ─── App Icon ─── */
+.phone-app-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease;
+    width: 74px;
+}
+
+.phone-app-item:active {
+    transform: scale(0.9);
+}
+
+.phone-app-icon {
+    width: 66px;
+    height: 66px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    filter: saturate(0.5);
+    border: none;
+    box-shadow: none;
+    opacity: 0.85;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.2s ease;
+}
+
+.phone-app-icon i {
+    transform: scale(2);
+}
+
+.phone-app-item:hover .phone-app-icon {
+    transform: scale(1.05);
+}
+
+.phone-app-name {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+/* ─── Badge ─── */
+.phone-app-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    background: #ff3b30;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    z-index: 2;
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.3);
+    border: 2px solid #fbfbfe;
+}
+
+/* ─── Coming Soon overlay ─── */
+.phone-app-icon.coming-soon {
+    opacity: 0.6;
+    filter: saturate(0.5);
+}
+
+.phone-app-icon.coming-soon::before {
+    content: '🔒';
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 12px;
+    z-index: 3;
+}
+
+
+
+/* ─── App Viewport (where opened apps render) ─── */
+.phone-app-viewport {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: #f0f2f5;
+    display: none;
+    flex-direction: column;
+    border-radius: 55px;
+    overflow: hidden;
+    opacity: 0;
+    transform: scale(1.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+@media (max-width: 767px) {
+    .phone-app-viewport {
+        border-radius: 0;
+    }
+}
+
+.phone-app-viewport.app-active {
+    display: flex;
+    opacity: 1;
+    transform: scale(1);
+}
+
+.phone-app-viewport-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px 10px;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.phone-app-back-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: #007aff;
+    /* iOS Blue */
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: opacity 0.2s ease;
+}
+
+.phone-app-back-btn:hover {
+    opacity: 0.7;
+}
+
+.phone-app-back-btn i {
+    font-size: 16px;
+}
+
+.phone-app-viewport-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1c1c1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.phone-app-viewport-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* ─── Wallpaper Background ─── */
+.phone-wallpaper {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: radial-gradient(120% 120% at 20% 10%, #ffe9a0 0%, #ff9a8b 40%, #2b8496 75%, #0d2738 100%);
+    pointer-events: none;
+}
+
+/* Ensure content above wallpaper */
+.phone-status-bar,
+.phone-home-screen,
+.phone-close-btn {
+    position: relative;
+    z-index: 1;
+}
+
+/* ─── Floating Phone Bubble ─── */
+.phone-floating-icon {
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    cursor: pointer;
+    z-index: 99999;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
+    user-select: none;
+    color: #1c1c1e;
+
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+.phone-floating-icon i {
+    position: relative;
+    z-index: 3;
+}
+
+.phone-floating-icon:hover {
+    transform: scale(1.08);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+.phone-floating-icon:active {
+    transform: scale(0.95);
+}
+
+.phone-floating-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ff3b30;
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    min-width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    border: 2px solid white;
+    z-index: 4;
+    padding: 0 5px;
+}
+
+/* ─── Notification Banner (iOS-style drop-down) ─── */
+.phone-notification-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    padding: 8px 14px;
+    pointer-events: none;
+}
+
+.phone-notif-toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 16px;
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.12),
+        0 1px 4px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    pointer-events: auto;
+    transform: translateY(-120%);
+    opacity: 0;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                opacity 0.3s ease;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.phone-notif-toast.notif-visible {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.phone-notif-toast.notif-exit {
+    transform: translateY(-120%);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.55, 0, 1, 0.45),
+                opacity 0.25s ease;
+}
+
+.phone-notif-toast:active {
+    transform: scale(0.97);
+}
+
+.phone-notif-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #fd5949 0%, #d6249f 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(214, 36, 159, 0.3);
+}
+
+.phone-notif-body {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.phone-notif-app {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8e8e93;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+
+.phone-notif-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c1c1e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.phone-notif-text {
+    font-size: 13px;
+    color: #636366;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.phone-notif-time {
+    font-size: 12px;
+    color: #aeaeb2;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .phone-floating-icon {
+        top: 50%;
+        bottom: auto;
+        left: auto;
+        right: 20px;
+        transform: translateY(-50%);
+        width: 60px;
+        height: 60px;
+        font-size: 24px;
+        z-index: 999999 !important;
+        display: flex;
+    }
+}
+
+/* ─── iOS Widgets ─── */
+.phone-widgets {
+    display: flex;
+    gap: 16px;
+    padding: 0 4px;
+    margin-bottom: 8px;
+    user-select: none;
+}
+
+.phone-widget-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.phone-widget {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 22px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.phone-widget-label {
+    font-size: 11px;
+    color: #fff;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Weather Widget */
+.weather-widget {
+    background: linear-gradient(180deg, #1c263b, #2b3a53);
+    color: white;
+    justify-content: space-between;
+}
+
+.weather-location {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.weather-temp {
+    font-size: 42px;
+    font-weight: 200;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.weather-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.weather-icon {
+    font-size: 18px;
+    color: #ffd700;
+}
+
+.weather-desc {
+    font-size: 11px;
+    opacity: 0.9;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+/* Calendar Widget */
+.calendar-widget {
+    background: #fff;
+    color: #1c1c1e;
+}
+
+.calendar-day-name {
+    color: #ff3b30;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.calendar-date-number {
+    font-size: 55px;
+    font-weight: 300;
+    line-height: 1;
+    margin-top: -2px;
+}
+
+.calendar-events {
+    font-size: 12px;
+    color: #8e8e93;
+    font-weight: 500;
+    margin-top: auto;
+}
+
+/* ─── Section Labels ─── */
+.phone-section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 16px 4px 8px;
+    user-select: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phone Settings App — iOS Style
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.phone-settings-page,
+.phone-friends-page {
+    padding: 16px;
+    min-height: 100%;
+}
+
+/* ─── Section Accordion ─── */
+.phone-settings-section {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.phone-settings-section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1c1c1e;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    transition: background 0.15s ease;
+}
+
+.phone-settings-section-header::-webkit-details-marker {
+    display: none;
+}
+
+.phone-settings-section-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.phone-settings-section-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.phone-settings-chevron {
+    margin-left: auto;
+    font-size: 11px;
+    color: #8e8e93;
+    transition: transform 0.25s ease;
+}
+
+.phone-settings-section[open] .phone-settings-chevron {
+    transform: rotate(180deg);
+}
+
+.phone-settings-section-body {
+    padding: 0 16px 16px;
+}
+
+/* ─── Group Title ─── */
+.phone-settings-group-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #3a3a3c;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    letter-spacing: 0.3px;
+}
+
+.phone-settings-group-title:first-child {
+    margin-top: 4px;
+}
+
+/* ─── Row (label + input) ─── */
+.phone-settings-row {
+    margin-bottom: 12px;
+}
+
+.phone-settings-row label {
+    display: block;
+    font-size: 13px;
+    color: #636366;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+/* ─── Input ─── */
+.phone-settings-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(120, 120, 128, 0.08);
+    border: 1px solid rgba(120, 120, 128, 0.15);
+    border-radius: 10px;
+    font-size: 14px;
+    color: #1c1c1e;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+}
+
+.phone-settings-input:focus {
+    border-color: #007aff;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+.phone-settings-input::placeholder {
+    color: #aeaeb2;
+}
+
+/* ─── ID Row (input + small button) ─── */
+.phone-settings-id-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.phone-settings-id-row .phone-settings-input {
+    flex: 1;
+}
+
+.phone-settings-id-input {
+    font-size: 12px !important;
+    font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+    color: #636366 !important;
+}
+
+/* ─── Small Button ─── */
+.phone-settings-small-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    border: none;
+    background: rgba(120, 120, 128, 0.08);
+    color: #636366;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.phone-settings-small-btn:hover {
+    background: rgba(120, 120, 128, 0.15);
+}
+
+.phone-settings-small-btn:active {
+    transform: scale(0.92);
+}
+
+.phone-settings-btn-primary {
+    background: #007aff !important;
+    color: #fff !important;
+}
+
+.phone-settings-btn-primary:hover {
+    background: #0066d6 !important;
+}
+
+/* ─── Slider Row ─── */
+.phone-settings-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.phone-settings-slider {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(120, 120, 128, 0.16);
+    border-radius: 3px;
+    outline: none;
+}
+
+.phone-settings-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+}
+
+.phone-settings-slider-val {
+    font-size: 14px;
+    font-weight: 600;
+    color: #007aff;
+    min-width: 38px;
+    text-align: right;
+}
+
+/* ─── Action Buttons ─── */
+.phone-settings-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.phone-settings-btn {
+    flex: 1;
+    padding: 12px 0;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.phone-settings-btn:active {
+    transform: scale(0.97);
+}
+
+.phone-settings-btn.phone-settings-btn-primary {
+    background: #007aff;
+    color: #fff;
+}
+
+.phone-settings-btn.phone-settings-btn-toggle {
+    background: rgba(52, 199, 89, 0.12);
+    color: #34c759;
+}
+
+.phone-settings-btn.phone-settings-btn-toggle.moments-btn-enabled {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+}
+
+/* ─── Coming Soon ─── */
+.phone-settings-coming-soon {
+    text-align: center;
+    padding: 24px;
+    color: #aeaeb2;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ─── iPhone-style Profile Card (top of Settings) ─── */
+.phone-settings-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+    user-select: none;
+}
+
+.phone-settings-profile-card:hover {
+    background: rgba(245, 245, 247, 0.9);
+}
+
+.phone-settings-profile-card:active {
+    transform: scale(0.98);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phone Friends App
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.phone-friends-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.phone-friends-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.phone-friends-list .moments-friend-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    transition: background 0.15s ease;
+}
+
+.phone-friends-list .moments-friend-item:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.phone-friends-list .moments-friend-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: rgba(120, 120, 128, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.phone-friends-list .moments-friend-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.phone-friends-list .moments-friend-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.phone-friends-list .moments-friend-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.phone-friends-list .moments-friend-id {
+    font-size: 12px;
+    color: #8e8e93;
+    font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.phone-friends-list .moments-friend-remove {
+    background: none;
+    border: none;
+    color: #ff3b30;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+}
+
+.phone-friends-list .moments-friend-remove:hover {
+    opacity: 1;
+    background: rgba(255, 59, 48, 0.08);
+}
+
+.phone-friends-list .moments-empty-state {
+    text-align: center;
+    padding: 24px;
+    color: #aeaeb2;
+    font-size: 14px;
+}
+
+/* Auth form styles (reused from Moments, scoped to phone viewport) */
+.phone-app-viewport-body .moments-auth-container {
+    margin-bottom: 12px;
+}
+
+.phone-app-viewport-body .moments-profile-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(120, 120, 128, 0.08);
+    border-radius: 10px;
+    margin-bottom: 12px;
+}
+
+.phone-app-viewport-body .moments-profile-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.phone-app-viewport-body .moments-profile-avatar {
+    width: 55px;
+    height: 55px;
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.phone-app-viewport-body .moments-profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.phone-app-viewport-body .moments-profile-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.phone-app-viewport-body .moments-profile-id {
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.phone-app-viewport-body .moments-auth-switch {
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    background: rgba(120, 120, 128, 0.08);
+    border-radius: 10px;
+    padding: 2px;
+}
+
+.phone-app-viewport-body .moments-auth-tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #8e8e93;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.phone-app-viewport-body .moments-auth-tab.active {
+    background: #fff;
+    color: #1c1c1e;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.phone-app-viewport-body .moments-auth-form .moments-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(120, 120, 128, 0.08);
+    border: 1px solid rgba(120, 120, 128, 0.15);
+    border-radius: 10px;
+    font-size: 14px;
+    color: #1c1c1e;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
+.phone-app-viewport-body .moments-error-msg {
+    color: #ff3b30;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.phone-app-viewport-body .moments-btn-primary {
+    background: #007aff;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 420px) {
+    .phone-app-icon {
+        width: 54px;
+        height: 54px;
+        font-size: 24px;
+    }
+
+    .phone-app-name {
+        font-size: 10px;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Appearance Settings — Wallpaper & Dark Mode
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Wallpaper Preview ─── */
+.phone-settings-wallpaper-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.phone-settings-wallpaper-preview {
+    width: 80px;
+    height: 140px;
+    border-radius: 16px;
+    background: radial-gradient(120% 120% at 20% 10%, #ffe9a0 0%, #ff9a8b 40%, #2b8496 75%, #0d2738 100%);
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.5);
+    flex-shrink: 0;
+    border: 2px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.phone-settings-wallpaper-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.phone-settings-wallpaper-upload-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+    cursor: pointer;
+    text-align: center;
+    justify-content: center;
+    flex: unset !important;
+}
+
+/* ─── iOS-style Toggle ─── */
+.phone-settings-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.phone-settings-toggle-label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1c1c1e;
+}
+
+.phone-settings-ios-toggle {
+    position: relative;
+    width: 51px;
+    height: 31px;
+    border-radius: 15.5px;
+    background: rgba(120, 120, 128, 0.16);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.25s ease;
+    flex-shrink: 0;
+}
+
+.phone-settings-ios-toggle.active {
+    background: #34c759;
+}
+
+.phone-settings-ios-toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.05);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.phone-settings-ios-toggle.active .phone-settings-ios-toggle-knob {
+    transform: translateX(20px);
+}
+
+/* ─── Mode Selector Cards (Diary) ─── */
+.phone-settings-mode-card {
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 2px solid rgba(120, 120, 128, 0.12);
+    background: rgba(120, 120, 128, 0.04);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.phone-settings-mode-card:hover {
+    background: rgba(120, 120, 128, 0.08);
+}
+
+.phone-settings-mode-card.mode-selected {
+    border-color: #007aff;
+    background: rgba(0, 122, 255, 0.06);
+    box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.15);
+}
+
+.phone-settings-mode-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.phone-settings-mode-card-icon {
+    font-size: 18px;
+}
+
+.phone-settings-mode-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.phone-settings-mode-card-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(52, 199, 89, 0.12);
+    color: #34c759;
+    margin-left: auto;
+}
+
+.phone-settings-mode-card-desc {
+    font-size: 12px;
+    color: #8e8e93;
+    line-height: 1.4;
+    padding-left: 26px;
+}
+
+/* Mode cards dark mode */
+.phone-dark-mode .phone-settings-mode-card {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.phone-dark-mode .phone-settings-mode-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.phone-dark-mode .phone-settings-mode-card.mode-selected {
+    border-color: #0a84ff;
+    background: rgba(10, 132, 255, 0.1);
+    box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.2);
+}
+
+.phone-dark-mode .phone-settings-mode-card-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-mode-card-desc {
+    color: #636366;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Dark Mode Theme — .phone-dark-mode
+   ═══════════════════════════════════════════════════════════════════════ */
+.phone-container.phone-dark-mode {
+    background: #000;
+}
+
+.phone-dark-mode .phone-status-bar {
+    color: #fff;
+}
+
+.phone-dark-mode .phone-signal-icon .signal-bar {
+    background: #fff;
+}
+
+.phone-dark-mode .phone-battery-icon {
+    background: #fff;
+}
+
+.phone-dark-mode .phone-battery-percentage {
+    color: #000;
+}
+
+.phone-dark-mode .phone-wifi-icon {
+    color: #fff;
+}
+
+.phone-dark-mode .phone-app-viewport {
+    background: #1c1c1e;
+}
+
+.phone-dark-mode .phone-app-viewport-header {
+    background: rgba(28, 28, 30, 0.9);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .phone-app-viewport-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-section {
+    background: rgba(44, 44, 46, 0.85);
+}
+
+.phone-dark-mode .phone-settings-section-header {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-section-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.phone-dark-mode .phone-settings-group-title {
+    color: #d1d1d6;
+}
+
+.phone-dark-mode .phone-settings-row label {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .phone-settings-input {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-input::placeholder {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-settings-small-btn {
+    background: rgba(255, 255, 255, 0.07);
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .phone-settings-slider {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.phone-dark-mode .phone-settings-slider::-webkit-slider-thumb {
+    background: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-slider-val {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .phone-settings-coming-soon {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-settings-toggle-label {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-ios-toggle {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.phone-dark-mode .phone-settings-ios-toggle.active {
+    background: #30d158;
+}
+
+/* Friends page dark mode */
+.phone-dark-mode .phone-friends-card {
+    background: rgba(44, 44, 46, 0.85);
+}
+
+.phone-dark-mode .phone-friends-list .moments-friend-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-friends-list .moments-friend-id {
+    color: #636366;
+}
+
+/* Auth form dark mode */
+.phone-dark-mode .phone-app-viewport-body .moments-profile-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-auth-tab {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-auth-tab.active {
+    background: #3a3a3c;
+    color: #f2f2f7;
+}
+
+/* Home screen dark mode — calendar widget & section labels */
+.phone-dark-mode .calendar-widget {
+    background: #2c2c2e;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .calendar-day-name {
+    color: #ff453a;
+}
+
+.phone-dark-mode .calendar-date-number {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .calendar-events {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-section-label {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-profile-card {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-profile-id {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-auth-switch {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .phone-app-viewport-body .moments-auth-form .moments-input {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #f2f2f7;
+}
+
+/* ─── Notification Banner Dark Mode ─── */
+.phone-dark-mode .phone-notif-toast {
+    background: rgba(44, 44, 46, 0.92);
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.35),
+        0 1px 4px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .phone-notif-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-notif-text {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .phone-notif-app {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-notif-time {
+    color: #636366;
+}
