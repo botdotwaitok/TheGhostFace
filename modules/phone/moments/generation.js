@@ -4,6 +4,7 @@
 import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
 import { callCustomOpenAI, useMomentCustomApi } from '../../api.js';
+import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
 import { addComment, toggleLike } from './apiClient.js';
 
@@ -296,7 +297,7 @@ export async function processPendingInteractions() {
         const resultText = await callCustomOpenAI(systemPrompt, userPrompt);
         if (!resultText) return;
 
-        const cleanedText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const cleanedText = cleanLlmJson(resultText);
 
         let responses = [];
         try {

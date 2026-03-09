@@ -3,9 +3,10 @@
 
 import { openAppInViewport } from '../phoneController.js';
 import { callPhoneLLM } from '../../api.js';
+import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import {
     loadChatHistory, saveChatHistory, clearChatHistory, deleteMessageByIndex,
-    deleteMessagesByIndices,
+    deleteMessagesByIndices, updateMessageByIndex,
     getCharacterInfo, getUserName,
     sendSummaryAsUserMessage,
     maybeAutoSummarize,
@@ -31,6 +32,8 @@ let pendingMessages = [];          // Strings queued by the user before sending
 let isGenerating = false;          // Lock to prevent double sends
 let isDeleteMode = false;          // Delete-mode toggle
 let selectedForDeletion = new Set(); // Batch-select indices for deletion
+let isEditMode = false;            // Edit-mode toggle
+let selectedEditIndex = -1;        // Which message is being edited
 
 const CHAT_LOG_PREFIX = '[聊天]';
 
@@ -184,9 +187,25 @@ function buildChatPage(history) {
         <div class="chat-menu-overlay" id="chat_menu_overlay">
             <div class="chat-menu-sheet">
                 <div class="chat-menu-item" id="chat_reroll_btn">重新生成</div>
+                <div class="chat-menu-item" id="chat_edit_mode_btn">编辑消息</div>
                 <div class="chat-menu-item" id="chat_delete_mode_btn">删除消息</div>
                 <div class="chat-menu-item danger" id="chat_clear_history">清空聊天记录</div>
                 <div class="chat-menu-cancel" id="chat_menu_cancel">取消</div>
+            </div>
+        </div>
+
+        <!-- Edit message overlay -->
+        <div class="chat-edit-overlay" id="chat_edit_overlay">
+            <div class="chat-edit-panel">
+                <div class="chat-edit-header">
+                    <span class="chat-edit-title">编辑消息</span>
+                    <button class="chat-edit-close" id="chat_edit_close_btn"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <textarea class="chat-edit-textarea" id="chat_edit_textarea" rows="4" placeholder="输入新内容…"></textarea>
+                <div class="chat-edit-actions">
+                    <button class="chat-edit-cancel-btn" id="chat_edit_cancel_btn">取消</button>
+                    <button class="chat-edit-save-btn" id="chat_edit_save_btn">保存</button>
+                </div>
             </div>
         </div>
     </div>
@@ -449,7 +468,7 @@ function bindChatEvents() {
         let _didLongPress = false; // Flag to prevent click from firing after long-press
 
         messagesArea.addEventListener('pointerdown', (e) => {
-            if (isDeleteMode) return;
+            if (isDeleteMode || isEditMode) return;
             const row = e.target.closest('.chat-bubble-row[data-msg-index]');
             if (!row) return;
             // Don't trigger on interactive elements (buttons, links, etc.)
@@ -507,6 +526,17 @@ function bindChatEvents() {
                     e.stopPropagation();
                     const idx = parseInt(row.dataset.msgIndex, 10);
                     toggleSelectMessage(idx, row);
+                    return;
+                }
+            }
+
+            // Edit mode: tap a bubble to open its edit overlay
+            if (isEditMode) {
+                const row = e.target.closest('.chat-bubble-row[data-msg-index]');
+                if (row) {
+                    e.stopPropagation();
+                    const idx = parseInt(row.dataset.msgIndex, 10);
+                    openEditOverlay(idx);
                     return;
                 }
             }
@@ -736,7 +766,31 @@ function bindChatEvents() {
         });
     }
 
+    // ─── Edit mode button ───
+    const editModeBtn = document.getElementById('chat_edit_mode_btn');
+    if (editModeBtn) {
+        editModeBtn.addEventListener('click', () => {
+            menuOverlay?.classList.remove('active');
+            toggleEditMode();
+        });
+    }
 
+    // ─── Edit overlay: close & cancel ───
+    const editOverlay = document.getElementById('chat_edit_overlay');
+    const editCloseBtn = document.getElementById('chat_edit_close_btn');
+    const editCancelBtn = document.getElementById('chat_edit_cancel_btn');
+    const editSaveBtn = document.getElementById('chat_edit_save_btn');
+
+    if (editCloseBtn) editCloseBtn.addEventListener('click', () => closeEditOverlay());
+    if (editCancelBtn) editCancelBtn.addEventListener('click', () => closeEditOverlay());
+    if (editOverlay) {
+        editOverlay.addEventListener('click', (e) => {
+            if (e.target === editOverlay) closeEditOverlay();
+        });
+    }
+    if (editSaveBtn) {
+        editSaveBtn.addEventListener('click', () => handleEditSave());
+    }
 
     // Scroll to bottom on initial load
     scrollToBottom(false);
@@ -928,11 +982,123 @@ function handleBatchDelete() {
     scrollToBottom(false);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Edit Mode — Tap a message to edit its content in-place
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Toggle edit mode — messages become tappable to open the edit overlay.
+ */
+function toggleEditMode() {
+    isEditMode = !isEditMode;
+    selectedEditIndex = -1;
+
+    const rows = document.querySelectorAll('.chat-bubble-row[data-msg-index]');
+    const inputBar = document.getElementById('chat_input_bar');
+    const draftArea = document.getElementById('chat_draft_area');
+
+    rows.forEach(row => {
+        if (isEditMode) {
+            row.classList.add('edit-mode');
+        } else {
+            row.classList.remove('edit-mode');
+        }
+    });
+
+    if (inputBar) inputBar.style.display = isEditMode ? 'none' : '';
+    if (draftArea && isEditMode) draftArea.style.display = 'none';
+
+    const editModeBtn = document.getElementById('chat_edit_mode_btn');
+    if (editModeBtn) {
+        editModeBtn.textContent = isEditMode ? '退出编辑模式' : '编辑消息';
+    }
+}
+
+/**
+ * Close the edit overlay without saving, and exit edit mode.
+ */
+function closeEditOverlay() {
+    const editOverlay = document.getElementById('chat_edit_overlay');
+    editOverlay?.classList.remove('active');
+    selectedEditIndex = -1;
+    // Exit edit mode after closing
+    if (isEditMode) toggleEditMode();
+}
+
+/**
+ * Open the edit overlay pre-filled with the content of the given message index.
+ */
+function openEditOverlay(msgIndex) {
+    const history = loadChatHistory();
+    if (msgIndex < 0 || msgIndex >= history.length) return;
+
+    const msg = history[msgIndex];
+    selectedEditIndex = msgIndex;
+
+    const textarea = document.getElementById('chat_edit_textarea');
+    if (textarea) {
+        textarea.value = msg.content || '';
+        // Auto-resize
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+
+    const editOverlay = document.getElementById('chat_edit_overlay');
+    editOverlay?.classList.add('active');
+
+    // Focus & move cursor to end
+    requestAnimationFrame(() => {
+        if (textarea) {
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+    });
+}
+
+/**
+ * Save the edited content to history and re-render.
+ */
+function handleEditSave() {
+    if (selectedEditIndex < 0) return;
+
+    const textarea = document.getElementById('chat_edit_textarea');
+    const newContent = textarea?.value?.trim();
+    if (!newContent) return;
+
+    const updated = updateMessageByIndex(selectedEditIndex, newContent);
+    if (!updated) return;
+
+    console.log(`${CHAT_LOG_PREFIX} 编辑了消息 [${selectedEditIndex}]`);
+
+    // Close overlay + exit edit mode
+    const editOverlay = document.getElementById('chat_edit_overlay');
+    editOverlay?.classList.remove('active');
+    selectedEditIndex = -1;
+    if (isEditMode) toggleEditMode();
+
+    // Re-render messages
+    const history = loadChatHistory();
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (!messagesArea) return;
+
+    const displayHistory = history.slice(-20);
+    const startIndex = history.length - displayHistory.length;
+    let newHtml = displayHistory.length > 0
+        ? buildMessagesHtml(displayHistory, startIndex)
+        : `<div class="chat-empty"><div class="chat-empty-icon">💬</div><div class="chat-empty-text">开始聊天吧…</div></div>`;
+    if (history.length > 20 && displayHistory.length > 0) {
+        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
+    }
+    messagesArea.innerHTML = newHtml;
+    scrollToBottom(false);
+}
+
 /**
  * Reroll — remove the last AI response(s), then re-generate using the
  * same user message context.
  */
 async function rerollLastMessage() {
+
     if (isGenerating) return;
 
     const history = loadChatHistory();
@@ -1530,11 +1696,8 @@ async function sendAllMessages() {
  * Falls back gracefully if the LLM doesn't return perfect JSON.
  */
 function parseApiResponse(raw) {
-    // Try to extract JSON from the response (might have markdown code fences)
-    let jsonStr = raw.trim();
-
-    // Remove markdown code fences if present
-    jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    // Extract clean JSON from the response (handles markdown code fences & garbage text)
+    const jsonStr = cleanLlmJson(raw);
 
     try {
         const parsed = JSON.parse(jsonStr);

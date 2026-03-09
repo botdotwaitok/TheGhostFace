@@ -140,6 +140,20 @@ export function deleteMessagesByIndices(indices) {
     return deleted;
 }
 
+/**
+ * Update the content of a single message by its index.
+ * @param {number} index - 0-based index into the full history array
+ * @param {string} newContent - New message text to set
+ * @returns {boolean} true if updated successfully
+ */
+export function updateMessageByIndex(index, newContent) {
+    const history = loadChatHistory();
+    if (index < 0 || index >= history.length) return false;
+    history[index].content = newContent;
+    saveChatHistory(history);
+    return true;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // ST Main Chat History Access (Bidirectional Sync)
 // ═══════════════════════════════════════════════════════════════════════

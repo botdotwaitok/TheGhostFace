@@ -119,6 +119,7 @@ function initTables() {
             authorAvatar TEXT DEFAULT '',
             content     TEXT NOT NULL,
             imageUrl    TEXT DEFAULT '',
+            isBroadcast INTEGER NOT NULL DEFAULT 0,
             createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (authorId) REFERENCES users(id)
         );

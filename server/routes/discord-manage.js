@@ -80,4 +80,31 @@ router.post('/change-password', (req, res) => {
     }
 });
 
+// ── POST /api/discord-manage/unbind ─────────────────────────────────
+// Body: { discordId: string }
+// Removes the Discord binding for the user linked to this Discord ID.
+router.post('/unbind', (req, res) => {
+    try {
+        const { discordId } = req.body;
+        if (!discordId) {
+            return res.status(400).json({ error: 'discordId is required' });
+        }
+
+        const db = getDb();
+        const user = db.prepare('SELECT id, username, displayName FROM users WHERE discordId = ?').get(String(discordId));
+
+        if (!user) {
+            return res.status(404).json({ error: '未找到绑定的朋友圈账号' });
+        }
+
+        db.prepare('UPDATE users SET discordId = NULL WHERE discordId = ?').run(String(discordId));
+
+        console.log(`[DiscordManage] Unbound discordId=${discordId} from user ${user.username} (${user.id})`);
+        res.json({ ok: true, message: '解绑成功', username: user.username });
+    } catch (err) {
+        console.error('[DiscordManage] unbind error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

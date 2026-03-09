@@ -948,7 +948,192 @@
     color: #007AFF;
 }
 
+/* ─── Edit Message Overlay ─── */
+.chat-edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 110;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    animation: fadeIn 0.2s;
+}
+
+.chat-edit-overlay.active {
+    display: flex;
+}
+
+.chat-edit-panel {
+    background: #fff;
+    border-radius: 18px 18px 0 0;
+    width: 100%;
+    padding: 0 0 max(16px, env(safe-area-inset-bottom));
+    animation: slideUp 0.3s ease-out;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1);
+}
+
+.chat-edit-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 10px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+}
+
+.chat-edit-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.chat-edit-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: #e9e9eb;
+    color: #636366;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.chat-edit-close:hover {
+    background: #d1d1d6;
+}
+
+.chat-edit-textarea {
+    width: 100%;
+    min-height: 72px;
+    max-height: 200px;
+    box-sizing: border-box;
+    padding: 14px 20px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #1c1c1e;
+    background: transparent;
+    border: none;
+    resize: none;
+    outline: none;
+    font-family: inherit;
+}
+
+.chat-edit-actions {
+    display: flex;
+    gap: 10px;
+    padding: 10px 20px 4px;
+    justify-content: flex-end;
+}
+
+.chat-edit-cancel-btn,
+.chat-edit-save-btn {
+    padding: 9px 22px;
+    border-radius: 20px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chat-edit-cancel-btn {
+    background: #e9e9eb;
+    color: #1c1c1e;
+}
+
+.chat-edit-cancel-btn:hover {
+    background: #d1d1d6;
+}
+
+.chat-edit-save-btn {
+    background: #007AFF;
+    color: #fff;
+}
+
+.chat-edit-save-btn:hover {
+    background: #0066d6;
+}
+
+.chat-edit-cancel-btn:active,
+.chat-edit-save-btn:active {
+    transform: scale(0.96);
+}
+
+/* Edit mode — bubble row highlight (tap-to-edit feedback) */
+.chat-bubble-row.edit-mode {
+    cursor: pointer;
+}
+
+.chat-bubble-row.edit-mode .chat-bubble {
+    outline: 2px solid rgba(0, 122, 255, 0.35);
+    outline-offset: 1px;
+    transition: outline-color 0.15s;
+}
+
+.chat-bubble-row.edit-mode:hover .chat-bubble {
+    outline-color: rgba(0, 122, 255, 0.7);
+}
+
+/* ─── Dark mode: Edit Overlay ─── */
+.phone-dark-mode .chat-edit-panel {
+    background: #2c2c2e;
+}
+
+.phone-dark-mode .chat-edit-header {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-edit-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-edit-close {
+    background: #3a3a3c;
+    color: #8e8e93;
+}
+
+.phone-dark-mode .chat-edit-close:hover {
+    background: #48484a;
+}
+
+.phone-dark-mode .chat-edit-textarea {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-edit-cancel-btn {
+    background: #3a3a3c;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-edit-cancel-btn:hover {
+    background: #48484a;
+}
+
+.phone-dark-mode .chat-edit-save-btn {
+    background: #0a84ff;
+}
+
+.phone-dark-mode .chat-edit-save-btn:hover {
+    background: #0070d8;
+}
+
+.phone-dark-mode .chat-bubble-row.edit-mode .chat-bubble {
+    outline-color: rgba(10, 132, 255, 0.4);
+}
+
+.phone-dark-mode .chat-bubble-row.edit-mode:hover .chat-bubble {
+    outline-color: rgba(10, 132, 255, 0.8);
+}
+
 /* ─── Animations ─── */
+
 @keyframes chatBubbleIn {
     from {
         opacity: 0;

@@ -67,7 +67,7 @@ router.get('/feed/:userId', (req, res) => {
                    u.username as authorUsername
             FROM posts p
             LEFT JOIN users u ON p.authorId = u.id
-            WHERE p.authorId IN (${placeholders})
+            WHERE (p.authorId IN (${placeholders}) OR p.isBroadcast = 1)
         `;
         const params = [userId, ...friendIds];
 
