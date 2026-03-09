@@ -167,6 +167,15 @@ function initTables() {
 
         CREATE INDEX IF NOT EXISTS idx_shop_reviews_itemId ON shop_reviews(itemId);
     `);
+
+    // ── Safe migrations for existing databases ──────────────
+    try {
+        db.exec(`ALTER TABLE posts ADD COLUMN isBroadcast INTEGER NOT NULL DEFAULT 0;`);
+        console.log('[DB] Migration: added isBroadcast column to posts');
+    } catch (e) {
+        // Column already exists — safe to ignore
+    }
+
     console.log('[DB] Tables initialized');
 }
 
