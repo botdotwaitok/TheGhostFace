@@ -136,7 +136,7 @@
 /* ─── iMessage-style bubble tails ─── */
 
 /* User tail (right side, blue) */
-.chat-bubble-row.user .chat-bubble-column > .chat-bubble:last-of-type::after {
+.chat-bubble-row.user .chat-bubble-column>.chat-bubble:last-of-type::after {
     content: '';
     position: absolute;
     bottom: 0;
@@ -148,7 +148,7 @@
 }
 
 /* Char tail (left side, gray) */
-.chat-bubble-row.char .chat-bubble-column > .chat-bubble:first-of-type::after {
+.chat-bubble-row.char .chat-bubble-column>.chat-bubble:first-of-type::after {
     content: '';
     position: absolute;
     bottom: 0;
@@ -178,7 +178,7 @@
     display: none;
 }
 
-.chat-bubble-row.char + .chat-bubble-row.char .chat-bubble:first-of-type::after {
+.chat-bubble-row.char+.chat-bubble-row.char .chat-bubble:first-of-type::after {
     display: none;
 }
 
@@ -628,7 +628,8 @@
     opacity: 0 !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    margin-top: -2px !important; /* To hide the 2px gap in flex container */
+    margin-top: -2px !important;
+    /* To hide the 2px gap in flex container */
     border: none !important;
 }
 
@@ -724,6 +725,7 @@
         opacity: 0;
         transform: scale(0.3);
     }
+
     to {
         opacity: 1;
         transform: scale(1);
@@ -895,22 +897,25 @@
 
 /* ─── Clear History Menu ─── */
 .chat-menu-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 100;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    z-index: 100 !important;
     display: none;
     align-items: flex-end;
     justify-content: center;
     padding-bottom: 80px;
     animation: fadeIn 0.2s;
+    pointer-events: none;
+    isolation: isolate;
 }
 
 .chat-menu-overlay.active {
-    display: flex;
+    display: flex !important;
+    pointer-events: auto !important;
 }
 
 .chat-menu-sheet {
@@ -920,6 +925,7 @@
     width: calc(100% - 32px);
     max-width: 320px;
     animation: slideUp 0.3s ease-out;
+    pointer-events: auto !important;
 }
 
 .chat-menu-item {
@@ -950,21 +956,24 @@
 
 /* ─── Edit Message Overlay ─── */
 .chat-edit-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 110;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    z-index: 110 !important;
     display: none;
     align-items: flex-end;
     justify-content: center;
     animation: fadeIn 0.2s;
+    pointer-events: none;
+    isolation: isolate;
 }
 
 .chat-edit-overlay.active {
-    display: flex;
+    display: flex !important;
+    pointer-events: auto !important;
 }
 
 .chat-edit-panel {
@@ -974,6 +983,7 @@
     padding: 0 0 max(16px, env(safe-area-inset-bottom));
     animation: slideUp 0.3s ease-out;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1);
+    pointer-events: auto !important;
 }
 
 .chat-edit-header {
@@ -1231,21 +1241,24 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 .chat-plus-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 100;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.35) !important;
+    z-index: 100 !important;
     display: none;
     align-items: flex-end;
     justify-content: center;
     animation: fadeIn 0.2s;
+    pointer-events: none;
+    isolation: isolate;
 }
 
 .chat-plus-overlay.active {
-    display: flex;
+    display: flex !important;
+    pointer-events: auto !important;
 }
 
 .chat-plus-panel {
@@ -1255,6 +1268,7 @@
     padding: 0 0 max(12px, env(safe-area-inset-bottom));
     animation: slideUp 0.3s ease-out;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    pointer-events: auto !important;
 }
 
 .chat-plus-title {
@@ -1587,7 +1601,7 @@
 }
 
 /* Bubble tails in dark mode */
-.phone-dark-mode .chat-bubble-row.char .chat-bubble-column > .chat-bubble:first-of-type::after {
+.phone-dark-mode .chat-bubble-row.char .chat-bubble-column>.chat-bubble:first-of-type::after {
     background: radial-gradient(ellipse at top right, #2c2c2e 60%, transparent 61%);
 }
 
@@ -1659,21 +1673,24 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 .chat-inventory-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 100;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.35) !important;
+    z-index: 100 !important;
     display: none;
     align-items: flex-end;
     justify-content: center;
     animation: fadeIn 0.2s;
+    pointer-events: none;
+    isolation: isolate;
 }
 
 .chat-inventory-overlay.active {
-    display: flex;
+    display: flex !important;
+    pointer-events: auto !important;
 }
 
 .chat-inventory-panel {
@@ -1685,6 +1702,7 @@
     flex-direction: column;
     animation: slideUp 0.3s ease-out;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    pointer-events: auto !important;
 }
 
 .chat-inventory-header {
