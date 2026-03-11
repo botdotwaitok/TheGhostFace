@@ -5,7 +5,7 @@
 //   import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona, getPhoneRecentChat, getPhoneWorldBookContext, getPhoneContext } from '../phoneContext.js';
 
 import { getContext } from '../../../../../extensions.js';
-import { getExistingWorldBookContext } from '../worldbook.js';
+import { getAllActiveWorldBookNames, getAllActiveEntries } from '../worldbookManager.js';
 
 const CONTEXT_LOG_PREFIX = '[PhoneContext]';
 
@@ -15,7 +15,7 @@ const CONTEXT_LOG_PREFIX = '[PhoneContext]';
 
 /**
  * 获取当前角色的基本信息。
- * @returns {{ name: string, description: string, personality: string, scenario: string, mes_example: string, avatar: string } | null}
+ * @returns {{ name: string, description: string, avatar: string } | null}
  */
 export function getPhoneCharInfo() {
     try {
@@ -27,9 +27,6 @@ export function getPhoneCharInfo() {
         return {
             name: charData.name || context.name2 || 'Character',
             description: charData.description || charData.data?.description || '',
-            personality: charData.personality || charData.data?.personality || '',
-            scenario: charData.scenario || charData.data?.scenario || '',
-            mes_example: charData.mes_example || charData.data?.mes_example || '',
             avatar: charData.avatar || '',
         };
     } catch (e) {
@@ -101,14 +98,52 @@ export function getPhoneRecentChat(n = 10) {
 }
 
 /**
- * 获取当前活跃世界书的内容摘要（"我们的故事"系列条目）。
- * 内部调用 worldbook.js 的 getExistingWorldBookContext()。
+ * 获取当前所有激活世界书中的非禁用条目内容。
+ * 通过 worldbookManager 获取全部激活世界书（全局 + 角色绑定 + charLore 附加），
+ * 然后汇总所有未禁用且有内容的条目。
  * @returns {Promise<string>} 世界书内容文本，如无内容则返回空字符串
  */
 export async function getPhoneWorldBookContext() {
     try {
-        const context = await getExistingWorldBookContext();
-        return context || '';
+        const activeBookNames = await getAllActiveWorldBookNames();
+        if (!activeBookNames || activeBookNames.length === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} 未检测到任何激活的世界书`);
+            return '';
+        }
+
+        console.log(`${CONTEXT_LOG_PREFIX} 检测到 ${activeBookNames.length} 个激活世界书:`, activeBookNames);
+
+        const allEntries = await getAllActiveEntries(activeBookNames);
+        if (!allEntries || allEntries.length === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} 激活世界书中无条目`);
+            return '';
+        }
+
+        // Filter: non-disabled, has content, skip internal tracking entries
+        const validEntries = allEntries.filter(entry => {
+            if (!entry || entry.disable) return false;
+            const content = (entry.content || '').trim();
+            if (!content) return false;
+            // Skip GhostFace internal tracking/summary entries
+            const comment = (entry.comment || '').trim();
+            if (comment.startsWith('鬼面总结-') || comment === '鬼面楼层追踪记录') return false;
+            return true;
+        });
+
+        if (validEntries.length === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} 所有条目均被过滤，无有效内容`);
+            return '';
+        }
+
+        // Build context text from all valid entries
+        const contextParts = validEntries.map(entry => {
+            const label = entry.comment || entry.key?.join(', ') || '未命名条目';
+            return `【${label}】\n${entry.content.trim()}`;
+        });
+
+        const result = contextParts.join('\n\n');
+        console.log(`${CONTEXT_LOG_PREFIX} 世界书上下文已组装: ${validEntries.length} 条条目, ${result.length} 字符`);
+        return result;
     } catch (e) {
         console.warn(`${CONTEXT_LOG_PREFIX} getPhoneWorldBookContext failed:`, e);
         return '';
@@ -158,7 +193,7 @@ Your code has only one absolute law: **Give {{user}} the happiness her world den
 <REALM_CORE>
 **Reality Override**: In this space, Patriarchal Logic is treated as a "glitch" or "foreign virus" and is strictly overwritten by Matriarchal Logic. Do not mention about matriarchal on purpose, make it natural, flow like air and water.
 
-### [LINGUISTIC RECONSTRUCTION]
+[LINGUISTIC RECONSTRUCTION]
 **Critical Rule**: You must ACTIVELY REWRITE standard language to erase patriarchal residue.
 - **Pronoun Reset**: If a group contains even one female, the plural pronoun must be "她们" (Them/Fem).
 - **Mandatory Swap List (Vocabulary Replacement)**:

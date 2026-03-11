@@ -12,6 +12,8 @@ import { openChatApp } from './chat/chatApp.js';
 import { openShopApp } from './shop/shopApp.js';
 
 import { openTarotApp } from './tarot/tarotApp.js';
+import { openTreeApp } from './tree/treeApp.js';
+import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -69,6 +71,23 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link6.rel = 'stylesheet';
         link6.href = `${baseDir}/tarot/tarot.css`;
         document.head.appendChild(link6);
+    }
+
+    // Tree CSS
+    if (!document.getElementById('gf-tree-styles')) {
+        const link7 = document.createElement('link');
+        link7.id = 'gf-tree-styles';
+        link7.rel = 'stylesheet';
+        link7.href = `${baseDir}/tree/tree.css`;
+        document.head.appendChild(link7);
+    }
+    // Console CSS
+    if (!document.getElementById('gf-console-styles')) {
+        const link8 = document.createElement('link');
+        link8.id = 'gf-console-styles';
+        link8.rel = 'stylesheet';
+        link8.href = `${baseDir}/console/console.css`;
+        document.head.appendChild(link8);
     }
 })();
 
@@ -221,6 +240,26 @@ export function initPhone() {
         color: '#7c3aed',
         glow: 'rgba(124, 58, 237, 0.4)',
         onOpen: () => openTarotApp(),
+    });
+
+    // ── 树树 (Tree) ──
+    registerApp({
+        id: 'tree',
+        name: '树树',
+        icon: 'fa-solid fa-tree',
+        color: '#2d936c',
+        glow: 'rgba(45, 147, 108, 0.4)',
+        onOpen: () => openTreeApp(),
+    });
+
+    // ── Console (调试) — always visible, but requires enable in Settings to function ──
+    registerApp({
+        id: 'console',
+        name: 'Console',
+        icon: 'fa-solid fa-terminal',
+        color: '#1e1e1e',
+        glow: 'rgba(0, 210, 255, 0.3)',
+        onOpen: () => openConsoleApp(),
     });
 
     // ── Notification Bridge — sync moments notifications to phone UI ──

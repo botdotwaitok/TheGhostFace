@@ -206,6 +206,7 @@ ${existingWorldBookContext}
 4. Maintain clear, factual style — this is a report, not a story.
 5. In every entry, make it **explicit** who the information is about. Always write {{user}} or {{char}} explicitly.
 6. Each fragment must be **self-contained** — it should make sense on its own, without needing the other fragments.
+7. **CRITICAL DEDUP RULE**: Check the "已有记忆碎片标题列表" above CAREFULLY. If a new piece of info is about the **same topic** as an existing fragment (same person + same thing, just with new developments/details), you MUST use ===UPDATE=== format instead of ===ENTRY===. This is the MOST IMPORTANT rule.
 
 - [互动] Unique interaction habits with {{char}}
 
@@ -217,7 +218,7 @@ The \`[Title]\` part (at the start of the line) should be a **short, descriptive
 
 **OUTPUT FORMAT (CRITICAL — follow this EXACTLY):**
 
-For EACH piece of new memory, output one block like this:
+**For NEW memories (no existing fragment covers this topic):**
 
 ===ENTRY===
 [Title]: Content... (e.g. "[喜好-热可可]: Content...").
@@ -226,6 +227,18 @@ For EACH piece of new memory, output one block like this:
 [Title]: Content text starts here. Use {{user}} and {{char}} names explicitly.
 KEYWORDS: keyword1, keyword2, keyword3
 ===END===
+
+**For UPDATES to existing memories (same topic has new developments):**
+
+===UPDATE=== 旧标题
+[Title]: COMPLETE merged content (old info + new info combined into one coherent entry).
+KEYWORDS: keyword1, keyword2, keyword3
+===END===
+
+Rules for ===UPDATE===:
+- The "旧标题" after ===UPDATE=== must EXACTLY match an existing fragment title from the list above
+- The content must be a COMPLETE replacement — include BOTH the old info and the new info merged together
+- Example: if existing fragment is [喜好-香菜]: "{{user}}讨厌香菜" and new info is "因为小时候被逼着吃", the UPDATE should merge them: [喜好-香菜]: "{{user}}讨厌香菜，因为小时候被家人逼着吃过，留下了心理阴影。"
 
 Rules for KEYWORDS:
 - Provide **at least 3** and **at most 8** trigger keywords per entry
@@ -241,9 +254,9 @@ Rules for KEYWORDS:
 KEYWORDS: 热可可, 下雨, 姥姥, 雨天, cocoa, rain, grandmother
 ===END===
 
-===ENTRY===
-[事件-坦白恐惧]: 2025年7月22日 - {{user}}第一次向{{char}}坦白了自己害怕被抛弃的心理。{{char}}紧紧抱住了她，承诺永远不会离开。
-KEYWORDS: 坦白, 害怕被抛弃, 承诺, 不会离开, abandonment, confession
+===UPDATE=== 事件-坦白恐惧
+[事件-坦白恐惧]: 2025年7月22日 - {{user}}第一次向{{char}}坦白了自己害怕被抛弃的心理。{{char}}紧紧抱住了她，承诺永远不会离开。后来{{user}}解释说这种恐惧源于童年时父母经常出差，让她独自在家。
+KEYWORDS: 坦白, 害怕被抛弃, 承诺, 不会离开, 童年, abandonment, confession
 ===END===
 
 ===ENTRY===
@@ -254,7 +267,7 @@ KEYWORDS: 弹额头, 道别, 习惯, forehead flick, goodbye ritual
 **SOURCE (Filtered messages):**
 ${currentContextText}
 
-Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaningful, and properly formatted as individual fragments. Each fragment will become a separate memory card in the archive. If there is nothing new to report, output NOTHING. Begin your report now.
+Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaningful, and properly formatted as individual fragments. Use ===UPDATE=== when a topic already has an existing fragment. Each fragment will become a separate memory card in the archive. If there is nothing new to report, output NOTHING. Begin your report now.
 `;
 
             if (api.useCustomApi && api.customApiConfig?.url) {
@@ -994,7 +1007,7 @@ export function markMessagesSummarized(messages) {
     logger.info(`📝 已标记 ${messages.length} 条消息为已总结`);
 }
 
-// 拆解LLM返回文本 — 解析 ===ENTRY===...===END=== 块为结构化数组
+// 拆解LLM返回文本 — 解析 ===ENTRY===...===END=== 和 ===UPDATE===...===END=== 块为结构化数组
 export function parseModelOutput(rawOutput) {
     logger.info('[鬼面]  开始解析模型输出 (fragment mode)...');
 
@@ -1005,13 +1018,28 @@ export function parseModelOutput(rawOutput) {
         }
 
         const entries = [];
-        // Split by ===ENTRY=== delimiter
-        const blocks = rawOutput.split(/===ENTRY===/);
 
-        for (const block of blocks) {
-            // Each block should end with ===END===
-            const endIdx = block.indexOf('===END===');
-            const content = endIdx !== -1 ? block.substring(0, endIdx).trim() : block.trim();
+        // 🆕 统一分割：同时处理 ===ENTRY=== 和 ===UPDATE=== 块
+        // 使用正则捕获块类型和可选的更新目标
+        const blockPattern = /===(ENTRY|UPDATE)===\s*(.*?)(?:\r?\n|$)/g;
+        let match;
+        const blocks = [];
+
+        while ((match = blockPattern.exec(rawOutput)) !== null) {
+            blocks.push({
+                type: match[1],           // 'ENTRY' or 'UPDATE'
+                updateTarget: match[2]?.trim() || null,  // 旧标题（仅 UPDATE 有）
+                startPos: match.index + match[0].length
+            });
+        }
+
+        for (let b = 0; b < blocks.length; b++) {
+            const block = blocks[b];
+            // 找到这个块的结束位置（下一个块的开始 或 ===END===）
+            const nextBlockStart = b + 1 < blocks.length ? blocks[b + 1].startPos - blocks[b + 1].type.length - 7 : rawOutput.length;
+            const rawBlock = rawOutput.substring(block.startPos, nextBlockStart);
+            const endIdx = rawBlock.indexOf('===END===');
+            const content = endIdx !== -1 ? rawBlock.substring(0, endIdx).trim() : rawBlock.trim();
 
             if (!content) continue;
 
@@ -1020,7 +1048,6 @@ export function parseModelOutput(rawOutput) {
             if (!contentMatch) continue;
 
             const label = contentMatch[1].trim();
-            // Get everything up to the KEYWORDS line
             const bodyAndKeywords = contentMatch[2].trim();
 
             // Parse KEYWORDS line
@@ -1031,27 +1058,35 @@ export function parseModelOutput(rawOutput) {
                 bodyText = keywordsMatch[1].trim();
                 keywords = keywordsMatch[2].split(',').map(k => k.trim()).filter(k => k.length > 0);
             } else {
-                // No KEYWORDS line found, use whole body as content
                 bodyText = bodyAndKeywords;
                 keywords = [];
             }
 
             if (bodyText) {
-                // 🛡️ Filter out 大总结-style entries that don't belong here
+                // 🛡️ Filter out 大总结-style entries
                 const forbidden = ['大总结', '世界线总结', '情节发展', '情感递进'];
                 if (forbidden.some(f => label.includes(f))) {
                     logger.warn(`[鬼面] ⚠️ 过滤掉不属于记忆碎片的条目: [${label}]`);
                     continue;
                 }
-                entries.push({
+
+                const entry = {
                     label: label,
                     content: `[${label}]: ${bodyText}`,
                     keywords: keywords
-                });
+                };
+
+                // 🆕 如果是 UPDATE 类型，附加 updateTarget
+                if (block.type === 'UPDATE' && block.updateTarget) {
+                    entry.updateTarget = block.updateTarget;
+                    logger.info(`[鬼面] 📝 解析到 UPDATE 块: [${label}] → 更新目标: ${block.updateTarget}`);
+                }
+
+                entries.push(entry);
             }
         }
 
-        // logger.info(`[鬼面]  解析完成: 找到 ${entries.length} 个记忆碎片条目`);
+        logger.info(`[鬼面]  解析完成: 找到 ${entries.length} 个记忆碎片条目 (${entries.filter(e => e.updateTarget).length} 个更新, ${entries.filter(e => !e.updateTarget).length} 个新建)`);
 
         return entries;
     } catch (error) {

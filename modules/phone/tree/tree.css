@@ -1,0 +1,3082 @@
+/* modules/phone/tree/tree.css — 树树 App 自然主题 */
+/* 星露谷像素风 · 无 emoji · FontAwesome 图标 */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Container
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 60%, #bbf7d0 100%);
+    color: #374151;
+    font-family: 'Nunito', 'Quicksand', 'Varela Round', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    position: relative;
+    overflow: hidden;
+}
+
+.tree-page>* {
+    position: relative;
+    z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Onboarding Tutorial (first-time only)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-onboarding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 24px;
+}
+
+.tree-onboarding-slides {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    min-height: 240px;
+    justify-content: center;
+}
+
+.tree-onboarding-slide {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.tree-onboarding-icon {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 38px;
+    border: 2px solid currentColor;
+    opacity: 0.85;
+}
+
+.tree-onboarding-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 0.5px;
+}
+
+.tree-onboarding-desc {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.6);
+    max-width: 270px;
+    line-height: 1.7;
+}
+
+.tree-onboarding-dots {
+    display: flex;
+    gap: 8px;
+}
+
+.tree-onboarding-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(31, 41, 55, 0.15);
+    transition: background 0.3s, transform 0.3s;
+}
+
+.tree-onboarding-dot.active {
+    background: #22c55e;
+    transform: scale(1.3);
+}
+
+.tree-onboarding-btn {
+    background: #4ade80;
+    box-shadow: 0 4px 0 #16a34a;
+    border: none;
+    border-radius: 32px;
+    padding: 14px 48px;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+}
+
+.tree-onboarding-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Adoption Ceremony (first-time flow)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-adoption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 20px;
+}
+
+.tree-adoption-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(45, 147, 108, 0.15);
+    border: 2px solid rgba(45, 147, 108, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 35px;
+    color: #16a34a;
+}
+
+.tree-adoption-title {
+    font-size: 23px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 1px;
+}
+
+.tree-adoption-subtitle {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.55);
+    max-width: 260px;
+    line-height: 1.6;
+}
+
+.tree-adoption-input-wrap {
+    width: 100%;
+    max-width: 240px;
+    position: relative;
+}
+
+.tree-page .tree-adoption-input {
+    width: 100%;
+    background: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 20px !important;
+    padding: 12px 16px !important;
+    color: #1f2937 !important;
+    font-size: 18px !important;
+    text-align: center;
+    outline: none !important;
+    box-shadow: none !important;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.tree-adoption-input:focus {
+    border-color: #22c55e !important;
+}
+
+.tree-adoption-input::placeholder {
+    color: rgba(31, 41, 55, 0.3);
+}
+
+.tree-adoption-btn {
+    background: #4ade80;
+    box-shadow: 0 4px 0 #16a34a;
+    border: none;
+    border-radius: 32px;
+    padding: 12px 40px;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tree-adoption-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.tree-adoption-btn:not(:disabled):active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Loading Page (first-time content generation)
+   No animations — simple static styles for low-end devices
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-loading-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 16px;
+}
+
+.tree-loading-icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(45, 147, 108, 0.15);
+    border: 2px solid rgba(45, 147, 108, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    color: #16a34a;
+}
+
+.tree-loading-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 1px;
+}
+
+.tree-loading-subtitle {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.55);
+    max-width: 260px;
+    line-height: 1.6;
+}
+
+.tree-loading-progress-wrap {
+    width: 100%;
+    max-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.tree-loading-progress-bar {
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.tree-loading-progress-fill {
+    height: 100%;
+    border-radius: 5px;
+    background: linear-gradient(90deg, #2d936c, #16a34a);
+    min-width: 0;
+}
+
+.tree-loading-progress-text {
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.55);
+}
+
+.tree-loading-progress-pct {
+    font-size: 18px;
+    font-weight: 700;
+    color: #16a34a;
+}
+
+/* ── Player Quality Check Preview (during loading) ───────────────────── */
+
+.tree-loading-page {
+    overflow-y: auto;
+}
+
+.tree-loading-preview {
+    width: 100%;
+    max-width: 300px;
+    margin-top: 16px;
+}
+
+.tree-qc-card {
+    background: #ffffff;
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    border-radius: 20px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 4px 12px rgba(45, 147, 108, 0.1);
+}
+
+.tree-qc-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(31, 41, 55, 0.6);
+    text-align: center;
+}
+
+.tree-qc-samples {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tree-qc-sample-line {
+    font-size: 14px;
+    color: #1f2937;
+    line-height: 1.6;
+    padding: 8px 12px;
+    background: rgba(240, 253, 244, 0.6);
+    border-radius: 12px;
+    border-left: 3px solid #4ade80;
+}
+
+.tree-qc-sample-quiz,
+.tree-qc-sample-tod {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(240, 253, 244, 0.6);
+    border-radius: 12px;
+    border-left: 3px solid #4ade80;
+}
+
+.tree-qc-sample-question {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1f2937;
+    line-height: 1.5;
+}
+
+.tree-qc-sample-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+}
+
+.tree-qc-option {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.6);
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+
+.tree-qc-option-correct {
+    background: rgba(74, 222, 128, 0.25);
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.tree-qc-sample-type {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.45);
+}
+
+.tree-qc-empty {
+    font-size: 14px;
+    color: #dc2626;
+    text-align: center;
+    padding: 12px;
+}
+
+.tree-qc-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.tree-qc-btn {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tree-qc-btn:active {
+    transform: translateY(2px);
+}
+
+.tree-qc-btn-approve {
+    background: #4ade80;
+    box-shadow: 0 3px 0 #16a34a;
+    color: #ffffff;
+}
+
+.tree-qc-btn-retry {
+    background: #ffffff;
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.08);
+    color: rgba(31, 41, 55, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Main Tree Page — Scrollable Content
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ── Status Header ────────────────────────────────────────────────────── */
+
+.tree-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+.tree-name-area {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tree-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tree-stage-label {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.tree-stage-label i {
+    font-size: 13px;
+    color: #16a34a;
+}
+
+.tree-season-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.5);
+    background: #ffffff;
+    padding: 3px 8px;
+    border-radius: 20px;
+}
+
+.tree-season-badge i {
+    font-size: 13px;
+}
+
+/* ── Tree Stage Display ───────────────────────────────────────────────── */
+
+.tree-stage-display {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    flex: 1;
+    min-height: 120px;
+    border-radius: 20px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 4px 12px rgba(45, 147, 108, 0.15);
+    background-color: #ffffff;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.4s, background 0.4s;
+}
+
+.tree-stage-img {
+    max-height: 85%;
+    max-width: 90%;
+    object-fit: contain;
+    transition: transform 0.3s;
+    margin-bottom: 100px;
+    transform: scale(2);
+    transform-origin: bottom center;
+}
+
+.tree-fruit-img {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) scale(1.15);
+    transform-origin: bottom center;
+    max-height: 85%;
+    max-width: 90%;
+    object-fit: contain;
+    image-rendering: pixelated;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 2;
+}
+
+/* Fallback icon when no image */
+.tree-stage-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #22c55e;
+}
+
+.tree-stage-fallback i {
+    font-size: 67px;
+}
+
+.tree-stage-fallback-label {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.35);
+}
+
+/* ── Growth Progress Bar ──────────────────────────────────────────────── */
+
+.tree-progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.tree-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: rgba(31, 41, 55, 0.5);
+    padding: 0 2px;
+}
+
+.tree-progress-stage {
+    font-weight: 600;
+    color: rgba(31, 41, 55, 0.7);
+}
+
+.tree-progress-bar {
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: #ffffff;
+    overflow: hidden;
+    position: relative;
+}
+
+.tree-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #2d936c, #16a34a);
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 2px;
+}
+
+/* ── AI Care Notification ─────────────────────────────────────────────── */
+
+.tree-ai-care-notice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(74, 222, 128, 0.08);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    background: #ffffff;
+    box-shadow: 0 4px 12px rgba(74, 222, 128, 0.1);
+    border-radius: 14px;
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.75);
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+
+.tree-ai-care-notice i {
+    font-size: 19px;
+    color: #16a34a;
+    flex-shrink: 0;
+}
+
+/* ── Care Buttons ─────────────────────────────────────────────────────── */
+
+.tree-care-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+.tree-care-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(31, 41, 55, 0.5);
+    padding: 0 2px;
+}
+
+.tree-care-remaining {
+    font-weight: 600;
+}
+
+.tree-care-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+}
+
+.tree-care-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px;
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    color: #1f2937;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s, border-color 0.2s;
+}
+
+.tree-care-btn:not(:disabled):active {
+    transform: translateY(2px);
+    box-shadow: 0 0 0 transparent;
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.3);
+}
+
+.tree-care-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.tree-care-btn-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: rgba(45, 147, 108, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #16a34a;
+    transition: background 0.2s;
+}
+
+.tree-care-btn:disabled .tree-care-btn-icon {
+    background: #ffffff;
+    color: rgba(31, 41, 55, 0.3);
+}
+
+.tree-care-btn-name {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.tree-care-btn-value {
+    font-size: 10px;
+    color: #16a34a;
+}
+
+.tree-care-btn:disabled .tree-care-btn-value {
+    color: rgba(31, 41, 55, 0.25);
+}
+
+/* ── Growth Animation (on care) ───────────────────────────────────────── */
+
+.tree-growth-toast {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 23px;
+    font-weight: 700;
+    color: #16a34a;
+    text-shadow: 0 0 12px rgba(74, 222, 128, 0.4);
+    pointer-events: none;
+    z-index: 10;
+    animation: tree-growth-pop 1s ease-out forwards;
+}
+
+@keyframes tree-growth-pop {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translate(-50%, -60%) scale(1.1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -90%) scale(0.9);
+    }
+}
+
+/* ── Mini-game Entry Buttons ──────────────────────────────────────────── */
+
+.tree-games-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.tree-games-title {
+    font-size: 11px;
+    color: rgba(31, 41, 55, 0.5);
+    padding: 0 2px;
+}
+
+.tree-games-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+}
+
+.tree-game-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px;
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    color: rgba(31, 41, 55, 0.4);
+    cursor: not-allowed;
+    font-size: 11px;
+}
+
+.tree-game-btn i {
+    font-size: 15px;
+}
+
+.tree-game-btn-label {
+    font-size: 10px;
+    color: rgba(31, 41, 55, 0.3);
+}
+
+/* Active game buttons (no longer stubs) */
+.tree-game-btn.tree-game-btn-active {
+    background: rgba(45, 147, 108, 0.1);
+    border-color: rgba(45, 147, 108, 0.25);
+    color: rgba(31, 41, 55, 0.85);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s, border-color 0.2s;
+}
+
+.tree-game-btn.tree-game-btn-active:active {
+    transform: translateY(2px);
+    box-shadow: 0 0 0 transparent;
+    background: rgba(74, 222, 128, 0.2);
+    border-color: rgba(74, 222, 128, 0.4);
+}
+
+.tree-game-btn.tree-game-btn-active i {
+    color: #16a34a;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Stage-Up Modal
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-stageup-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: tree-stageup-fadein 0.3s ease-out;
+}
+
+@keyframes tree-stageup-fadein {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.tree-stageup-card {
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    border-radius: 28px;
+    padding: 32px 28px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 260px;
+    animation: tree-stageup-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes tree-stageup-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.tree-stageup-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(74, 222, 128, 0.12);
+    border: 2px solid rgba(74, 222, 128, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 31px;
+    color: #16a34a;
+}
+
+.tree-stageup-title {
+    font-size: 21px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tree-stageup-subtitle {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.6);
+    line-height: 1.5;
+}
+
+.tree-stageup-dismiss {
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.35);
+    margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Season Themes (static CSS — border + background tint)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Spring — pink-green */
+.tree-page.season-spring .tree-stage-display {
+    border-color: rgba(244, 167, 185, 0.3);
+    background-image: url('/scripts/extensions/third-party/TheGhostFace/assets/images/tree/tree_bg_spring.png');
+}
+
+.tree-page.season-spring .tree-progress-fill {
+    background: linear-gradient(90deg, #f4a7b9, #86d993);
+}
+
+.tree-page.season-spring .tree-season-badge {
+    color: rgba(244, 167, 185, 0.8);
+}
+
+/* Summer — gold-green */
+.tree-page.season-summer .tree-stage-display {
+    border-color: rgba(250, 204, 21, 0.3);
+    background-image: url('/scripts/extensions/third-party/TheGhostFace/assets/images/tree/tree_bg_summer.png');
+}
+
+.tree-page.season-summer .tree-progress-fill {
+    background: linear-gradient(90deg, #facc15, #16a34a);
+}
+
+.tree-page.season-summer .tree-season-badge {
+    color: rgba(250, 204, 21, 0.8);
+}
+
+/* Autumn — orange-brown */
+.tree-page.season-autumn .tree-stage-display {
+    border-color: rgba(234, 138, 56, 0.3);
+    background-image: url('/scripts/extensions/third-party/TheGhostFace/assets/images/tree/tree_bg_autumn.png');
+}
+
+.tree-page.season-autumn .tree-progress-fill {
+    background: linear-gradient(90deg, #ea8a38, #b45309);
+}
+
+.tree-page.season-autumn .tree-season-badge {
+    color: rgba(234, 138, 56, 0.8);
+}
+
+/* Winter — blue-white */
+.tree-page.season-winter .tree-stage-display {
+    border-color: rgba(147, 197, 253, 0.3);
+    background-image: url('/scripts/extensions/third-party/TheGhostFace/assets/images/tree/tree_bg_winter.png');
+}
+
+.tree-page.season-winter .tree-progress-fill {
+    background: linear-gradient(90deg, #93c5fd, #e0f2fe);
+}
+
+.tree-page.season-winter .tree-season-badge {
+    color: rgba(147, 197, 253, 0.8);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Viewport Header Override — nature-tinted header
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Spring header */
+.phone-app-viewport:has(.tree-page.season-spring) .phone-app-viewport-header {
+    background: rgba(253, 242, 248, 0.95) !important;
+    border-bottom-color: rgba(244, 114, 182, 0.3) !important;
+}
+
+/* Summer header (default green) */
+.phone-app-viewport:has(.tree-page.season-summer) .phone-app-viewport-header {
+    background: rgba(240, 253, 244, 0.95) !important;
+    border-bottom-color: rgba(74, 222, 128, 0.3) !important;
+}
+
+/* Autumn header */
+.phone-app-viewport:has(.tree-page.season-autumn) .phone-app-viewport-header {
+    background: rgba(255, 251, 235, 0.95) !important;
+    border-bottom-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+/* Winter header */
+.phone-app-viewport:has(.tree-page.season-winter) .phone-app-viewport-header {
+    background: rgba(240, 249, 255, 0.95) !important;
+    border-bottom-color: rgba(147, 197, 253, 0.3) !important;
+}
+
+/* Quiz Header Override */
+.phone-app-viewport:has(.tg-quiz-page) .phone-app-viewport-header {
+    background: rgba(253, 244, 255, 0.95) !important;
+    border-bottom-color: rgba(168, 85, 247, 0.3) !important;
+}
+
+/* Gacha Header Override */
+.phone-app-viewport:has(.tg-gacha-page) .phone-app-viewport-header {
+    background: rgba(250, 245, 255, 0.95) !important;
+    border-bottom-color: rgba(168, 85, 247, 0.3) !important;
+}
+
+/* TOD Header Override */
+.phone-app-viewport:has(.tg-tod-page) .phone-app-viewport-header {
+    background: rgba(255, 241, 242, 0.95) !important;
+    border-bottom-color: rgba(244, 63, 94, 0.3) !important;
+}
+
+.phone-app-viewport:has(.tree-page) .phone-app-viewport-title {
+    color: #1f2937 !important;
+}
+
+.phone-app-viewport:has(.tree-page) .phone-app-back-btn {
+    color: #16a34a !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Scrollbar
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-main::-webkit-scrollbar {
+    width: 4px;
+}
+
+.tree-main::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tree-main::-webkit-scrollbar-thumb {
+    background: rgba(74, 222, 128, 0.15);
+    border-radius: 2px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STAGE 3: Mini-Game Shared Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Shared primary button */
+.tg-primary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 20px;
+    background: #4ade80;
+    box-shadow: 0 4px 0 #16a34a;
+    border: none;
+    border-radius: 22px;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+}
+
+.tg-primary-btn:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 transparent;
+}
+
+.tg-primary-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Shared secondary button */
+.tg-secondary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px;
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    color: rgba(31, 41, 55, 0.7);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.tg-secondary-btn:active {
+    background: #ffffff;
+}
+
+/* Shared reward banner */
+.tg-quiz-reward-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(74, 222, 128, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 20px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #16a34a;
+}
+
+/* Shared reward overlay */
+.tg-reward-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: tree-stageup-fadein 0.3s ease-out;
+}
+
+.tg-reward-card {
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    border-radius: 28px;
+    padding: 28px 24px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    max-width: 240px;
+    animation: tree-stageup-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tg-reward-icon {
+    font-size: 35px;
+    color: #facc15;
+}
+
+.tg-reward-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tg-reward-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.7);
+}
+
+.tg-reward-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tg-reward-item i {
+    color: #16a34a;
+}
+
+.tg-reward-dismiss {
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.3);
+    margin-top: 4px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3a. 默契挑战 — Quiz Game
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tg-quiz-page {
+    background: linear-gradient(180deg, #fdf4ff 0%, #f3e8ff 60%, #e0e7ff 100%) !important;
+}
+
+.tg-quiz-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Progress bar */
+.tg-quiz-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tg-quiz-progress-text {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.5);
+    flex-shrink: 0;
+}
+
+.tg-quiz-progress-bar {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.tg-quiz-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #a855f7, #6366f1);
+    transition: width 0.4s ease;
+}
+
+.tg-quiz-score {
+    font-size: 15px;
+    color: #7e22ce;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+/* Question card */
+.tg-quiz-question-card {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 24px 20px;
+    text-align: center;
+    position: relative;
+}
+
+.tg-quiz-question-text {
+    font-size: 19px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+
+.tg-quiz-question-hint {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.4);
+}
+
+/* Options */
+.tg-quiz-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tg-quiz-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: #ffffff;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: 22px;
+    color: rgba(31, 41, 55, 0.85);
+    font-size: 17px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: inherit;
+}
+
+.tg-quiz-option:active {
+    transform: scale(0.97);
+}
+
+.tg-quiz-option-letter {
+    width: 28px;
+    height: 28px;
+    border-radius: 16px;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(31, 41, 55, 0.5);
+    flex-shrink: 0;
+}
+
+.tg-quiz-option-text {
+    flex: 1;
+}
+
+/* Answer states */
+.tg-quiz-option-selected {
+    border-color: #9333ea;
+    background: #ffffff;
+}
+
+.tg-quiz-option-selected .tg-quiz-option-letter {
+    background: rgba(147, 51, 234, 0.2);
+    color: #9333ea;
+}
+
+.tg-quiz-option-ai {
+    border-color: rgba(99, 102, 241, 0.5);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.tg-quiz-option-ai .tg-quiz-option-letter {
+    background: rgba(99, 102, 241, 0.3);
+    color: #818cf8;
+}
+
+.tg-quiz-option-match {
+    border-color: #22c55e !important;
+    background: rgba(74, 222, 128, 0.12) !important;
+}
+
+.tg-quiz-option-mismatch {
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* Result indicator */
+.tg-quiz-result-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 17px;
+    font-weight: 600;
+    animation: tree-stageup-pop 0.3s ease-out;
+}
+
+.tg-quiz-result-indicator.match {
+    color: #16a34a;
+}
+
+.tg-quiz-result-indicator.mismatch {
+    color: rgba(239, 68, 68, 0.8);
+}
+
+/* Results page */
+.tg-quiz-results {
+    align-items: center;
+    text-align: center;
+}
+
+.tg-quiz-results-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0;
+}
+
+.tg-quiz-results-score {
+    font-size: 51px;
+    font-weight: 800;
+    color: #1f2937;
+    line-height: 1;
+}
+
+.tg-quiz-results-total {
+    font-size: 27px;
+    font-weight: 400;
+    color: rgba(31, 41, 55, 0.4);
+}
+
+.tg-quiz-results-label {
+    font-size: 19px;
+    font-weight: 600;
+    color: rgba(31, 41, 55, 0.8);
+}
+
+.tg-quiz-results-pct {
+    font-size: 15px;
+    color: #7e22ce;
+}
+
+/* Results list */
+.tg-quiz-results-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+
+.tg-quiz-results-item {
+    padding: 10px 12px;
+    background: #ffffff;
+    border-radius: 18px;
+    border-left: 3px solid transparent;
+}
+
+.tg-quiz-results-item.match {
+    border-left-color: rgba(74, 222, 128, 0.6);
+}
+
+.tg-quiz-results-item.mismatch {
+    border-left-color: rgba(239, 68, 68, 0.4);
+}
+
+.tg-quiz-results-q {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.6);
+    margin-bottom: 4px;
+}
+
+.tg-quiz-results-answers {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.45);
+}
+
+.tg-quiz-results-answers i {
+    margin-left: auto;
+}
+
+.tg-quiz-results-answers .fa-heart {
+    color: #16a34a;
+}
+
+.tg-quiz-results-answers .fa-heart-crack {
+    color: rgba(239, 68, 68, 0.6);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3b. 记忆扭蛋 — Gacha Game
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tg-gacha-page {
+    background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 60%, #e9d5ff 100%) !important;
+}
+
+.tg-gacha-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Machine */
+.tg-gacha-machine {
+    width: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 8px 0;
+}
+
+.tg-gacha-dome {
+    width: 160px;
+    height: 140px;
+    border-radius: 80px 80px 0 0;
+    background: #ffffff;
+    border: 2px solid rgba(168, 85, 247, 0.25);
+    border-bottom: none;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tg-gacha-ball {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    color: #fff;
+    z-index: 2;
+    transition: transform 0.3s;
+}
+
+.tg-gacha-ball-bg {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    opacity: 0.25;
+    z-index: 1;
+}
+
+.tg-gacha-ball-bg.b1 {
+    top: 18px;
+    left: 14px;
+    background: linear-gradient(135deg, #f43f5e, #ec4899);
+}
+
+.tg-gacha-ball-bg.b2 {
+    top: 30px;
+    right: 18px;
+    background: linear-gradient(135deg, #facc15, #f97316);
+}
+
+.tg-gacha-ball-bg.b3 {
+    bottom: 12px;
+    left: 30px;
+    background: linear-gradient(135deg, #16a34a, #06b6d4);
+}
+
+.tg-gacha-slot {
+    width: 120px;
+    height: 24px;
+    background: #ffffff;
+    border: 2px solid rgba(168, 85, 247, 0.25);
+    border-radius: 0 0 12px 12px;
+    position: relative;
+}
+
+.tg-gacha-slot::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 6px;
+    background: rgba(147, 51, 234, 0.2);
+    border-radius: 0 0 4px 4px;
+}
+
+/* Ball drop animation */
+.tg-gacha-ball-drop {
+    animation: tg-gacha-drop 0.5s ease-in forwards;
+}
+
+@keyframes tg-gacha-drop {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    60% {
+        transform: translateY(60px);
+        opacity: 1;
+    }
+
+    80% {
+        transform: translateY(50px);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translateY(80px);
+        opacity: 0;
+    }
+}
+
+/* Info */
+.tg-gacha-info {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.5);
+}
+
+/* Pull button */
+.tg-gacha-pull-btn {
+    max-width: 200px;
+}
+
+/* Actions */
+.tg-gacha-actions {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.tg-gacha-actions .tg-secondary-btn {
+    flex: 1;
+}
+
+/* Result reveal */
+.tg-gacha-result {
+    justify-content: center;
+    text-align: center;
+}
+
+.tg-gacha-result-ball {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid;
+    animation: tree-stageup-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tg-gacha-result-ball.rarity-common {
+    background: rgba(176, 176, 176, 0.1);
+    border-color: rgba(176, 176, 176, 0.3);
+}
+
+.tg-gacha-result-ball.rarity-rare {
+    background: rgba(74, 158, 255, 0.1);
+    border-color: #3b82f6;
+}
+
+.tg-gacha-result-ball.rarity-epic {
+    background: #ffffff;
+    border-color: #9333ea;
+    box-shadow: 0 0 24px rgba(168, 85, 247, 0.2);
+}
+
+.tg-gacha-result-emoji {
+    font-size: 35px;
+}
+
+.tg-gacha-result-name {
+    font-size: 21px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tg-gacha-result-name.rarity-epic {
+    color: #9333ea;
+}
+
+.tg-gacha-result-name.rarity-rare {
+    color: #2563eb;
+}
+
+.tg-gacha-result-rarity {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.tg-gacha-result-rarity.rarity-common {
+    color: rgba(176, 176, 176, 0.7);
+}
+
+.tg-gacha-result-rarity.rarity-rare {
+    color: #2563eb;
+}
+
+.tg-gacha-result-rarity.rarity-epic {
+    color: #7e22ce;
+}
+
+.tg-gacha-result-desc {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.5);
+}
+
+.tg-gacha-result-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* Collection / Atlas */
+.tg-collection {
+    text-align: left;
+}
+
+.tg-collection-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 17px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.tg-collection-count {
+    font-size: 15px;
+    color: #7e22ce;
+    font-weight: 400;
+}
+
+.tg-collection-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+}
+
+.tg-collection-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 6px;
+    border-radius: 20px;
+    border: 1.5px solid transparent;
+    text-align: center;
+}
+
+.tg-collection-item.owned {
+    background: #ffffff;
+}
+
+.tg-collection-item.owned.rarity-common {
+    border-color: rgba(176, 176, 176, 0.2);
+}
+
+.tg-collection-item.owned.rarity-rare {
+    border-color: rgba(74, 158, 255, 0.3);
+}
+
+.tg-collection-item.owned.rarity-epic {
+    border-color: rgba(147, 51, 234, 0.2);
+}
+
+.tg-collection-item.locked {
+    background: #ffffff;
+    opacity: 0.4;
+}
+
+.tg-collection-item-icon {
+    font-size: 27px;
+}
+
+.tg-collection-item-name {
+    font-size: 13px;
+    color: rgba(31, 41, 55, 0.6);
+}
+
+/* Fragments progress */
+.tg-collection-fragments {
+    width: 100%;
+    padding: 12px;
+    background: #ffffff;
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tg-collection-fragments-title {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.6);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tg-collection-fragments-title i {
+    color: rgba(168, 85, 247, 0.6);
+}
+
+.tg-collection-fragments-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.tg-collection-fragments-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    transition: width 0.4s ease;
+}
+
+.tg-collection-fragments-complete {
+    font-size: 14px;
+    color: #facc15;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tg-collection-fragments-hint {
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.35);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3c. 真心话大冒险 — Truth or Dare
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tg-tod-page {
+    background: linear-gradient(180deg, #fff1f2 0%, #ffe4e6 60%, #fecdd3 100%) !important;
+}
+
+.tg-tod-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Header */
+.tg-tod-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.5);
+}
+
+.tg-tod-turn {
+    color: rgba(239, 68, 68, 0.8);
+    font-weight: 600;
+}
+
+/* Roulette */
+.tg-tod-roulette-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.tg-tod-cylinder {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid rgba(239, 68, 68, 0.2);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tg-tod-slot {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.tg-tod-slot.bullet {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Position slots in a circle */
+.tg-tod-slot[data-slot="0"] {
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.tg-tod-slot[data-slot="1"] {
+    top: 24px;
+    right: 12px;
+}
+
+.tg-tod-slot[data-slot="2"] {
+    bottom: 24px;
+    right: 12px;
+}
+
+.tg-tod-slot[data-slot="3"] {
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.tg-tod-slot[data-slot="4"] {
+    bottom: 24px;
+    left: 12px;
+}
+
+.tg-tod-slot[data-slot="5"] {
+    top: 24px;
+    left: 12px;
+}
+
+.tg-tod-cylinder-center {
+    font-size: 27px;
+    color: rgba(31, 41, 55, 0.2);
+}
+
+.tg-tod-pointer {
+    font-size: 27px;
+    color: rgba(239, 68, 68, 0.6);
+}
+
+.tg-tod-fire-btn {
+    max-width: 200px;
+    background: #bae6fd !important;
+    /* Flat baby blue */
+    color: #0369a1 !important;
+    /* Darker blue text for contrast */
+    box-shadow: none !important;
+}
+
+.tg-tod-fire-btn:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 transparent;
+}
+
+/* Safe overlay */
+.tg-tod-result-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: tree-stageup-fadein 0.2s ease-out;
+}
+
+.tg-tod-result-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 28px 24px;
+    animation: tree-stageup-pop 0.3s ease-out;
+}
+
+.tg-tod-result-card.safe i {
+    font-size: 43px;
+    color: #16a34a;
+}
+
+.tg-tod-result-text {
+    font-size: 23px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tg-tod-result-sub {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.5);
+}
+
+/* Question view */
+.tg-tod-question-view {
+    text-align: center;
+}
+
+.tg-tod-hit-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #e0f2fe;
+    /* Light baby blue bg */
+    border: 1px solid #bae6fd;
+    border-radius: 20px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #0284c7;
+    /* Blue text */
+    animation: tree-stageup-pop 0.3s ease-out;
+}
+
+.tg-tod-question-card {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 28px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tg-tod-question-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(239, 68, 68, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.tg-tod-question-text {
+    font-size: 19px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.6;
+}
+
+.tg-tod-player-prompt {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.4);
+    padding: 0 4px;
+}
+
+/* AI response area */
+.tg-tod-ai-response {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    background: #ffffff;
+    border-radius: 22px;
+    text-align: left;
+}
+
+.tg-tod-ai-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: rgba(99, 102, 241, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    color: #818cf8;
+    flex-shrink: 0;
+}
+
+.tg-tod-ai-text {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.6);
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+/* Finish screen */
+.tg-tod-finish {
+    justify-content: center;
+    text-align: center;
+}
+
+.tg-tod-finish-icon {
+    font-size: 51px;
+    color: #facc15;
+}
+
+.tg-tod-finish-title {
+    font-size: 23px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tg-tod-finish-sub {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.5);
+}
+
+.tg-tod-no-reward {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.35);
+    padding: 8px 0;
+}
+
+/* ── Player Input Area ── */
+.tg-tod-input-area {
+    width: 100%;
+}
+
+.tg-tod-textarea {
+    width: 100%;
+    min-height: 72px;
+    max-height: 120px;
+    padding: 12px 14px;
+    border: 1.5px solid rgba(239, 68, 68, 0.2);
+    border-radius: 18px;
+    background: #ffffff;
+    font-size: 16px;
+    color: #1f2937;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.tg-tod-textarea:focus {
+    border-color: rgba(239, 68, 68, 0.45);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
+}
+
+.tg-tod-textarea:disabled {
+    background: rgba(255, 255, 255, 0.6);
+    color: rgba(31, 41, 55, 0.4);
+}
+
+.tg-tod-textarea::placeholder {
+    color: rgba(31, 41, 55, 0.25);
+}
+
+/* Shake animation for empty submission */
+.tg-tod-shake {
+    animation: tg-tod-shake 0.4s ease;
+}
+
+@keyframes tg-tod-shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20% {
+        transform: translateX(-6px);
+    }
+
+    40% {
+        transform: translateX(6px);
+    }
+
+    60% {
+        transform: translateX(-4px);
+    }
+
+    80% {
+        transform: translateX(4px);
+    }
+}
+
+/* ── AI Reaction Area (player turn) ── */
+.tg-tod-reaction-area {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    background: #ffffff;
+    border-radius: 22px;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+    animation: tree-dialogue-fadein 0.3s ease-out;
+}
+
+/* ── Chat Log Panel ── */
+.tg-tod-chat-log {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid rgba(239, 68, 68, 0.1);
+    margin-top: 4px;
+}
+
+.tg-tod-chat-log-title {
+    font-size: 13px;
+    color: rgba(31, 41, 55, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 4px;
+}
+
+.tg-tod-chat-log-title i {
+    font-size: 12px;
+}
+
+/* Chat divider (question label) */
+.tg-tod-chat-divider {
+    font-size: 13px;
+    color: rgba(239, 68, 68, 0.5);
+    text-align: center;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.tg-tod-chat-divider i {
+    font-size: 11px;
+}
+
+/* Chat bubbles */
+.tg-tod-chat-bubble {
+    max-width: 85%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tg-tod-chat-bubble.player {
+    align-self: flex-end;
+}
+
+.tg-tod-chat-bubble.ai {
+    align-self: flex-start;
+}
+
+.tg-tod-chat-bubble-name {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.3);
+    padding: 0 8px;
+}
+
+.tg-tod-chat-bubble.player .tg-tod-chat-bubble-name {
+    text-align: right;
+}
+
+.tg-tod-chat-bubble-text {
+    padding: 10px 16px;
+    border-radius: 18px;
+    font-size: 16px;
+    line-height: 1.6;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.tg-tod-chat-bubble.player .tg-tod-chat-bubble-text {
+    background: rgba(239, 68, 68, 0.08);
+    color: rgba(31, 41, 55, 0.7);
+    border-bottom-right-radius: 6px;
+}
+
+.tg-tod-chat-bubble.ai .tg-tod-chat-bubble-text {
+    background: rgba(99, 102, 241, 0.08);
+    color: rgba(31, 41, 55, 0.7);
+    border-bottom-left-radius: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Stage 4: LLM Integration Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Care Dialogue Bubble ── */
+.tree-dialogue-bubble {
+    padding: 10px 14px;
+    margin: 0 4px;
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.18);
+    border-radius: 22px;
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.75);
+    line-height: 1.5;
+    text-align: center;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.tree-dialogue-bubble strong {
+    color: #9333ea;
+    font-weight: 600;
+}
+
+.tree-dialogue-show {
+    animation: tree-dialogue-fadein 0.4s ease-out;
+}
+
+.tree-dialogue-hide {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+@keyframes tree-dialogue-fadein {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── AI Care Dialogue (in notice) ── */
+.tree-ai-care-dialogue {
+    margin-top: 6px;
+    font-size: 15px;
+    color: #7e22ce;
+    font-style: italic;
+}
+
+/* ── Refill Tip Bar ── */
+.tree-refill-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 0 4px 4px;
+    background: rgba(250, 204, 21, 0.06);
+    border: 1px solid rgba(250, 204, 21, 0.15);
+    border-radius: 18px;
+    font-size: 15px;
+    color: rgba(33, 33, 33, 0.8);
+}
+
+.tree-refill-bar i {
+    flex-shrink: 0;
+}
+
+.tree-refill-bar span {
+    flex: 1;
+}
+
+.tree-refill-btn {
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.25);
+    border-radius: 14px;
+    color: rgba(36, 36, 36, 0.9);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.tree-refill-btn:hover {
+    background: rgba(250, 204, 21, 0.2);
+}
+
+/* ── Loading Hint ── */
+.tree-loading-hint {
+    background: rgba(99, 102, 241, 0.06) !important;
+    border-color: rgba(99, 102, 241, 0.15) !important;
+    color: rgba(31, 41, 55, 0.5) !important;
+}
+
+.tree-loading-hint i {
+    margin-right: 6px;
+    color: #9333ea;
+}
+
+/* ── Stage-Up LLM Text ── */
+.tree-stageup-llm-text {
+    margin-top: 8px;
+    padding: 0 12px;
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.6);
+    line-height: 1.5;
+    text-align: center;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.tree-stageup-llm-text em {
+    color: #7e22ce;
+}
+
+/* ── ToD AI Typing Indicator ── */
+.tg-tod-ai-typing {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.tg-tod-ai-typing span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #9333ea;
+    animation: tg-tod-typing-dot 1.2s infinite ease-in-out;
+}
+
+.tg-tod-ai-typing span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.tg-tod-ai-typing span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes tg-tod-typing-dot {
+
+    0%,
+    60%,
+    100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+    }
+
+    30% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+}
+
+/* ── Gacha Dialogue Overlay (恋人密语) ── */
+.tg-gacha-dialogue-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: tree-stageup-fadein 0.3s ease-out;
+    cursor: pointer;
+}
+
+.tg-gacha-dialogue-card {
+    max-width: 320px;
+    width: calc(100% - 48px);
+    background: linear-gradient(160deg, rgba(168, 85, 247, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%);
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    border-radius: 28px;
+    padding: 28px 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    animation: tree-stageup-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tg-gacha-dialogue-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tg-gacha-dialogue-emoji {
+    font-size: 31px;
+}
+
+.tg-gacha-dialogue-title {
+    font-size: 21px;
+    font-weight: 700;
+    color: #9333ea;
+}
+
+.tg-gacha-dialogue-content {
+    font-size: 17px;
+    color: rgba(31, 41, 55, 0.75);
+    line-height: 1.7;
+    text-align: center;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.tg-gacha-dialogue-content i {
+    color: #9333ea;
+    margin-right: 6px;
+}
+
+.tg-gacha-dialogue-dismiss {
+    font-size: 14px;
+    color: rgba(31, 41, 55, 0.25);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Adoption — Seed Image & Type Badge
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-adoption-seed-img {
+    max-width: 64px;
+    max-height: 64px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+.tree-adoption-seed-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tree-adoption-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 14px;
+    background: rgba(45, 147, 108, 0.1);
+    border: 1px solid rgba(45, 147, 108, 0.25);
+    border-radius: 20px;
+    font-size: 14px;
+    color: #16a34a;
+    font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Fruit Image — on tree stage display
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-fruit-img {
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    image-rendering: pixelated;
+    object-fit: contain;
+    cursor: pointer;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+    transition: transform 0.2s;
+    z-index: 5;
+}
+
+.tree-fruit-img:hover {
+    transform: scale(1.15);
+}
+
+.tree-fruit-img:active {
+    transform: scale(0.9);
+}
+
+/* Fruit collected success animation */
+.tree-fruit-collected {
+    animation: fruit-collect-pop 0.8s ease-out;
+}
+
+@keyframes fruit-collect-pop {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    40% {
+        transform: scale(1.4) rotate(15deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0.3) translateY(-30px);
+        opacity: 0;
+    }
+}
+
+/* Fruit miss shake */
+.tree-fruit-miss {
+    animation: fruit-miss-shake 0.6s ease;
+}
+
+@keyframes fruit-miss-shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    15% {
+        transform: translateX(-4px) rotate(-3deg);
+    }
+
+    30% {
+        transform: translateX(4px) rotate(3deg);
+    }
+
+    45% {
+        transform: translateX(-3px) rotate(-2deg);
+    }
+
+    60% {
+        transform: translateX(3px) rotate(2deg);
+    }
+
+    75% {
+        transform: translateX(-1px);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Graduation Section — on main page when MAX
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-graduation-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.08), rgba(74, 222, 128, 0.1));
+    border: 1px solid rgba(250, 204, 21, 0.3);
+    border-radius: 22px;
+}
+
+.tree-graduation-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #b45309;
+}
+
+.tree-graduation-desc {
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.6);
+    line-height: 1.6;
+}
+
+.tree-graduation-btn {
+    background: linear-gradient(135deg, #facc15, #f59e0b);
+    box-shadow: 0 4px 0 #b45309;
+    border: none;
+    border-radius: 32px;
+    padding: 12px 32px;
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+}
+
+.tree-graduation-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Graduation Ceremony Page
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-graduation-ceremony {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 32px 24px;
+    text-align: center;
+    gap: 16px;
+}
+
+.tree-graduation-congrats {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.15), rgba(245, 158, 11, 0.15));
+    border: 2px solid rgba(250, 204, 21, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: #f59e0b;
+}
+
+.tree-graduation-ceremony .tree-graduation-title {
+    font-size: 22px;
+}
+
+.tree-graduation-ceremony .tree-graduation-subtitle {
+    font-size: 16px;
+    color: rgba(31, 41, 55, 0.55);
+    line-height: 1.6;
+    max-width: 280px;
+}
+
+.tree-graduation-new {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(45, 147, 108, 0.08);
+    border: 1px solid rgba(45, 147, 108, 0.2);
+    border-radius: 20px;
+    font-size: 15px;
+    color: rgba(31, 41, 55, 0.7);
+}
+
+.tree-graduation-new-img {
+    width: 48px;
+    height: 48px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Gallery Page — Tree & Fruit Collections
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-gallery {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.tree-gallery-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tree-gallery-section-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f2937;
+    padding: 0 2px;
+}
+
+.tree-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.tree-gallery-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 24px;
+    color: rgba(31, 41, 55, 0.35);
+    font-size: 15px;
+}
+
+.tree-gallery-card {
+    background: #ffffff;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 18px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.tree-gallery-card-img {
+    width: 80px;
+    height: 80px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+.tree-gallery-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tree-gallery-card-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.tree-gallery-card-type {
+    font-size: 13px;
+    color: #16a34a;
+}
+
+.tree-gallery-card-date {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.35);
+}
+
+/* ── Fruit Gallery ────────────────────────────────────────── */
+
+.tree-fruit-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.tree-fruit-gallery-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 4px;
+    background: #ffffff;
+    border-radius: 16px;
+    text-align: center;
+}
+
+.tree-fruit-gallery-item.locked {
+    opacity: 0.35;
+    filter: grayscale(1);
+}
+
+.tree-fruit-gallery-item.locked i {
+    font-size: 24px;
+    color: rgba(31, 41, 55, 0.3);
+}
+
+.tree-fruit-gallery-item.collected {
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.tree-fruit-gallery-img {
+    width: 32px;
+    height: 32px;
+    image-rendering: pixelated;
+    object-fit: contain;
+}
+
+.tree-fruit-gallery-name {
+    font-size: 12px;
+    color: rgba(31, 41, 55, 0.6);
+}
+
+/* Games grid — auto-adjust columns when gallery button present */
+.tree-games-grid:has(:nth-child(4)) {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Season Themes — page bg / stage border / badge / accent colors
+   Driven by .tree-page.season-{spring|summer|autumn|winter}
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── 🌸 Spring ─────────────────────────────────────────────────────────── */
+.tree-page.season-spring {
+    background: linear-gradient(180deg, #fdf2f8 0%, #fce7f3 40%, #f0fdf4 100%);
+}
+
+.tree-page.season-spring .tree-stage-display {
+    border-color: rgba(244, 114, 182, 0.35);
+    box-shadow: 0 4px 12px rgba(244, 114, 182, 0.15);
+}
+
+.tree-page.season-spring .tree-season-badge {
+    background: rgba(251, 207, 232, 0.6);
+    color: #be185d;
+}
+
+.tree-page.season-spring .tree-progress-fill {
+    background: linear-gradient(90deg, #f472b6, #ec4899);
+}
+
+.tree-page.season-spring .tree-care-btn:not(:disabled):active {
+    background: rgba(244, 114, 182, 0.15);
+    border-color: rgba(244, 114, 182, 0.3);
+}
+
+.tree-page.season-spring .tree-care-btn-icon {
+    background: rgba(236, 72, 153, 0.12);
+    color: #db2777;
+}
+
+.tree-page.season-spring .tree-care-btn-value {
+    color: #db2777;
+}
+
+.tree-page.season-spring .tree-growth-toast {
+    color: #db2777;
+    text-shadow: 0 0 12px rgba(244, 114, 182, 0.4);
+}
+
+.tree-page.season-spring .tree-stage-label i {
+    color: #ec4899;
+}
+
+.tree-page.season-spring .tree-game-btn.tree-game-btn-active {
+    background: rgba(236, 72, 153, 0.08);
+    border-color: rgba(236, 72, 153, 0.2);
+}
+
+.tree-page.season-spring .tree-game-btn.tree-game-btn-active i {
+    color: #db2777;
+}
+
+/* ── ☀️ Summer ─────────────────────────────────────────────────────────── */
+.tree-page.season-summer {
+    background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 40%, #fefce8 100%);
+}
+
+.tree-page.season-summer .tree-stage-display {
+    border-color: rgba(74, 222, 128, 0.35);
+    box-shadow: 0 4px 12px rgba(45, 147, 108, 0.15);
+}
+
+.tree-page.season-summer .tree-season-badge {
+    background: rgba(187, 247, 208, 0.6);
+    color: #15803d;
+}
+
+.tree-page.season-summer .tree-progress-fill {
+    background: linear-gradient(90deg, #2d936c, #16a34a);
+}
+
+.tree-page.season-summer .tree-care-btn-icon {
+    background: rgba(45, 147, 108, 0.15);
+    color: #16a34a;
+}
+
+.tree-page.season-summer .tree-care-btn-value {
+    color: #16a34a;
+}
+
+.tree-page.season-summer .tree-growth-toast {
+    color: #16a34a;
+    text-shadow: 0 0 12px rgba(74, 222, 128, 0.4);
+}
+
+.tree-page.season-summer .tree-stage-label i {
+    color: #16a34a;
+}
+
+/* ── 🍂 Autumn ─────────────────────────────────────────────────────────── */
+.tree-page.season-autumn {
+    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 40%, #fed7aa 100%);
+}
+
+.tree-page.season-autumn .tree-stage-display {
+    border-color: rgba(251, 146, 60, 0.3);
+    box-shadow: 0 4px 12px rgba(234, 88, 12, 0.12);
+}
+
+.tree-page.season-autumn .tree-season-badge {
+    background: rgba(254, 215, 170, 0.6);
+    color: #c2410c;
+}
+
+.tree-page.season-autumn .tree-progress-fill {
+    background: linear-gradient(90deg, #f59e0b, #ea580c);
+}
+
+.tree-page.season-autumn .tree-care-btn:not(:disabled):active {
+    background: rgba(251, 146, 60, 0.15);
+    border-color: rgba(251, 146, 60, 0.3);
+}
+
+.tree-page.season-autumn .tree-care-btn-icon {
+    background: rgba(234, 88, 12, 0.1);
+    color: #ea580c;
+}
+
+.tree-page.season-autumn .tree-care-btn-value {
+    color: #ea580c;
+}
+
+.tree-page.season-autumn .tree-growth-toast {
+    color: #ea580c;
+    text-shadow: 0 0 12px rgba(251, 146, 60, 0.4);
+}
+
+.tree-page.season-autumn .tree-stage-label i {
+    color: #ea580c;
+}
+
+.tree-page.season-autumn .tree-game-btn.tree-game-btn-active {
+    background: rgba(234, 88, 12, 0.08);
+    border-color: rgba(234, 88, 12, 0.2);
+}
+
+.tree-page.season-autumn .tree-game-btn.tree-game-btn-active i {
+    color: #ea580c;
+}
+
+.tree-page.season-autumn .tree-ai-care-notice {
+    border-color: rgba(251, 146, 60, 0.3);
+}
+
+.tree-page.season-autumn .tree-ai-care-notice i {
+    color: #ea580c;
+}
+
+/* ── ❄️ Winter ─────────────────────────────────────────────────────────── */
+.tree-page.season-winter {
+    background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 40%, #dbeafe 100%);
+}
+
+.tree-page.season-winter .tree-stage-display {
+    border-color: rgba(147, 197, 253, 0.4);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
+}
+
+.tree-page.season-winter .tree-season-badge {
+    background: rgba(191, 219, 254, 0.6);
+    color: #1d4ed8;
+}
+
+.tree-page.season-winter .tree-progress-fill {
+    background: linear-gradient(90deg, #60a5fa, #3b82f6);
+}
+
+.tree-page.season-winter .tree-care-btn:not(:disabled):active {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+.tree-page.season-winter .tree-care-btn-icon {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+.tree-page.season-winter .tree-care-btn-value {
+    color: #2563eb;
+}
+
+.tree-page.season-winter .tree-growth-toast {
+    color: #3b82f6;
+    text-shadow: 0 0 12px rgba(96, 165, 250, 0.4);
+}
+
+.tree-page.season-winter .tree-stage-label i {
+    color: #3b82f6;
+}
+
+.tree-page.season-winter .tree-game-btn.tree-game-btn-active {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.tree-page.season-winter .tree-game-btn.tree-game-btn-active i {
+    color: #2563eb;
+}
+
+.tree-page.season-winter .tree-ai-care-notice {
+    border-color: rgba(147, 197, 253, 0.3);
+}
+
+.tree-page.season-winter .tree-ai-care-notice i {
+    color: #3b82f6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Developer Debug Panel
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.tree-debug-panel {
+    background: rgba(254, 226, 226, 0.95);
+    border: 2px solid rgba(239, 68, 68, 0.4);
+    border-radius: 14px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    z-index: 50;
+}
+
+.tree-dbg-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #dc2626;
+    letter-spacing: 1px;
+}
+
+.tree-dbg-title i {
+    font-size: 13px;
+}
+
+.tree-dbg-close {
+    margin-left: auto;
+    font-size: 18px;
+    cursor: pointer;
+    color: rgba(220, 38, 38, 0.6);
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.tree-dbg-close:hover {
+    color: #dc2626;
+}
+
+.tree-dbg-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.tree-dbg-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(220, 38, 38, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tree-dbg-row {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.tree-dbg-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 2px;
+    border: 1px solid rgba(220, 38, 38, 0.15);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    color: rgba(31, 41, 55, 0.7);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.tree-dbg-btn:active {
+    transform: translateY(1px);
+}
+
+.tree-dbg-btn-active {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #dc2626;
+    font-weight: 700;
+}
+
+.tree-dbg-hint {
+    font-size: 10px;
+    color: rgba(220, 38, 38, 0.5);
+    text-align: center;
+    font-style: italic;
+}

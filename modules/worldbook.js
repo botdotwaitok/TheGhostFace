@@ -1,4 +1,4 @@
-﻿// worldbook.js
+// worldbook.js
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { characters } from '../../../../../script.js';
 import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
@@ -40,6 +40,7 @@ export async function getExistingWorldBookContext() {
 
         const currentChatIdentifier = await core.getCurrentChatIdentifier();
         let contextParts = [];
+        let fragmentTitles = []; // 🆕 收集记忆碎片标题
 
 
         Object.values(worldBookData.entries).forEach(entry => {
@@ -67,14 +68,26 @@ export async function getExistingWorldBookContext() {
                     contextParts.push(`**${category}类别已记录:**\n${cleanContent}`);
                 }
             }
+
+            // 🆕 收集记忆碎片标题
+            if (entry.comment.startsWith('记忆碎片 - ')) {
+                const fragTitle = entry.comment.replace('记忆碎片 - ', '').trim();
+                const fragContent = (entry.content || '').replace(/^\[第\d+-\d+楼\]\s*/, '').replace(/^\[主动记忆.*?\]\s*/, '').trim();
+                // 取内容的前60个字符作为摘要
+                const snippet = fragContent.length > 60 ? fragContent.substring(0, 60) + '...' : fragContent;
+                fragmentTitles.push(`- [${fragTitle}]: ${snippet}`);
+            }
         });
 
-        const finalContext = contextParts.length > 0
-            ? contextParts.join('\n\n')
-            : '档案库为空，这是第一次记录。';
+        // 🆕 构建碎片标题清单
+        let fragmentListSection = '';
+        if (fragmentTitles.length > 0) {
+            fragmentListSection = `\n\n**已有记忆碎片标题列表 (共${fragmentTitles.length}条，同一件事有发展时请用 ===UPDATE=== 更新对应标题):**\n${fragmentTitles.join('\n')}`;
+        }
 
-        //logger.info(`🧠 已获取现有世界书上下文，长度: ${finalContext.length} 字符`);
-        //logger.info(`🧠 找到 ${contextParts.length} 个现有类别的记录`);
+        const finalContext = contextParts.length > 0 || fragmentTitles.length > 0
+            ? (contextParts.length > 0 ? contextParts.join('\n\n') : '') + fragmentListSection
+            : '档案库为空，这是第一次记录。';
 
         return finalContext;
 
@@ -262,33 +275,134 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
         };
 
         let createdCount = 0;
+        let updatedCount = 0;
         let skippedCount = 0;
 
-        // 🔧 收集现有碎片条目用于去重
+        // 🔧 收集现有碎片条目用于去重（包含引用以便直接修改）
         const existingFragments = [];
         if (worldBookData.entries) {
-            Object.values(worldBookData.entries).forEach((entry) => {
+            Object.entries(worldBookData.entries).forEach(([uid, entry]) => {
                 if (!entry || !entry.comment) return;
                 const comment = String(entry.comment).trim();
                 // Match both old category entries and new fragment entries
-                if (comment.startsWith('我们的故事 - ')) {
+                if (comment.startsWith('我们的故事 - ') || comment.startsWith('记忆碎片 - ')) {
+                    const label = comment.startsWith('记忆碎片 - ')
+                        ? comment.replace('记忆碎片 - ', '').trim()
+                        : null;
                     existingFragments.push({
+                        uid: uid,
                         comment: comment,
-                        content: entry.content || ''
+                        content: entry.content || '',
+                        label: label,
+                        entryRef: entry  // 🆕 保留引用以便直接修改
                     });
                 }
             });
         }
         logger.info(`[鬼面] 扫描完成: 找到 ${existingFragments.length} 个现有条目用于去重`);
 
-        // 🧠 为每个记忆碎片创建独立的 WI 条目
+        // 🆕 标题相似度计算（用于模糊标题匹配）
+        const isLabelSimilar = (label1, label2) => {
+            if (!label1 || !label2) return false;
+            // 去除标签前缀（如 "喜好-", "事件-" 等）
+            const stripPrefix = (l) => l.replace(/^[^\-]+[\-－]/, '').trim();
+            const l1 = stripPrefix(label1).toLowerCase();
+            const l2 = stripPrefix(label2).toLowerCase();
+            if (l1 === l2) return true;
+            // 包含关系
+            if (l1.length > 1 && l2.length > 1 && (l1.includes(l2) || l2.includes(l1))) return true;
+            // 编辑距离相似度 > 60%
+            if (typeof isContentSimilar === 'function') {
+                const maxLen = Math.max(l1.length, l2.length);
+                if (maxLen === 0) return false;
+                let matches = 0;
+                const minLen = Math.min(l1.length, l2.length);
+                for (let c = 0; c < minLen; c++) {
+                    if (l1[c] === l2[c]) matches++;
+                }
+                return (matches / maxLen) > 0.6;
+            }
+            return false;
+        };
+
+        // 🧠 为每个记忆碎片创建或更新 WI 条目
         for (let i = 0; i < summaryEntries.length; i++) {
             const fragment = summaryEntries[i];
 
             try {
-                logger.info(`[鬼面] 处理碎片 ${i + 1}/${summaryEntries.length}: [${fragment.label}]`);
+                logger.info(`[鬼面] 处理碎片 ${i + 1}/${summaryEntries.length}: [${fragment.label}]${fragment.updateTarget ? ' (UPDATE → ' + fragment.updateTarget + ')' : ''}`);
 
-                // 🧼 去重检查 — 对比所有现有条目
+                // 🛡️ 拦截不属于记忆碎片的条目（大总结等）
+                const forbiddenLabels = ['大总结', '世界线总结', '情节发展', '情感递进'];
+                if (forbiddenLabels.some(f => (fragment.label || '').includes(f) || (fragment.content || '').includes(f))) {
+                    logger.warn(`[鬼面] ⚠️ saveToWorldBook: 拦截了不属于记忆碎片的条目: [${fragment.label}]`);
+                    skippedCount++;
+                    continue;
+                }
+
+                // 🧱 楼层/时间标签
+                const floorTag = (typeof startIndex === 'number' && typeof endIndex === 'number')
+                    ? `[第${startIndex + 1}-${endIndex + 1}楼]`
+                    : `[主动记忆 ${new Date().toLocaleString()}]`;
+
+                const newKeywords = fragment.keywords && fragment.keywords.length > 0
+                    ? fragment.keywords
+                    : [fragment.label];
+
+                // ============================================================
+                // 🔄 路径A: AI 明确指定了 updateTarget（===UPDATE=== 块）
+                // ============================================================
+                if (fragment.updateTarget) {
+                    const targetTitle = fragment.updateTarget.trim();
+                    const matchEntry = existingFragments.find(ef =>
+                        ef.label && ef.label === targetTitle
+                    );
+
+                    if (matchEntry && matchEntry.entryRef) {
+                        // 直接覆盖旧条目内容
+                        matchEntry.entryRef.content = `${floorTag} ${fragment.content}`;
+                        // 合并关键词（去重）
+                        const oldKeys = Array.isArray(matchEntry.entryRef.key) ? matchEntry.entryRef.key : [];
+                        const mergedKeys = [...new Set([...newKeywords, ...oldKeys])];
+                        matchEntry.entryRef.key = mergedKeys;
+                        // 更新内部缓存
+                        matchEntry.content = matchEntry.entryRef.content;
+
+                        updatedCount++;
+                        logger.info(`[鬼面] 🔄 精确合并更新: [${targetTitle}] (Keywords: ${mergedKeys.join(', ')})`);
+                        continue;
+                    } else {
+                        logger.warn(`[鬼面] ⚠️ UPDATE 目标 "${targetTitle}" 未找到匹配条目，将作为新条目创建`);
+                        // 继续走下面的创建流程
+                    }
+                }
+
+                // ============================================================
+                // 🔄 路径B: 模糊去重 — 标题 + 内容双重检查
+                // ============================================================
+                let mergedWithExisting = false;
+
+                // B1: 标题模糊匹配 — 找到标题相似的旧条目则合并
+                for (const existing of existingFragments) {
+                    if (existing.label && isLabelSimilar(fragment.label, existing.label)) {
+                        // 标题相似 → 合并更新旧条目
+                        if (existing.entryRef) {
+                            existing.entryRef.content = `${floorTag} ${fragment.content}`;
+                            const oldKeys = Array.isArray(existing.entryRef.key) ? existing.entryRef.key : [];
+                            const mergedKeys = [...new Set([...newKeywords, ...oldKeys])];
+                            existing.entryRef.key = mergedKeys;
+                            existing.content = existing.entryRef.content;
+
+                            updatedCount++;
+                            mergedWithExisting = true;
+                            logger.info(`[鬼面] 🔄 标题模糊合并: [${fragment.label}] → 旧条目 [${existing.label}] (Keywords: ${mergedKeys.join(', ')})`);
+                            break;
+                        }
+                    }
+                }
+                if (mergedWithExisting) continue;
+
+                // B2: 内容相似度去重 — 内容几乎一样则跳过
                 let isDuplicate = false;
                 if (typeof isContentSimilar === 'function') {
                     for (const existing of existingFragments) {
@@ -305,44 +419,23 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                     continue;
                 }
 
-                // 🛡️ 拦截不属于记忆碎片的条目（大总结等）
-                const forbiddenLabels = ['大总结', '世界线总结', '情节发展', '情感递进'];
-                if (forbiddenLabels.some(f => (fragment.label || '').includes(f) || (fragment.content || '').includes(f))) {
-                    logger.warn(`[鬼面] ⚠️ saveToWorldBook: 拦截了不属于记忆碎片的条目: [${fragment.label}]`);
-                    skippedCount++;
-                    continue;
-                }
-
-                // 🆕 创建新的独立条目
+                // ============================================================
+                // 🆕 路径C: 全新条目 — 创建独立 WI entry
+                // ============================================================
                 const newEntry = createWorldInfoEntry(null, worldBookData);
                 if (!newEntry) {
                     logger.error('[鬼面] createWorldInfoEntry 返回 null');
                     continue;
                 }
 
-                // Generate a short unique identifier for the comment
-                const timestamp = Date.now().toString(36);
-                const fragmentId = `${timestamp}-${i}`;
-                // Use the label from the fragment (which now contains a short title)
                 const safeLabel = (fragment.label || '未命名碎片').replace(/[\\/:*?"<>|]/g, '_');
                 const commentText = `记忆碎片 - ${safeLabel}`;
-
-                // 🧱 楼层/时间标签
-                const floorTag = (typeof startIndex === 'number' && typeof endIndex === 'number')
-                    ? `[第${startIndex + 1}-${endIndex + 1}楼]`
-                    : `[主动记忆 ${new Date().toLocaleString()}]`;
-
                 const entryContent = `${floorTag} ${fragment.content}`;
-
-                // Set up the keywords — use fragment's keywords if available, fallback to label
-                const keywords = fragment.keywords && fragment.keywords.length > 0
-                    ? fragment.keywords
-                    : [fragment.label];
 
                 Object.assign(newEntry, {
                     comment: commentText,
                     content: entryContent,
-                    key: keywords,
+                    key: newKeywords,
                     constant: false,       // 🟢 Green light: keyword-triggered, not always-on
                     selective: false,
                     selectiveLogic: false,
@@ -359,12 +452,15 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
 
                 // Add to existing fragments list for dedup of later entries in the same batch
                 existingFragments.push({
+                    uid: newEntry.uid,
                     comment: commentText,
-                    content: entryContent
+                    content: entryContent,
+                    label: safeLabel,
+                    entryRef: newEntry
                 });
 
                 createdCount++;
-                logger.info(`[鬼面] ✅ 碎片条目创建成功: [${fragment.label}] (UID: ${newEntry.uid}, Keywords: ${keywords.join(', ')})`);
+                logger.info(`[鬼面] ✅ 碎片条目创建成功: [${fragment.label}] (UID: ${newEntry.uid}, Keywords: ${newKeywords.join(', ')})`);
 
             } catch (entryError) {
                 logger.error(`[鬼面] ❌ 处理碎片 ${i + 1} 失败:`, entryError);
@@ -373,19 +469,19 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
         }
 
 
-        if (createdCount === 0) {
+        if (createdCount === 0 && updatedCount === 0) {
             logger.warn(`[鬼面] 没有新碎片需要保存 (${skippedCount} 条重复被跳过)`);
             return { created: 0, updated: 0 };
         }
 
         logger.info('[鬼面] 开始保存世界书...');
         await saveWorldInfo(worldBookName, worldBookData, true);
-        logger.info(`[鬼面] ✅ 世界书保存成功: ${createdCount} 个新碎片条目, ${skippedCount} 个重复被跳过`);
+        logger.info(`[鬼面] ✅ 世界书保存成功: ${createdCount} 新建, ${updatedCount} 合并更新, ${skippedCount} 重复跳过`);
 
         // 🆕 管理鬼面总结条目的激活状态
         await manageGhostSummaryEntries(worldBookName, currentChatFileIdentifier);
 
-        return { created: createdCount, updated: 0 };
+        return { created: createdCount, updated: updatedCount };
 
     } catch (error) {
         logger.error('[鬼面] 世界书保存失败:', error);

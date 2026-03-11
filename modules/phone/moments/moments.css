@@ -639,26 +639,70 @@
     opacity: 0.6;
 }
 
-.moments-post-actions {
+/* ── Action Slide-out (WeChat Moments style) ────────────────────────── */
+.moments-action-wrapper {
+    position: relative;
     display: flex;
-    gap: 12px;
+    align-items: center;
+    gap: 0;
 }
 
-.moments-post-actions button {
+.moments-action-trigger {
     background: none;
     border: none;
     color: var(--SmartThemeEmColor);
     cursor: pointer;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
+    font-size: 16px;
+    padding: 6px 8px;
     border-radius: 6px;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
-.moments-post-actions button:hover {
+.moments-action-trigger:hover {
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.moments-action-slideout {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.2s ease;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
+    border-radius: 8px;
+    border: 1px solid transparent;
+}
+
+.moments-action-slideout.moments-slideout-open {
+    max-width: 300px;
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+}
+
+.moments-action-slideout button {
+    background: none;
+    border: none;
+    color: var(--SmartThemeEmColor);
+    cursor: pointer;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.moments-action-slideout button:hover {
     color: var(--SmartThemeBodyColor);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
@@ -1270,12 +1314,6 @@
 /* ── Clickable Avatar ────────────────────────────────────────────────── */
 .moments-avatar-clickable {
     cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.15s ease;
-}
-
-.moments-avatar-clickable:hover {
-    transform: scale(1.08);
-    opacity: 0.85;
 }
 
 /* ── Profile Cover ───────────────────────────────────────────────────── */

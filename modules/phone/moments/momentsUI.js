@@ -366,6 +366,39 @@ function renderFeed(posts) {
         }, 0);
     }
 
+    // Bind slide-out action triggers (··· button)
+    feedEl.querySelectorAll('.moments-action-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const postId = btn.dataset.postId;
+            const slideout = feedEl.querySelector(`.moments-action-slideout[data-post-id="${postId}"]`);
+            if (!slideout) return;
+
+            // Close all other open slideouts first
+            feedEl.querySelectorAll('.moments-action-slideout.moments-slideout-open').forEach(s => {
+                if (s !== slideout) s.classList.remove('moments-slideout-open');
+            });
+
+            slideout.classList.toggle('moments-slideout-open');
+        });
+    });
+
+    // Close slideout when clicking anywhere else
+    // Clean up previous handler to prevent stacking
+    if (feedEl._closeSlideoutsHandler) {
+        document.removeEventListener('click', feedEl._closeSlideoutsHandler);
+    }
+    const _closeSlideouts = (e) => {
+        if (!e.target.closest('.moments-action-wrapper')) {
+            feedEl.querySelectorAll('.moments-action-slideout.moments-slideout-open').forEach(s => {
+                s.classList.remove('moments-slideout-open');
+            });
+        }
+    };
+    document.addEventListener('click', _closeSlideouts, { once: false });
+    // Store ref for cleanup if needed
+    feedEl._closeSlideoutsHandler = _closeSlideouts;
+
     // Bind post interaction events
     feedEl.querySelectorAll('.moments-like-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -386,6 +419,10 @@ function renderFeed(posts) {
     feedEl.querySelectorAll('.moments-comment-toggle').forEach(btn => {
         btn.addEventListener('click', () => {
             const postId = btn.dataset.postId;
+            // Close the slideout
+            const slideout = feedEl.querySelector(`.moments-action-slideout[data-post-id="${postId}"]`);
+            if (slideout) slideout.classList.remove('moments-slideout-open');
+
             const section = feedEl.querySelector(`.moments-comment-section[data-post-id="${postId}"]`);
             if (section) {
                 section.style.display = section.style.display === 'none' ? 'block' : 'none';
@@ -541,17 +578,22 @@ function renderPostCard(post) {
                 </div>
                 <div class="moments-post-footer">
                     <span class="moments-post-time">${timeStr}</span>
-                    <div class="moments-post-actions">
-                        ${publishBtn}
-                        ${deleteBtn}
-                        <button class="moments-like-btn ${post.likedByMe ? 'moments-liked' : ''}"
-                                data-post-id="${post.id}">
-                            <i class="fa-${post.likedByMe ? 'solid' : 'regular'} fa-heart"></i>
-                            <span class="moments-like-count">${post.likeCount || ''}</span>
-                        </button>
-                        <button class="moments-comment-toggle" data-post-id="${post.id}">
-                            <i class="fa-regular fa-comment"></i>
-                            <span>${post.commentCount || ''}</span>
+                    <div class="moments-action-wrapper">
+                        <div class="moments-action-slideout" data-post-id="${post.id}">
+                            ${publishBtn}
+                            ${deleteBtn}
+                            <button class="moments-like-btn ${post.likedByMe ? 'moments-liked' : ''}"
+                                    data-post-id="${post.id}">
+                                <i class="fa-${post.likedByMe ? 'solid' : 'regular'} fa-heart"></i>
+                                <span class="moments-like-count">${post.likeCount || ''}</span>
+                            </button>
+                            <button class="moments-comment-toggle" data-post-id="${post.id}">
+                                <i class="fa-regular fa-comment"></i>
+                                <span>${post.commentCount || ''}</span>
+                            </button>
+                        </div>
+                        <button class="moments-action-trigger" data-post-id="${post.id}" title="操作">
+                            <i class="fa-solid fa-ellipsis"></i>
                         </button>
                     </div>
                 </div>
@@ -912,10 +954,11 @@ function bindEvents() {
     window.addEventListener('moments-sync-stopped', (e) => {
         const { reason } = e.detail;
         if (reason === 'connection_failure') {
-            showToast('⚠️ 连接失败次数过多，已自动停止同步');
-            // Update UI to reflect disabled state
-            moments.updateSettings({ enabled: false });
-            updateToggleBtn(false);
+            showToast('⚠️ 连接失败次数过多，已自动暂停同步。可手动刷新重试');
+            // NOTE: Do NOT set enabled=false here — the user explicitly turned it on,
+            // a temporary network issue should not permanently change their preference.
+            // sync.js stopSync() already stopped the timer; the user can re-trigger
+            // by refreshing or reopening the panel.
         }
     });
         _globalMomentsEventsBound = true;

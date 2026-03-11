@@ -1,7 +1,7 @@
 // modules/phone/chat/chatApp.js — iMessage-style Chat App
 // Entry point for the chat feature within the GhostFace phone.
 
-import { openAppInViewport } from '../phoneController.js';
+import { openAppInViewport, updateAppBadge } from '../phoneController.js';
 import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import {
@@ -9,9 +9,17 @@ import {
     deleteMessagesByIndices, updateMessageByIndex,
     getCharacterInfo, getUserName,
     sendSummaryAsUserMessage,
+    sendRawTranscriptAsUserMessage,
     maybeAutoSummarize,
 } from './chatStorage.js';
+import { generateSummary, isContentSimilar } from '../../summarizer.js';
+import { saveToWorldBook } from '../../worldbook.js';
 import { buildChatSystemPrompt, buildChatUserPrompt, buildSummarizePrompt, stripMomentsCommands } from './chatPromptBuilder.js';
+import {
+    startBackgroundGeneration, consumePendingResult, consumeError,
+    isBackgroundGenerating, hasPendingResult, hasError,
+    cancelRetry,
+} from './backgroundGen.js';
 import {
     getInventory, activateItem, getActiveEffects,
     getActiveChatEffects, decrementChatEffects,
@@ -23,6 +31,8 @@ import { getShopItem } from '../shop/shopData.js';
 import { getPrankEventCardHtml } from '../shop/prankSystem.js';
 import { CHARACTER_GIFTS, getGiftEventCardHtml, triggerCrossplatformGift } from '../shop/giftSystem.js';
 import { getRobberyIntentCardHtml, getRobberyResultCardHtml, triggerRobbery, getRandomVictimList } from '../shop/robberySystem.js';
+import { tryAutoStartKeepAlive } from '../keepAlive.js';
+import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer } from './autoMessage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // State
@@ -34,6 +44,11 @@ let isDeleteMode = false;          // Delete-mode toggle
 let selectedForDeletion = new Set(); // Batch-select indices for deletion
 let isEditMode = false;            // Edit-mode toggle
 let selectedEditIndex = -1;        // Which message is being edited
+let _overlayOpenedAt = 0;          // Timestamp guard for overlay dismiss (prevents ghost-click close)
+let _responseReadyHandler = null;  // Stored reference for cleanup of 'phone-chat-response-ready' listener
+let _retryHandler = null;          // Stored reference for cleanup of 'phone-chat-retry' listener
+let _autoMsgHandler = null;        // Stored reference for cleanup of 'phone-auto-message-ready' listener
+let _retryCountdownTimer = null;   // Interval ID for live countdown display
 
 const CHAT_LOG_PREFIX = '[聊天]';
 
@@ -66,7 +81,41 @@ export function openChatApp() {
             <i class="fa-solid fa-ellipsis"></i>
         </button>`;
 
-    openAppInViewport(titleHtml, html, () => bindChatEvents(), actionsHtml);
+    openAppInViewport(titleHtml, html, () => {
+        bindChatEvents();
+
+        // ── Consume pending background result if available ──
+        if (hasPendingResult()) {
+            console.log(`${CHAT_LOG_PREFIX} Pending background result found, rendering...`);
+            const result = consumePendingResult();
+            if (result) {
+                renderResponseToDom(result.rawResponse, result.messagesToSend);
+            }
+            updateAppBadge('chat', 0); // Clear red dot
+        } else if (hasError()) {
+            // Show error from failed background generation
+            const errMsg = consumeError();
+            const messagesArea = document.getElementById('chat_messages_area');
+            if (messagesArea && errMsg) {
+                messagesArea.insertAdjacentHTML('beforeend',
+                    `<div class="chat-retract">⚠️ 发送失败: ${escHtml(errMsg)}</div>`);
+                scrollToBottom(true);
+            }
+            updateAppBadge('chat', 0);
+        }
+
+        // ── Consume pending auto messages if available ──
+        if (hasAutoMessagePending()) {
+            console.log(`${CHAT_LOG_PREFIX} Pending auto message found, rendering...`);
+            _renderAutoMessages(consumeAutoMessages());
+            updateAppBadge('chat', 0);
+        }
+
+        // ── If background generation is still running, show typing indicator ──
+        if (isBackgroundGenerating()) {
+            showTypingIndicator(true);
+        }
+    }, actionsHtml);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -85,7 +134,7 @@ function buildChatPage(history) {
         ? buildMessagesHtml(displayHistory, history.length - displayHistory.length)
         : `<div class="chat-empty">
                <div class="chat-empty-icon">💬</div>
-               <div class="chat-empty-text">开始和${escHtml(charName)}聊天吧…</div>
+               <div class="chat-empty-text">开始和你的${escHtml(charName)}聊天吧…</div>
            </div>`;
 
     if (hasMore && displayHistory.length > 0) {
@@ -638,7 +687,9 @@ function bindChatEvents() {
 
     // ─── + Plus button → open plus panel ───
     if (plusBtn) {
-        plusBtn.addEventListener('click', () => {
+        plusBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _overlayOpenedAt = Date.now();
             plusOverlay?.classList.add('active');
         });
     }
@@ -684,7 +735,9 @@ function bindChatEvents() {
     }
     if (plusOverlay) {
         plusOverlay.addEventListener('click', (e) => {
-            if (e.target === plusOverlay) plusOverlay.classList.remove('active');
+            if (e.target === plusOverlay && Date.now() - _overlayOpenedAt > 200) {
+                plusOverlay.classList.remove('active');
+            }
         });
     }
 
@@ -705,6 +758,7 @@ function bindChatEvents() {
         inventoryBtn.addEventListener('click', () => {
             plusOverlay?.classList.remove('active');
             renderChatInventory();
+            _overlayOpenedAt = Date.now();
             inventoryOverlay?.classList.add('active');
         });
     }
@@ -717,13 +771,17 @@ function bindChatEvents() {
 
     if (inventoryOverlay) {
         inventoryOverlay.addEventListener('click', (e) => {
-            if (e.target === inventoryOverlay) inventoryOverlay.classList.remove('active');
+            if (e.target === inventoryOverlay && Date.now() - _overlayOpenedAt > 200) {
+                inventoryOverlay.classList.remove('active');
+            }
         });
     }
 
     // ─── Top-right ⋯ Menu ───
     if (menuBtn) {
-        menuBtn.addEventListener('click', () => {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _overlayOpenedAt = Date.now();
             menuOverlay?.classList.add('active');
         });
     }
@@ -734,7 +792,9 @@ function bindChatEvents() {
     }
     if (menuOverlay) {
         menuOverlay.addEventListener('click', (e) => {
-            if (e.target === menuOverlay) menuOverlay.classList.remove('active');
+            if (e.target === menuOverlay && Date.now() - _overlayOpenedAt > 200) {
+                menuOverlay.classList.remove('active');
+            }
         });
     }
     if (clearHistoryBtn) {
@@ -785,7 +845,7 @@ function bindChatEvents() {
     if (editCancelBtn) editCancelBtn.addEventListener('click', () => closeEditOverlay());
     if (editOverlay) {
         editOverlay.addEventListener('click', (e) => {
-            if (e.target === editOverlay) closeEditOverlay();
+            if (e.target === editOverlay && Date.now() - _overlayOpenedAt > 200) closeEditOverlay();
         });
     }
     if (editSaveBtn) {
@@ -800,6 +860,28 @@ function bindChatEvents() {
 
     // Render buff bar (Phase 2)
     renderBuffBar();
+
+    // ── Register background generation response handler ──
+    // Clean up any previous handlers first
+    if (_responseReadyHandler) {
+        window.removeEventListener('phone-chat-response-ready', _responseReadyHandler);
+    }
+    _responseReadyHandler = (e) => _handleResponseReady(e);
+    window.addEventListener('phone-chat-response-ready', _responseReadyHandler);
+
+    // ── Register retry event handler (countdown UI) ──
+    if (_retryHandler) {
+        window.removeEventListener('phone-chat-retry', _retryHandler);
+    }
+    _retryHandler = (e) => _handleRetryEvent(e);
+    window.addEventListener('phone-chat-retry', _retryHandler);
+
+    // ── Register auto-message handler ──
+    if (_autoMsgHandler) {
+        window.removeEventListener('phone-auto-message-ready', _autoMsgHandler);
+    }
+    _autoMsgHandler = () => _handleAutoMessageReady();
+    window.addEventListener('phone-auto-message-ready', _autoMsgHandler);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -823,7 +905,7 @@ async function handleRobberyChoice(btn) {
 
     if (action === 'stop') {
         if (statusDiv) {
-            statusDiv.textContent = '🛑 你拦住了角色，这次就算了。';
+            statusDiv.textContent = '🛑 你拦住了你对象，这次就算了。';
             statusDiv.style.display = 'block';
         }
         return;
@@ -831,7 +913,7 @@ async function handleRobberyChoice(btn) {
 
     if (action === 'watch') {
         if (statusDiv) {
-            statusDiv.textContent = '👀 你选择吃瓜围观……但角色还是去了。';
+            statusDiv.textContent = '👀 你选择吃瓜围观……但你对象还是去了。';
             statusDiv.style.display = 'block';
         }
     }
@@ -848,7 +930,7 @@ async function handleRobberyChoice(btn) {
         }
 
         if (action === 'encourage' && statusDiv) {
-            statusDiv.textContent = `😈 你鼓励了角色出击！正在行动…`;
+            statusDiv.textContent = `😈 你鼓励了你对象出击！正在行动…`;
             statusDiv.style.display = 'block';
         }
 
@@ -1432,6 +1514,9 @@ function updateButtonStates() {
 // ═══════════════════════════════════════════════════════════════════════
 
 async function sendAllMessages() {
+    // iOS keep-alive: auto-start silent audio on first message send
+    tryAutoStartKeepAlive();
+
     const input = document.getElementById('chat_input');
     const remainingText = input?.value?.trim();
 
@@ -1455,6 +1540,7 @@ async function sendAllMessages() {
 
     // Load history, add user messages
     const history = loadChatHistory();
+    const historyBeforeSend = [...history]; // snapshot for prompt building
     const now = new Date().toISOString();
 
     for (const msg of messagesToSend) {
@@ -1488,23 +1574,214 @@ async function sendAllMessages() {
     // Show typing indicator
     showTypingIndicator(true);
 
+    // ── Fire off background generation (does NOT block the UI) ──
+    // The result will be handled by _handleResponseReady() via event
+    startBackgroundGeneration(messagesToSend, historyBeforeSend);
+
+    // Reset auto-message timer (user just sent a message, restart idle countdown)
+    resetAutoMessageTimer();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Background Generation — Response Handler
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if the user is currently viewing the chat app.
+ * Uses viewport activation state + presence of chat DOM root.
+ */
+function isUserInChatApp() {
+    const viewport = document.getElementById('phone_app_viewport');
+    const chatRoot = document.getElementById('chat_page_root');
+    return viewport?.classList.contains('app-active') && !!chatRoot;
+}
+
+/**
+ * Handle the 'phone-chat-response-ready' event from backgroundGen.
+ * If user is still in chat → render immediately with animations.
+ * If user has left → store result, show badge on desktop icon.
+ */
+function _handleResponseReady(e) {
+    const { success, error } = e.detail || {};
+
+    // Clear any retry countdown UI
+    _clearRetryCountdown();
+
+    if (isUserInChatApp()) {
+        // User is still in chat — render result immediately
+        if (success && hasPendingResult()) {
+            const result = consumePendingResult();
+            if (result) {
+                renderResponseToDom(result.rawResponse, result.messagesToSend);
+            }
+        } else if (!success) {
+            const errMsg = consumeError();
+            showTypingIndicator(false);
+            const messagesArea = document.getElementById('chat_messages_area');
+            if (messagesArea && errMsg) {
+                messagesArea.insertAdjacentHTML('beforeend',
+                    `<div class="chat-retract">⚠️ 发送失败: ${escHtml(errMsg)}</div>`);
+            }
+            scrollToBottom(true);
+        }
+        // Reset generating state
+        isGenerating = false;
+        updateButtonStates();
+    } else {
+        // User left chat — keep result in memory, show badge
+        console.log(`${CHAT_LOG_PREFIX} User not in chat, setting badge notification.`);
+        if (success) {
+            updateAppBadge('chat', 1);
+        }
+        // Reset generating state (user will consume result when re-opening)
+        isGenerating = false;
+    }
+}
+
+/**
+ * Handle the 'phone-chat-retry' event from backgroundGen.
+ * Shows a countdown message in chat with a cancel button.
+ */
+function _handleRetryEvent(e) {
+    const { attempt, maxRetries, retryInSeconds, error: errMsg } = e.detail || {};
+
+    if (!isUserInChatApp()) return; // No UI to show if user isn't in chat
+
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (!messagesArea) return;
+
+    // Remove any previous retry notice
+    _clearRetryCountdown();
+
+    // Create retry notice with live countdown
+    let remaining = retryInSeconds;
+    const noticeId = `chat_retry_notice_${Date.now()}`;
+    messagesArea.insertAdjacentHTML('beforeend', `
+        <div class="chat-retry-notice" id="${noticeId}">
+            <div class="chat-retry-text">
+                ⚠️ 生成失败: ${escHtml(errMsg)}
+            </div>
+            <div class="chat-retry-countdown">
+                ⏳ <span class="chat-retry-seconds">${remaining}</span>秒后重试 (${attempt}/${maxRetries})
+            </div>
+            <button class="chat-retry-cancel-btn" id="chat_retry_cancel_btn">取消重试</button>
+        </div>
+    `);
+
+    // Hide typing indicator during countdown
+    showTypingIndicator(false);
+    scrollToBottom(true);
+
+    // Bind cancel button
+    const cancelBtn = document.getElementById('chat_retry_cancel_btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            cancelRetry();
+            _clearRetryCountdown();
+            // Show cancelled notice
+            if (messagesArea) {
+                messagesArea.insertAdjacentHTML('beforeend',
+                    `<div class="chat-retract">🚫 已取消重试</div>`);
+                scrollToBottom(true);
+            }
+            // Reset generating state
+            isGenerating = false;
+            updateButtonStates();
+            showTypingIndicator(false);
+        });
+    }
+
+    // Live countdown
+    _retryCountdownTimer = setInterval(() => {
+        remaining--;
+        const secondsEl = document.querySelector(`#${noticeId} .chat-retry-seconds`);
+        if (secondsEl && remaining > 0) {
+            secondsEl.textContent = remaining;
+        } else {
+            // Countdown done — show "retrying..." state
+            clearInterval(_retryCountdownTimer);
+            _retryCountdownTimer = null;
+            const notice = document.getElementById(noticeId);
+            if (notice) {
+                notice.innerHTML = `<div class="chat-retry-text">🔄 正在重试生成... (${attempt}/${maxRetries})</div>`;
+            }
+            showTypingIndicator(true);
+        }
+    }, 1000);
+}
+
+/** Clear the retry countdown interval and remove any retry notice from DOM */
+function _clearRetryCountdown() {
+    if (_retryCountdownTimer) {
+        clearInterval(_retryCountdownTimer);
+        _retryCountdownTimer = null;
+    }
+    // Remove retry notice from DOM
+    const notice = document.querySelector('.chat-retry-notice');
+    if (notice) notice.remove();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Auto Message — Handler & Renderer
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Handle the 'phone-auto-message-ready' event from autoMessage.js.
+ * If user is in chat → render immediately. Otherwise badge is already set.
+ */
+function _handleAutoMessageReady() {
+    if (!isUserInChatApp()) return;
+
+    if (hasAutoMessagePending()) {
+        const msgs = consumeAutoMessages();
+        if (msgs) {
+            _renderAutoMessages(msgs);
+            updateAppBadge('chat', 0);
+        }
+    }
+}
+
+/**
+ * Render auto-generated character messages to the DOM.
+ * @param {Array<{text: string, thought?: string, delay?: number}>} messages
+ */
+function _renderAutoMessages(messages) {
+    if (!messages || messages.length === 0) return;
+
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (!messagesArea) return;
+
+    // Remove empty state if present
+    const emptyState = messagesArea.querySelector('.chat-empty');
+    if (emptyState) emptyState.remove();
+
+    // Maybe add time divider
+    messagesArea.insertAdjacentHTML('beforeend',
+        `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`
+    );
+
+    for (const msg of messages) {
+        const text = (msg.text || msg.content || '').trim();
+        if (!text) continue;
+        messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', text));
+    }
+
+    scrollToBottom(true);
+}
+
+/**
+ * Parse raw AI response and render character messages to the DOM.
+ * This handles all the post-generation logic: message rendering,
+ * buff decrements, gift detection, reactions, etc.
+ * Used by both "immediate" (user in chat) and "deferred" (re-open) paths.
+ *
+ * @param {string} rawResponse - Raw LLM response text
+ * @param {string[]} messagesToSend - The user messages that triggered this response
+ */
+async function renderResponseToDom(rawResponse, messagesToSend) {
+    const messagesArea = document.getElementById('chat_messages_area');
+
     try {
-        // Build prompts
-        const systemPrompt = await buildChatSystemPrompt();
-        const userPrompt = buildChatUserPrompt(messagesToSend, history.slice(0, -messagesToSend.length));
-
-        console.log(`${CHAT_LOG_PREFIX} Sending ${messagesToSend.length} messages to API...`);
-
-        // Call API
-        const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 4000 });
-
-        // ─── Route moments commands (朋友圈/评论) to moments system ───
-        try {
-            const { handleMainChatOutput } = await import('../moments/momentsWorldInfo.js');
-            handleMainChatOutput(rawResponse).catch(e =>
-                console.warn(`${CHAT_LOG_PREFIX} Moments routing failed:`, e));
-        } catch (e) { /* moments module not loaded */ }
-
         // Parse JSON response — strip moments commands first so they don't break JSON.parse
         const cleanedResponse = stripMomentsCommands(rawResponse);
         const { messages: charMessages, aiReactions } = parseApiResponse(cleanedResponse);
@@ -1675,7 +1952,7 @@ async function sendAllMessages() {
         maybeAutoSummarize().catch(e => console.warn('[聊天] 自动总结后台错误:', e));
 
     } catch (error) {
-        console.error(`${CHAT_LOG_PREFIX} API call failed:`, error);
+        console.error(`${CHAT_LOG_PREFIX} Response rendering failed:`, error);
         showTypingIndicator(false);
 
         // Show error as system message
@@ -1685,9 +1962,6 @@ async function sendAllMessages() {
             );
         }
         scrollToBottom(true);
-    } finally {
-        isGenerating = false;
-        updateButtonStates();
     }
 }
 
@@ -1771,7 +2045,14 @@ async function handleReturnHome() {
         return;
     }
 
-    if (!confirm('确定要结束手机聊天并回到线下吗？\n\n当前的聊天记录将被总结并同步到酒馆本体，角色会知道你们手机里聊了什么。')) {
+    // Read user preferences from localStorage
+    const doMemoryFragments = localStorage.getItem('gf_phone_rh_memory') === 'true';
+    const syncMode = localStorage.getItem('gf_phone_rh_sync_mode') || 'summary';
+
+    const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
+    const memoryLabel = doMemoryFragments ? '✅ 提取记忆碎片' : '❌ 不提取记忆碎片';
+
+    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n📄 同步方式: ${modeLabel}\n🧩 ${memoryLabel}\n\n（可在 设置 → 回家模式 中修改）`)) {
         return;
     }
 
@@ -1782,46 +2063,86 @@ async function handleReturnHome() {
     const messagesArea = document.getElementById('chat_messages_area');
     if (messagesArea) {
         messagesArea.insertAdjacentHTML('beforeend',
-            `<div class="chat-retract" id="chat_sync_status">🏠 正在总结聊天记录并同步…</div>`
+            `<div class="chat-retract" id="chat_sync_status">🏠 正在处理回家流程…</div>`
         );
     }
     scrollToBottom(true);
 
     try {
-        // Step 1: Build the chat transcript for summarization
-        const transcript = history.map(msg => {
-            const role = msg.role === 'user' ? userName : charName;
-            return `${role}: ${msg.content}`;
-        }).join('\n');
+        // ─── Optional Step: Memory Fragment Extraction ───
+        if (doMemoryFragments) {
+            const statusEl = document.getElementById('chat_sync_status');
+            if (statusEl) statusEl.textContent = '🧩 正在提取记忆碎片…';
 
-        // Step 2: Summarize via LLM
-        const summarizePrompt = buildSummarizePrompt();
-        const summaryUserPrompt = `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
+            console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
 
-        console.log(`${CHAT_LOG_PREFIX} Generating chat summary for return home...`);
-        const summary = await callPhoneLLM(summarizePrompt, summaryUserPrompt, { maxTokens: 2000 });
+            try {
+                // Convert phone chat messages to the format generateSummary() expects
+                const summarizerMessages = history.map(msg => ({
+                    parsedContent: msg.content || '',
+                    parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
+                    is_user: msg.role === 'user',
+                    is_system: false,
+                    name: msg.role === 'user' ? userName : charName,
+                }));
 
-        if (!summary || summary.trim().length === 0) {
-            throw new Error('总结生成失败');
+                const fragments = await generateSummary(summarizerMessages);
+                if (fragments && Array.isArray(fragments) && fragments.length > 0) {
+                    await saveToWorldBook(fragments, null, null, isContentSimilar, false);
+                    console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
+                    if (statusEl) statusEl.textContent = `🧩 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;
+                } else {
+                    console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
+                    if (statusEl) statusEl.textContent = '🧩 无新记忆碎片。正在同步…';
+                }
+            } catch (memErr) {
+                console.error(`${CHAT_LOG_PREFIX} 记忆碎片提取失败:`, memErr);
+                if (statusEl) statusEl.textContent = '⚠️ 记忆碎片提取失败，继续同步…';
+                // Don't abort — continue with sync
+            }
         }
 
-        console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
-
-        // Step 3: Update sync status
+        // ─── Sync to ST main chat ───
         const statusEl = document.getElementById('chat_sync_status');
-        if (statusEl) {
-            statusEl.textContent = '✅ 聊天记录已同步！正在以用户消息发送…';
+
+        if (syncMode === 'raw') {
+            // ── Raw transcript mode ──
+            if (statusEl) statusEl.textContent = '📄 正在将原文聊天记录同步…';
+            console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript...`);
+
+            await sendRawTranscriptAsUserMessage(history);
+
+            if (statusEl) statusEl.textContent = '🏠 已回家！原文聊天记录已发送，你对象正在回应～';
+
+        } else {
+            // ── AI compressed summary mode (default) ──
+            if (statusEl) statusEl.textContent = '🤖 正在生成AI压缩总结…';
+            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary...`);
+
+            const transcript = history.map(msg => {
+                const role = msg.role === 'user' ? userName : charName;
+                return `${role}: ${msg.content}`;
+            }).join('\n');
+
+            const summarizePrompt = buildSummarizePrompt();
+            const summaryUserPrompt = `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
+
+            const summary = await callPhoneLLM(summarizePrompt, summaryUserPrompt, { maxTokens: 2000 });
+
+            if (!summary || summary.trim().length === 0) {
+                throw new Error('总结生成失败');
+            }
+
+            console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
+
+            if (statusEl) statusEl.textContent = '✅ 总结生成成功！正在发送…';
+
+            await sendSummaryAsUserMessage(summary.trim());
+
+            if (statusEl) statusEl.textContent = '🏠 已回家！总结已作为消息发送，你对象正在回应～';
         }
 
-        // Step 4: Send as a visible user message wrapped in <恶灵QR> tags
-        await sendSummaryAsUserMessage(summary.trim());
-
-        // Step 5: Final status
-        if (statusEl) {
-            statusEl.textContent = '🏠 已回家！总结已作为消息发送，角色正在回应～';
-        }
-
-        console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully`);
+        console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} Return home failed:`, error);
@@ -2015,14 +2336,14 @@ function renderChatInventory() {
             activeEl.innerHTML = `
                 <div class="chat-inventory-active-title"><i class="fa-solid fa-bolt"></i> 当前生效</div>
                 ${effects.map(e => {
-                    const item = getShopItem(e.itemId);
-                    if (!item) return '';
-                    const unit = e.type === 'diaryPrompt' ? '次日记'
-                        : e.type === 'specialMessage' ? '次使用'
+                const item = getShopItem(e.itemId);
+                if (!item) return '';
+                const unit = e.type === 'diaryPrompt' ? '次日记'
+                    : e.type === 'specialMessage' ? '次使用'
                         : e.type === 'prankReaction' ? '次（待触发）'
-                        : '条消息';
-                    return `<div class="chat-inventory-active-pill">${item.emoji} ${escHtml(item.name)} · 剩余${e.remaining}${unit}</div>`;
-                }).filter(Boolean).join('')}`;
+                            : '条消息';
+                return `<div class="chat-inventory-active-pill">${item.emoji} ${escHtml(item.name)} · 剩余${e.remaining}${unit}</div>`;
+            }).filter(Boolean).join('')}`;
         }
     }
 }
@@ -2034,11 +2355,11 @@ function handleChatUseItem(itemId) {
 
     let confirmMsg;
     if (item.effectType === 'prankReaction') {
-        confirmMsg = `确认使用【${item.name}】吗？\n下次聊天时将自动对角色发动恶作剧！🎭`;
+        confirmMsg = `确认使用【${item.name}】吗？\n下次聊天时将自动对你对象发动恶作剧！🎭`;
     } else {
         const durationUnit = item.effectType === 'diaryPrompt' ? '次日记'
             : item.effectType === 'specialMessage' ? '次使用'
-            : '条消息';
+                : '条消息';
         confirmMsg = `确认使用【${item.name}】吗？\n效果将持续 ${item.duration} ${durationUnit}。`;
     }
 

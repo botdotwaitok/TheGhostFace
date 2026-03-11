@@ -12,6 +12,7 @@ import { getShopReviews, postShopReview, deleteShopReview } from '../moments/api
  */
 
 import { getShopItem } from './shopData.js';
+import { applyTreeBuff } from './shopTreeBridge.js';
 
 const STORAGE_KEY = 'gf_shop_state';
 
@@ -134,6 +135,15 @@ export function activateItem(itemId) {
     const qty = getItemQuantity(itemId);
     if (qty <= 0) {
         return { success: false, message: '库存不足' };
+    }
+
+    // ── treeBuff: instant consumption, no active effect ──
+    if (item.effectType === 'treeBuff') {
+        const result = applyTreeBuff(itemId);
+        if (result.success) {
+            consumeItemFromInventory(itemId, 1);
+        }
+        return result;
     }
 
     // Consume 1 from inventory

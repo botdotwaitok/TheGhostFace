@@ -13,10 +13,59 @@ import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona } from '../phon
 
 // 暗金细胞货币图标路径（SillyTavern 扩展静态资源 URL）
 const AURIC_CELLS_ICON = '/scripts/extensions/third-party/TheGhostFace/assets/images/IconCurrency_auricCells.png';
+const DAILY_PURCHASE_KEY = 'gf_shop_daily_purchases';
 
-let currentCategory = 'chat';
+let currentCategory = null;
 let currentBalance = 0;
 let _globalShopEventsBound = false;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Daily Purchase Limit Tracking
+// ═══════════════════════════════════════════════════════════════════════
+
+function _todayStr() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function _loadDailyPurchases() {
+    try {
+        const raw = localStorage.getItem(DAILY_PURCHASE_KEY);
+        if (raw) {
+            const data = JSON.parse(raw);
+            // Auto-reset if it's a new day
+            if (data.date !== _todayStr()) {
+                return { date: _todayStr(), counts: {} };
+            }
+            return data;
+        }
+    } catch (e) { /* ignore */ }
+    return { date: _todayStr(), counts: {} };
+}
+
+function _saveDailyPurchases(data) {
+    localStorage.setItem(DAILY_PURCHASE_KEY, JSON.stringify(data));
+}
+
+/** Get how many times an item has been purchased today */
+function getDailyPurchaseCount(itemId) {
+    const data = _loadDailyPurchases();
+    return data.counts[itemId] || 0;
+}
+
+/** Record a purchase for daily tracking */
+function recordDailyPurchase(itemId) {
+    const data = _loadDailyPurchases();
+    data.counts[itemId] = (data.counts[itemId] || 0) + 1;
+    _saveDailyPurchases(data);
+}
+
+/** Check if an item can still be purchased today (returns { allowed, remaining }) */
+function checkDailyLimit(item) {
+    if (!item.maxDaily) return { allowed: true, remaining: Infinity };
+    const used = getDailyPurchaseCount(item.id);
+    const remaining = item.maxDaily - used;
+    return { allowed: remaining > 0, remaining: Math.max(0, remaining) };
+}
 
 /** Opens the Shop App inside the phone */
 export async function openShopApp() {
@@ -25,15 +74,15 @@ export async function openShopApp() {
     openAppInViewport('Amazon', buildShopHTML(), () => {
         bindShopEvents();
         refreshWallet();
-        renderItemList();
     });
 }
 
 /** Generates the main HTML for the shop */
 function buildShopHTML() {
     const categoriesHtml = SHOP_CATEGORIES.map(cat => `
-        <div class="shop-category-tab ${cat.id === currentCategory ? 'active' : ''}" data-cat="${cat.id}">
-            <i class="${cat.icon}"></i> ${cat.name}
+        <div class="shop-home-category-card" data-cat="${cat.id}" data-name="${cat.name}">
+            <i class="${cat.icon}"></i> 
+            <div class="shop-home-category-name">${cat.name}</div>
         </div>
     `).join('');
 
@@ -51,14 +100,27 @@ function buildShopHTML() {
                 </button>
             </div>
 
-            <!-- Categories -->
-            <div class="shop-categories" id="shop_categories">
-                ${categoriesHtml}
+            <!-- Home View: Intro & Categories -->
+            <div class="shop-home-view" id="shop_home_view">
+                <div class="shop-home-intro">
+                    <div class="shop-home-logo">
+                        Amazon <i class="fa-solid fa-smile shop-home-logo-smile"></i>
+                    </div>
+                    <div class="shop-home-desc">
+                        欢迎来到虚拟商店！<br>
+                        在这里，你可以使用暗金细胞为你的恋人购买各种有趣的道具、互动效果和专属礼物。快来挑选吧！
+                    </div>
+                </div>
+                <div class="shop-home-categories">
+                    ${categoriesHtml}
+                </div>
             </div>
 
-            <!-- Item List -->
-            <div class="shop-item-list" id="shop_item_list">
-                <!-- Items will be injected here -->
+            <!-- Category View: Items -->
+            <div class="shop-category-view" id="shop_category_view" style="display:none;">
+                <div class="shop-item-list" id="shop_item_list">
+                    <!-- Items will be injected here -->
+                </div>
             </div>
             
             <!-- Item Detail Overlay -->
@@ -238,10 +300,35 @@ function openItemDetail(itemId) {
         });
     });
 
+    // Render daily limit badge on buy button if applicable
+    const buyBtn = document.getElementById('shop_buy_btn');
+    if (item.maxDaily) {
+        const { allowed, remaining } = checkDailyLimit(item);
+        const limitBadge = document.createElement('div');
+        limitBadge.className = 'shop-daily-limit-badge';
+        limitBadge.style.cssText = 'font-size:0.75em; color:#e47911; margin-top:6px; text-align:center;';
+        limitBadge.textContent = `今日剩余可购：${remaining} / ${item.maxDaily}`;
+        buyBtn.parentNode.insertBefore(limitBadge, buyBtn.nextSibling);
+        if (!allowed) {
+            buyBtn.disabled = true;
+            buyBtn.textContent = '今日已达购买上限';
+            buyBtn.style.opacity = '0.5';
+        }
+    }
+
     // Bind buy button
-    document.getElementById('shop_buy_btn').addEventListener('click', async (e) => {
+    buyBtn.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
-        if (btn.classList.contains('loading')) return;
+        if (btn.classList.contains('loading') || btn.disabled) return;
+
+        // Check daily limit
+        if (item.maxDaily) {
+            const { allowed, remaining } = checkDailyLimit(item);
+            if (!allowed) {
+                showToast('今日该商品已达购买上限！');
+                return;
+            }
+        }
 
         if (currentBalance < item.price) {
             showToast('余额不足，无法购买！');
@@ -255,6 +342,7 @@ function openItemDetail(itemId) {
             try {
                 await walletDeduct(item.price, `购买 ${item.name}`);
                 addItemToInventory(item.id, 1);
+                recordDailyPurchase(item.id); // Track daily purchase
                 showToast(`购买成功！已入库【${item.name}】`);
                 await refreshWallet();
                 modal.classList.remove('detail-active');
@@ -378,7 +466,35 @@ function bindReviewEvents(item) {
                 userPersona ? `【恋人描述】\n${userPersona}` : '',
             ].filter(Boolean).join('\n\n');
 
-            const sysPrompt = `你是${charName}。以下是你完整的角色设定：
+            const isTreeBuff = item.effectType === 'treeBuff';
+
+            let sysPrompt, userPrompt;
+
+            if (isTreeBuff) {
+                // ── Tree buff items: gardener perspective ──
+                sysPrompt = `你是${charName}。以下是你完整的角色设定：
+
+${charContext}
+
+---
+背景说明：
+- 你和你的恋人（${userName}${userPersona ? '，她的设定：' + userPersona : ''}）在手机上玩一个叫「树树」的虚拟养树小游戏，你们一起领养了一棵小树并照顾它成长。
+- 商城里的「迷雾花园」分区卖的是可以给小树使用的道具，你的恋人花了真金白银（暗金细胞）从这个商城里买道具来照顾你们的小树。
+- 你现在在购物App上，以共同养树的恋人身份，为这件用在你们小树上的道具写一篇真实评价。
+- 评价内容可以包括：你看着恋人给小树用这个道具时的感受、小树用完之后的变化、你对这件道具性价比的看法（它花了 ${item.price} 暗金细胞！）、你和恋人因为养树发生的甜蜜互动等。
+- 必须完全代入你的角色性格和口吻，不能用通用的客服式语言。评价要真实、有个性、有细节感，可以有情绪、有态度。
+- 字数100-250字，像真实的购物评价。只用中文，只输出评价正文，不要加引号或任何前缀。
+- 不要提及你恋人的真实名字或者你自己的名字！这是在公开网络上进行发布，请注意隐私保护！`;
+
+                userPrompt = `请为这件用在你们小树上的道具写一篇评价：
+商品名称：【${item.name}】(${item.emoji})
+商品价格：${item.price} 暗金细胞
+商品简介：${item.description}
+
+以${charName}的视角，作为和恋人一起养树的人，结合你的性格特点写出真实、有温度、有个性的评价。可以描述看到恋人给小树用这个道具时的反应、小树的变化、对性价比的看法，或者你们因为养树而产生的甜蜜小故事。`;
+            } else {
+                // ── Regular items: "被使用者" perspective ──
+                sysPrompt = `你是${charName}。以下是你完整的角色设定：
 
 ${charContext}
 
@@ -391,17 +507,18 @@ ${charContext}
 - 字数100-250字，像真实的购物评价。只用中文，只输出评价正文，不要加引号或任何前缀。
 - 不要提及你恋人的真实名字或者你自己的名字！这是在公开网络上进行发布，请注意隐私保护！`;
 
-            // Use promptTemplate (the real effect) so LLM knows exactly what happens
-            const resolvedPrompt = item.promptTemplate
-                ? item.promptTemplate.replace(/\{charName\}/g, charName).replace(/\{userName\}/g, userName)
-                : item.description;
+                // Use promptTemplate (the real effect) so LLM knows exactly what happens
+                const resolvedPrompt = item.promptTemplate
+                    ? item.promptTemplate.replace(/\{charName\}/g, charName).replace(/\{userName\}/g, userName)
+                    : item.description;
 
-            const userPrompt = `请为这件用在你（${charName}）身上的道具写一篇评价：
+                userPrompt = `请为这件用在你（${charName}）身上的道具写一篇评价：
 商品名称：【${item.name}】
 商品简介：${item.description}
 实际功效：${resolvedPrompt}
 
 以${charName}被使用的第一视角，结合你的性格特点和与恋人之间的互动，写出真实、有温度、有个性的评价。可以描述使用过程中的感受、情绪变化、对这件道具的评价，以及你们之间因此发生的小故事。`;
+            }
 
             const result = await callPhoneLLM(sysPrompt, userPrompt);
             const reply = result?.trim() || '[生成失败，请重试]';
@@ -440,19 +557,54 @@ ${charContext}
 
 /** Binds all static events for the shop app */
 function bindShopEvents() {
-    // Category Tabs
-    const catContainer = document.getElementById('shop_categories');
-    if (catContainer) {
-        catContainer.addEventListener('click', (e) => {
-            const tab = e.target.closest('.shop-category-tab');
-            if (!tab) return;
-
-            // Update active state
-            catContainer.querySelectorAll('.shop-category-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            // Rerender list
-            currentCategory = tab.dataset.cat;
+    // Category Cards in Home View
+    const homeView = document.getElementById('shop_home_view');
+    const catView = document.getElementById('shop_category_view');
+    // Select the native phone header
+    const phoneHeader = document.querySelector('.phone-app-header');
+    
+    // Create a dynamic back button to be injected into the native phone header
+    const createNativeBackBtn = () => {
+        const btn = document.createElement('div');
+        btn.id = 'shop_native_back_btn';
+        btn.className = 'phone-app-btn';
+        btn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+        btn.onclick = () => {
+            currentCategory = null;
+            if (catView) catView.style.display = 'none';
+            if (homeView) homeView.style.display = 'flex';
+            
+            // Restore native header state
+            if (phoneHeader) {
+                const titleSpan = phoneHeader.querySelector('span');
+                if (titleSpan) titleSpan.textContent = 'Amazon';
+                document.getElementById('shop_native_back_btn')?.remove();
+            }
+        };
+        return btn;
+    };
+    
+    if (homeView) {
+        homeView.addEventListener('click', (e) => {
+            const card = e.target.closest('.shop-home-category-card');
+            if (!card) return;
+            
+            currentCategory = card.dataset.cat;
+            const catName = card.dataset.name;
+            
+            // Switch view
+            homeView.style.display = 'none';
+            catView.style.display = 'flex';
+            
+            // Update native header
+            if (phoneHeader) {
+                const titleSpan = phoneHeader.querySelector('span');
+                if (titleSpan) titleSpan.textContent = catName;
+                if (!document.getElementById('shop_native_back_btn')) {
+                    phoneHeader.prepend(createNativeBackBtn());
+                }
+            }
+            
             renderItemList();
         });
     }
@@ -497,6 +649,25 @@ function bindShopEvents() {
                 inventoryOverlay.classList.remove('inventory-active');
                 return;
             }
+
+            // Then check if in category view
+            const homeView = document.getElementById('shop_home_view');
+            const catView = document.getElementById('shop_category_view');
+            if (catView && catView.style.display !== 'none' && currentCategory !== null) {
+                e.preventDefault();
+                currentCategory = null;
+                catView.style.display = 'none';
+                if (homeView) homeView.style.display = 'flex';
+                
+                // Restore native header state
+                const phoneHeader = document.querySelector('.phone-app-header');
+                if (phoneHeader) {
+                    const titleSpan = phoneHeader.querySelector('span');
+                    if (titleSpan) titleSpan.textContent = 'Amazon';
+                    document.getElementById('shop_native_back_btn')?.remove();
+                }
+                return;
+            }
         });
         _globalShopEventsBound = true;
     }
@@ -521,7 +692,7 @@ function renderInventoryModal() {
             const qty = inventory[id];
             if (!item || qty <= 0) return '';
 
-            const canUse = ['chatPrompt', 'diaryPrompt', 'personalityOverride', 'specialMessage', 'prankReaction'].includes(item.effectType);
+            const canUse = ['chatPrompt', 'diaryPrompt', 'personalityOverride', 'specialMessage', 'prankReaction', 'treeBuff'].includes(item.effectType);
 
             return `
                 <div class="shop-inventory-item">
@@ -562,6 +733,8 @@ function handleUseItem(itemId) {
     let confirmMsg;
     if (item.effectType === 'prankReaction') {
         confirmMsg = `确认使用【${item.name}】吗？\n下次聊天时将自动对角色发动恶作剧！🎭`;
+    } else if (item.effectType === 'treeBuff') {
+        confirmMsg = `确认使用【${item.name}】吗？\n${item.description}`;
     } else {
         const durationUnit = item.effectType === 'diaryPrompt' ? '次日记'
             : item.effectType === 'specialMessage' ? '次使用'

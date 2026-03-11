@@ -55,6 +55,8 @@ router.post('/register', (req, res) => {
 
         res.status(201).json({
             token,
+            discordRequired: true,
+            discordBound: false,
             user: {
                 id: userId,
                 username,
@@ -95,8 +97,11 @@ router.post('/login', (req, res) => {
     try {
         db.prepare('INSERT INTO sessions (token, userId, expiresAt) VALUES (?, ?, ?)').run(token, user.id, expiresAt);
 
+        const discordBound = !!(user.discordId && user.discordId.length > 0);
+
         res.json({
             token,
+            discordBound,
             user: {
                 id: user.id,
                 username: user.username,
@@ -130,7 +135,7 @@ router.get('/me', (req, res) => {
 
     const db = getDb();
     const session = db.prepare(`
-        SELECT s.*, u.username, u.displayName, u.avatarUrl, u.settings 
+        SELECT s.*, u.username, u.displayName, u.avatarUrl, u.settings, u.discordId
         FROM sessions s
         JOIN users u ON s.userId = u.id
         WHERE s.token = ? AND s.expiresAt > datetime('now')
@@ -141,6 +146,7 @@ router.get('/me', (req, res) => {
     }
 
     res.json({
+        discordBound: !!(session.discordId && session.discordId.length > 0),
         user: {
             id: session.userId,
             username: session.username,

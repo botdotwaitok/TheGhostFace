@@ -68,6 +68,42 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
+// ── Discord Binding Enforcement ─────────────────────────────────────
+// Block API access for users who haven't bound their Discord account.
+// Exempt: auth routes, Discord binding route, Discord management routes.
+app.use('/api', (req, res, next) => {
+    // Skip auth routes (login/register/me)
+    if (req.path.startsWith('/auth/')) return next();
+    // Skip Discord management routes (used by Petbot)
+    if (req.path.startsWith('/discord-manage/')) return next();
+    // Skip the Discord binding endpoint itself (PUT /api/users/:id/discord)
+    if (/^\/users\/[^/]+\/discord$/.test(req.path) && req.method === 'PUT') return next();
+
+    // Check session token to identify the user
+    const sessionToken = req.headers['x-session-token'];
+    if (!sessionToken) return next(); // No session = server-to-server call, allow
+
+    try {
+        const db = require('./db').getDb();
+        const session = db.prepare(`
+            SELECT u.discordId FROM sessions s
+            JOIN users u ON s.userId = u.id
+            WHERE s.token = ? AND s.expiresAt > datetime('now')
+        `).get(sessionToken);
+
+        if (session && (!session.discordId || session.discordId.length === 0)) {
+            return res.status(403).json({
+                error: '请先绑定 Discord 账号后再使用',
+                discordRequired: true
+            });
+        }
+    } catch (e) {
+        console.warn('[DiscordGuard] Check failed:', e.message);
+    }
+
+    next();
+});
+
 // ── Health check (no auth required) ─────────────────────────────────
 app.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'ghostface-moments', timestamp: new Date().toISOString() });
@@ -82,6 +118,7 @@ const backupRouter = require('./routes/backup');
 const walletRouter = require('./routes/wallet');
 const discordManageRouter = require('./routes/discord-manage');
 const { router: shopRouterHandler, registerPublicShopRoute } = require('./routes/shop');
+const treeRouter = require('./routes/tree');
 // ── Public shop catalog (no auth needed for SillyTavern plugin) ─────────────
 registerPublicShopRoute(app);
 
@@ -94,6 +131,7 @@ app.use('/api/backup', backupRouter);
 app.use('/api/wallet', walletRouter);
 app.use('/api/discord-manage', discordManageRouter);
 app.use('/api/shop', shopRouterHandler);
+app.use('/api/tree', treeRouter);
 
 // ── 404 catch-all ───────────────────────────────────────────────────
 app.use((_req, res) => {

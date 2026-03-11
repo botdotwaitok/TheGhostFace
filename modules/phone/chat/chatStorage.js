@@ -259,6 +259,56 @@ export async function sendSummaryAsUserMessage(summary) {
     }
 }
 
+/**
+ * Send the raw phone chat transcript as a visible user message in ST's main chat.
+ * Used by the "原文灌入" return-home mode.
+ * @param {Array} history - Phone chat history array [{role, content, timestamp}]
+ */
+export async function sendRawTranscriptAsUserMessage(history) {
+    const charName = getCharacterInfo()?.name || '角色';
+    const userName = getUserName();
+
+    const transcript = history.map(msg => {
+        const role = msg.role === 'user' ? userName : charName;
+        return `${role}: ${msg.content}`;
+    }).join('\n');
+
+    const messageText = `<恶灵QR>[手机聊天记录同步 — 原文]
+${userName}刚才在外出期间通过手机短信和${charName}进行了一段聊天。以下是完整的手机聊天记录原文：
+
+${transcript}
+
+${userName}现在已经回到了${charName}身边。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
+
+    try {
+        const textarea = document.getElementById('send_textarea');
+        if (!textarea) {
+            const $textarea = jQuery('#send_textarea');
+            if ($textarea.length === 0) {
+                throw new Error('找不到ST主输入框 #send_textarea');
+            }
+            $textarea.val(messageText).trigger('input');
+        } else {
+            textarea.value = messageText;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        console.log(`${CHAT_LOG_PREFIX} 已将手机聊天原文填入ST输入框`);
+
+        const sendBtn = document.getElementById('send_but');
+        if (sendBtn) {
+            sendBtn.click();
+            console.log(`${CHAT_LOG_PREFIX} 已点击发送按钮，原文记录将作为用户消息发出`);
+        } else {
+            jQuery('#send_but').trigger('click');
+            console.log(`${CHAT_LOG_PREFIX} 已通过jQuery触发发送`);
+        }
+    } catch (e) {
+        console.error(`${CHAT_LOG_PREFIX} 发送手机聊天原文失败:`, e);
+        throw e;
+    }
+}
+
 // ─── Legacy exports (kept for backward compatibility, now no-ops) ───
 
 /** @deprecated Use sendSummaryAsUserMessage instead */

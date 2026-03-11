@@ -37,11 +37,7 @@ function migrations() {
         // New auth columns
         if (!columns.includes('username')) {
             console.log('[DB] Migrating: Adding username to users');
-            // Adding as nullable first or with default to avoid constraints issues on existing rows if any
-            // But since we want it unique, we might have issues if there are existing rows. 
-            // For now, let's assume empty or acceptable to have nulls for old users until they migrate/register? 
-            // Actually, the register flow uses UUID as ID. Old users might just be "legacy".
-            // Let's add it as TEXT UNIQUE. SQLite allows multiple NULLs in UNIQUE columns usually unless specified NOT NULL.
+
             db.prepare("ALTER TABLE users ADD COLUMN username TEXT UNIQUE").run();
         }
         if (!columns.includes('passwordHash')) {
@@ -119,7 +115,6 @@ function initTables() {
             authorAvatar TEXT DEFAULT '',
             content     TEXT NOT NULL,
             imageUrl    TEXT DEFAULT '',
-            isBroadcast INTEGER NOT NULL DEFAULT 0,
             createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (authorId) REFERENCES users(id)
         );
@@ -166,16 +161,13 @@ function initTables() {
         );
 
         CREATE INDEX IF NOT EXISTS idx_shop_reviews_itemId ON shop_reviews(itemId);
+
+        CREATE TABLE IF NOT EXISTS tree_data (
+            userId    TEXT PRIMARY KEY,
+            data      TEXT NOT NULL DEFAULT '{}',
+            updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     `);
-
-    // ── Safe migrations for existing databases ──────────────
-    try {
-        db.exec(`ALTER TABLE posts ADD COLUMN isBroadcast INTEGER NOT NULL DEFAULT 0;`);
-        console.log('[DB] Migration: added isBroadcast column to posts');
-    } catch (e) {
-        // Column already exists — safe to ignore
-    }
-
     console.log('[DB] Tables initialized');
 }
 

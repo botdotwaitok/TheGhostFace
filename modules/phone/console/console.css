@@ -1,0 +1,279 @@
+/* modules/phone/console/console.css — Console App Styles */
+/* Dark terminal aesthetic - CMD style */
+
+.console-app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #000000;
+    color: #cccccc;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    overflow: hidden;
+}
+
+/* ═══ Tab Bar ═══ */
+.console-tab-bar {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    background: #000000;
+    border-bottom: 1px solid #cccccc;
+    flex-shrink: 0;
+}
+
+.console-tab {
+    flex: 1;
+    padding: 8px 4px;
+    border: none;
+    border-right: 1px solid #cccccc;
+    background: #000000;
+    color: #cccccc;
+    font-size: 12px;
+    font-weight: normal;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.console-tab:last-child {
+    border-right: none;
+}
+
+.console-tab:hover {
+    background: #333333;
+}
+
+.console-tab.active {
+    background: #cccccc;
+    color: #000000;
+}
+
+/* ═══ Content Area ═══ */
+.console-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    scroll-behavior: auto;
+}
+
+.console-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.console-content::-webkit-scrollbar-track {
+    background: #000000;
+    border-left: 1px solid #333333;
+}
+
+.console-content::-webkit-scrollbar-thumb {
+    background: #cccccc;
+}
+
+/* ═══ Empty State ═══ */
+.console-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: #cccccc;
+    text-align: center;
+    gap: 12px;
+    white-space: pre-line;
+}
+
+/* ═══ Log Entry ═══ */
+.console-log-entry {
+    padding: 4px 0;
+    margin-bottom: 0;
+    border-radius: 0;
+    background: transparent;
+    border-left: none;
+    border-bottom: 1px dashed #333333;
+}
+
+.console-log-entry:hover {
+    background: #111111;
+}
+
+.console-log-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+    font-size: 12px;
+}
+
+.console-log-icon {
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.console-log-time {
+    color: #aaaaaa;
+    font-variant-numeric: tabular-nums;
+}
+
+.console-log-source {
+    color: #cccccc;
+    font-weight: bold;
+}
+
+.console-log-message {
+    word-break: break-all;
+    line-height: 1.4;
+    color: #cccccc;
+}
+
+/* Level-based styling */
+.console-level-error .console-log-icon,
+.console-level-error .console-log-message {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.console-level-warn .console-log-icon,
+.console-level-warn .console-log-message {
+    color: #dddddd;
+}
+
+
+.console-level-debug {
+    opacity: 0.7;
+}
+
+/* ═══ Prompt Entry ═══ */
+.console-prompt-entry {
+    margin-bottom: 8px;
+    border-radius: 0;
+    background: #000000;
+    border: 1px solid #cccccc;
+    overflow: hidden;
+}
+
+.console-prompt-entry:hover {
+    border-color: #ffffff;
+}
+
+.console-prompt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #333333;
+}
+
+.console-prompt-label {
+    font-weight: bold;
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.console-prompt-time {
+    font-size: 12px;
+    color: #aaaaaa;
+}
+
+.console-prompt-preview,
+.console-prompt-full {
+    padding: 8px;
+}
+
+.console-prompt-section {
+    margin-bottom: 8px;
+}
+
+.console-prompt-section-title {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #ffffff;
+    margin-bottom: 4px;
+    border-bottom: 1px dashed #555555;
+    display: inline-block;
+}
+
+.console-prompt-section-preview {
+    color: #cccccc;
+    line-height: 1.4;
+    word-break: break-all;
+    font-size: 12px;
+}
+
+.console-prompt-full-text {
+    color: #cccccc;
+    line-height: 1.4;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 8px;
+    background: #111111;
+    border: 1px solid #333333;
+    margin: 0;
+    font-family: inherit;
+}
+
+.console-prompt-full-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+.console-prompt-full-text::-webkit-scrollbar-thumb {
+    background: #555555;
+}
+
+.console-prompt-toggle {
+    padding: 8px;
+    text-align: center;
+    color: #ffffff;
+    font-size: 12px;
+    cursor: pointer;
+    border-top: 1px solid #cccccc;
+    background: #222222;
+}
+
+.console-prompt-toggle:hover {
+    background: #333333;
+}
+
+/* ═══ Action Bar ═══ */
+.console-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: #000000;
+    border-top: 1px solid #cccccc;
+    flex-shrink: 0;
+}
+
+.console-action-btn {
+    padding: 4px 10px;
+    border: 1px solid #cccccc;
+    border-radius: 0;
+    background: #000000;
+    color: #cccccc;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.console-action-btn:hover {
+    background: #cccccc;
+    color: #000000;
+}
+
+.console-action-btn:active {
+    background: #ffffff;
+}
+
+.console-log-count {
+    margin-left: auto;
+    color: #cccccc;
+    font-size: 12px;
+}

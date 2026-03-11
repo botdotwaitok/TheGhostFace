@@ -6,6 +6,23 @@ import { getSettings, getFeedCache, setFeedCache } from './state.js';
 import { updateSettings } from './settings.js';
 import { avatarCache, saveLocalFeed, createLocalPost, addLocalComment, sortFeedCache } from './persistence.js';
 
+// Fields the server is allowed to push into local settings.
+// `enabled`, `backendUrl`, `secretToken` etc. are local-only and MUST NOT
+// be overwritten by the server to prevent the "auto-disable" bug.
+const SERVER_SETTINGS_WHITELIST = new Set([
+    'autoPostChance', 'autoCommentChance', 'autoLikeChance',
+    'customUserName', 'customCharName',
+]);
+
+function filterServerSettings(raw) {
+    if (!raw || typeof raw !== 'object') return {};
+    const filtered = {};
+    for (const [k, v] of Object.entries(raw)) {
+        if (SERVER_SETTINGS_WHITELIST.has(k)) filtered[k] = v;
+    }
+    return filtered;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Core API Client
 // ═══════════════════════════════════════════════════════════════════════
@@ -69,9 +86,10 @@ export async function login(username, password) {
             username: result.user.username,
             displayName: result.user.displayName,
             avatarUrl: result.user.avatarUrl || settings.avatarUrl,
-            ...serverSettings
+            discordBound: !!result.discordBound,
+            ...filterServerSettings(serverSettings)
         }, true);
-        return result.user;
+        return { user: result.user, discordBound: !!result.discordBound };
     }
     throw new Error('Invalid login response');
 }
@@ -97,9 +115,10 @@ export async function register(username, password, displayName) {
             username: result.user.username,
             displayName: result.user.displayName,
             avatarUrl: result.user.avatarUrl || settings.avatarUrl,
-            ...serverSettings
+            discordBound: !!result.discordBound,
+            ...filterServerSettings(serverSettings)
         }, true);
-        return result.user;
+        return { user: result.user, discordBound: !!result.discordBound, discordRequired: !!result.discordRequired };
     }
     throw new Error('Invalid register response');
 }
@@ -141,7 +160,8 @@ export async function getUserInfo() {
                 username: result.user.username,
                 displayName: result.user.displayName,
                 avatarUrl: result.user.avatarUrl || settings.avatarUrl,
-                ...serverSettings
+                discordBound: !!result.discordBound,
+                ...filterServerSettings(serverSettings)
             }, true);
             return result.user;
         }

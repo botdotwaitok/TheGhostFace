@@ -1,4 +1,4 @@
-﻿// ui/phone/shop/shopData.js — Catalog of all items available in the shop
+// ui/phone/shop/shopData.js — Catalog of all items available in the shop
 // Items are defined here as fallback defaults.
 // At runtime, loadDynamicShopData() attempts to fetch shopData.json from the
 // ghost-server. If successful, the in-memory arrays are replaced with server data,
@@ -34,11 +34,17 @@ export async function loadDynamicShopData() {
         const data = await res.json();
         if (!data) return; // null means "no override, use defaults"
 
-        if (Array.isArray(data.items) && data.items.length > 0) {
-            SHOP_ITEMS = data.items;
-        }
         if (Array.isArray(data.categories) && data.categories.length > 0) {
-            SHOP_CATEGORIES = data.categories;
+            // Merge categories: remote overrides local, but keep local categories not in remote
+            const catMap = new Map(SHOP_CATEGORIES.map(c => [c.id, c]));
+            data.categories.forEach(c => catMap.set(c.id, c));
+            SHOP_CATEGORIES = Array.from(catMap.values());
+        }
+        if (Array.isArray(data.items) && data.items.length > 0) {
+            // Merge items: remote overrides local, but keep local items not in remote
+            const itemMap = new Map(SHOP_ITEMS.map(i => [i.id, i]));
+            data.items.forEach(i => itemMap.set(i.id, i));
+            SHOP_ITEMS = Array.from(itemMap.values());
         }
         console.log(`[GF Shop] Dynamic catalog loaded: ${SHOP_ITEMS.length} items, ${SHOP_CATEGORIES.length} categories`);
     } catch (err) {
@@ -49,11 +55,12 @@ export async function loadDynamicShopData() {
 }
 
 export let SHOP_CATEGORIES = [
-        { id: 'chat', name: '聊天增强', icon: 'fa-solid fa-message' },
+    { id: 'chat', name: '聊天增强', icon: 'fa-solid fa-message' },
     { id: 'diary', name: '日记增强', icon: 'fa-solid fa-book' },
     { id: 'behavior', name: '角色行为', icon: 'fa-solid fa-masks-theater' },
     { id: 'prank', name: '恶作剧区', icon: 'fa-solid fa-wand-magic-sparkles' },
-    { id: 'rob', name: '暗巷违禁品', icon: 'fa-solid fa-user-ninja' }
+    { id: 'rob', name: '暗巷违禁品', icon: 'fa-solid fa-user-ninja' },
+    { id: 'tree', name: '迷雾花园', icon: 'fa-solid fa-tree' },
 ];
 
 export let SHOP_ITEMS = [
@@ -316,12 +323,38 @@ export let SHOP_ITEMS = [
     },
 
     // ── 五、🔪 抢劫商城道具（Robbery Buff Items） ──
-    { id: 'rob_dagger',  name: '精良匕首',  emoji: '🔪', price: 500, category: 'rob', description: '角色下次抢劫成功率+20%。',                    duration: 1, effectType: 'robBuff' },
-    { id: 'rob_mask',   name: '伪装面具',  emoji: '🎭', price: 400, category: 'rob', description: '抢劫时不暴露角色身份（被抢方不知道是谁）。',   duration: 1, effectType: 'robBuff' },
-    { id: 'rob_vest',   name: '防弹背心',  emoji: '🛡',  price: 600, category: 'rob', description: '抢劫失败时不会丢失任何金额。',                  duration: 1, effectType: 'robBuff' },
-    { id: 'rob_lock',   name: '用户防盗锁', emoji: '🔒', price: 300, category: 'rob', description: '保护自己的暗金细胞在接下来的24小时内不被别人的角色抢。', duration: 1, effectType: 'robBuff' },
-    { id: 'rob_intel',  name: '情报网',    emoji: '🕵️', price: 450, category: 'rob', description: '查看社区内谁最有钱，让角色精准捕猎。',            duration: 1, effectType: 'robBuff' },
-    { id: 'rob_combo',  name: '连环劫案',  emoji: '💣', price: 800, category: 'rob', description: '角色能够在一次出击中抢劫2-3个人。',              duration: 1, effectType: 'robBuff' },
+    { id: 'rob_dagger', name: '精良匕首', emoji: '🔪', price: 500, category: 'rob', description: '角色下次抢劫成功率+20%。', duration: 1, effectType: 'robBuff' },
+    { id: 'rob_mask', name: '伪装面具', emoji: '🎭', price: 400, category: 'rob', description: '抢劫时不暴露角色身份（被抢方不知道是谁）。', duration: 1, effectType: 'robBuff' },
+    { id: 'rob_vest', name: '防弹背心', emoji: '🛡', price: 600, category: 'rob', description: '抢劫失败时不会丢失任何金额。', duration: 1, effectType: 'robBuff' },
+    { id: 'rob_lock', name: '用户防盗锁', emoji: '🔒', price: 300, category: 'rob', description: '保护自己的暗金细胞在接下来的24小时内不被别人的角色抢。', duration: 1, effectType: 'robBuff' },
+    { id: 'rob_intel', name: '情报网', emoji: '🕵️', price: 450, category: 'rob', description: '查看社区内谁最有钱，让角色精准捕猎。', duration: 1, effectType: 'robBuff' },
+    { id: 'rob_combo', name: '连环劫案', emoji: '💣', price: 800, category: 'rob', description: '角色能够在一次出击中抢劫2-3个人。', duration: 1, effectType: 'robBuff' },
+
+    // ── 六、🌳 迷雾花园道具（Tree Buff Items） ──
+    {
+        id: 'tree_fertilizer', name: '枯萎血清', emoji: '🧪', price: 2000, category: 'tree',
+        description: '一种散发着橙色光芒、令人作呕的血清。成长值 +30。每日限购 2 份。', duration: 0, effectType: 'treeBuff',
+        treeEffect: { type: 'growth', amount: 30 },
+        maxDaily: 2,
+    },
+    {
+        id: 'tree_extra_care', name: '卡瓦纳的濒死之息', emoji: '🌪️', price: 1000, category: 'tree',
+        description: '从克洛普瑞恩疯人院的清洁工哈佛里卡瓦纳那里偷来的濒死之息。获得一次额外的照顾机会。每日限购 2 份。', duration: 0, effectType: 'treeBuff',
+        treeEffect: { type: 'bonusCare', amount: 1 },
+        maxDaily: 2,
+    },
+    {
+        id: 'tree_golden_dew', name: '肥美肉块', emoji: '🥩', price: 5000, category: 'tree',
+        description: '对于犬类朋友来说，这是一种奇特且无法拒绝的零食，对植物也一样。成长值 +50。每日限购 1 份。', duration: 0, effectType: 'treeBuff',
+        treeEffect: { type: 'growth', amount: 50 },
+        maxDaily: 1,
+    },
+    {
+        id: 'tree_gacha_token', name: '荧虹封印', emoji: '🎰', price: 1500, category: 'tree',
+        description: '一种半透明的圆柱形封印，由带瘟疫肖像的迷雾本身塑造而成。额外获得一次扭蛋机会。每日限购 3 个。', duration: 0, effectType: 'treeBuff',
+        treeEffect: { type: 'bonusGacha', amount: 1 },
+        maxDaily: 3,
+    },
 ];
 
 /** Get an item by its ID */

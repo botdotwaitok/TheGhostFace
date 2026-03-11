@@ -2,12 +2,19 @@
 // iPhone-style layout: top profile card → account detail page → module settings
 
 import { openAppInViewport } from '../phoneController.js';
+import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
+import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
+import { getConfig as getAutoMsgConfig, saveConfig as saveAutoMsgConfig, startAutoMessageTimer, stopAutoMessageTimer, formatIntervalLabel } from '../chat/autoMessage.js';
 import { isDiaryEnabled, getDiaryMode, setDiaryEnabled, setDiaryMode } from '../diary/diaryApp.js';
 import {
     populateSettings, saveSettingsFromUI, toggleEnable, updateToggleBtn,
     onClick, bindSlider, showToast, getVal
 } from '../moments/momentsUI.js';
 import * as moments from '../moments/moments.js';
+import { loadTreeData, getTreeState, updateTreeState, updateTreeSettings } from '../tree/treeStorage.js';
+import { disableTreeWorldInfo, updateTreeWorldInfo } from '../tree/treeWorldInfo.js';
+import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
+import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Discord Binding Section (reused in account detail page)
@@ -86,7 +93,22 @@ function escapeHtml(str) {
 // Account Detail Page (opened when tapping the profile card)
 // ═══════════════════════════════════════════════════════════════════════
 
+let _globalSettingsEventsBound = false;
+
+function bindSettingsGlobalEvents() {
+    if (_globalSettingsEventsBound) return;
+    _globalSettingsEventsBound = true;
+    window.addEventListener('phone-app-back', (e) => {
+        const accountSection = document.getElementById('phone_account_auth_container');
+        if (accountSection) {
+            e.preventDefault();
+            openSettingsApp();
+        }
+    });
+}
+
 function openAccountDetailPage() {
+    bindSettingsGlobalEvents();
     const P = 'phone_account';
     const s = moments.getSettings();
     const isLoggedIn = !!s.authToken;
@@ -212,6 +234,12 @@ function renderAccountAuth(prefix = 'phone_account') {
     if (!container) return;
 
     const s = moments.getSettings();
+
+    if (s.authToken && s.discordBound === false) {
+        // ── Logged in but Discord not bound: force binding step ──
+        renderDiscordBindStep(container, prefix);
+        return;
+    }
 
     if (s.authToken) {
         // ── Logged in: Show profile card ──
@@ -359,18 +387,80 @@ function renderAccountAuthForm(container, mode = 'login', prefix = 'phone_accoun
 
         try {
             if (isLogin) {
-                await moments.login(u, p);
-                showToast('登录成功! 🎉');
+                const result = await moments.login(u, p);
+                if (!result.discordBound) {
+                    // Discord not bound — show binding step
+                    showToast('登录成功，请绑定 Discord');
+                    renderDiscordBindStep(container, prefix);
+                } else {
+                    showToast('登录成功! 🎉');
+                    openAccountDetailPage();
+                }
             } else {
-                await moments.register(u, p, n);
-                showToast('注册成功! 🎉');
+                const result = await moments.register(u, p, n);
+                // Registration always requires Discord binding
+                showToast('注册成功，请绑定 Discord');
+                renderDiscordBindStep(container, prefix);
             }
-            // Re-open account page to show logged-in state
-            openAccountDetailPage();
         } catch (e) {
             if (errEl) errEl.textContent = e.message;
             btn.disabled = false;
             btn.textContent = isLogin ? '登录' : '注册';
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Discord Binding Step (mandatory after register / login without binding)
+// ═══════════════════════════════════════════════════════════════════════
+
+function renderDiscordBindStep(container, prefix = 'phone_account') {
+    container.innerHTML = `
+        <div style="text-align: center; padding: 20px 0 8px;">
+            <div style="width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #5865F2, #7289DA); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;">
+                <i class="fa-brands fa-discord" style="font-size: 28px; color: #fff;"></i>
+            </div>
+            <div style="font-size: 17px; font-weight: 600; color: #1c1c1e; margin-bottom: 6px;">绑定 Discord 账号</div>
+            <div style="font-size: 13px; color: #8e8e93; line-height: 1.6; padding: 0 12px;">
+                为了保护服务器安全，注册需要绑定 Discord 账号。<br>
+                请在 Discord 中输入 <b style="color: #5865F2;">/绑定码</b> 获取 6 位验证码。
+            </div>
+        </div>
+        <div class="moments-auth-form" style="margin-top: 12px;">
+            <div class="moments-form-group">
+                <input type="text" id="${prefix}_discord_code" class="moments-input"
+                       placeholder="输入 6 位绑定码" maxlength="6"
+                       style="text-transform: uppercase; letter-spacing: 3px; font-weight: 700; font-size: 20px; text-align: center;" />
+            </div>
+            <div id="${prefix}_discord_error" class="moments-error-msg"></div>
+            <button id="${prefix}_discord_submit" class="moments-btn moments-btn-primary" style="width:100%; background: linear-gradient(135deg, #5865F2, #7289DA); border: none;">
+                <i class="fa-brands fa-discord" style="margin-right: 6px;"></i>验证并绑定
+            </button>
+        </div>
+    `;
+
+    document.getElementById(`${prefix}_discord_submit`)?.addEventListener('click', async () => {
+        const btn = document.getElementById(`${prefix}_discord_submit`);
+        const errEl = document.getElementById(`${prefix}_discord_error`);
+        const input = document.getElementById(`${prefix}_discord_code`);
+        const code = input?.value?.trim().toUpperCase();
+
+        if (errEl) errEl.textContent = '';
+        if (!code) { if (errEl) errEl.textContent = '请输入绑定码'; return; }
+        if (!/^[A-Z0-9]{6}$/.test(code)) { if (errEl) errEl.textContent = '绑定码格式不正确（6位字母数字）'; return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 验证中...';
+
+        try {
+            await moments.bindDiscordByCode(code);
+            moments.updateSettings({ discordBound: true });
+            showToast('绑定成功，欢迎! 🎉🔗');
+            openAccountDetailPage();
+        } catch (e) {
+            if (errEl) errEl.textContent = e.message || '绑定失败';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-brands fa-discord" style="margin-right: 6px;"></i>验证并绑定';
         }
     });
 }
@@ -440,7 +530,7 @@ export function openSettingsApp() {
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
                 <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #FF6B9D, #C44569);"><i class="fa-solid fa-camera-retro"></i></span>
-                <span>朋友圈设置</span>
+                <span>朋友圈</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
@@ -489,7 +579,7 @@ export function openSettingsApp() {
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
                 <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #F6D365, #FDA085);"><i class="fa-solid fa-book-open"></i></span>
-                <span>日记本设置</span>
+                <span>日记本</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
@@ -507,7 +597,6 @@ export function openSettingsApp() {
                 <div class="phone-settings-row" style="flex-direction: column; gap: 8px;">
                     <div class="phone-settings-mode-card" data-diary-mode="manual" id="${P}_diary_mode_manual">
                         <div class="phone-settings-mode-card-header">
-                            <span class="phone-settings-mode-card-icon">✍️</span>
                             <span class="phone-settings-mode-card-title">手动模式</span>
                             <span class="phone-settings-mode-card-badge">推荐·省Token</span>
                         </div>
@@ -515,7 +604,6 @@ export function openSettingsApp() {
                     </div>
                     <div class="phone-settings-mode-card" data-diary-mode="auto" id="${P}_diary_mode_auto">
                         <div class="phone-settings-mode-card-header">
-                            <span class="phone-settings-mode-card-icon">🤖</span>
                             <span class="phone-settings-mode-card-title">自动模式</span>
                             <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">消耗更多Token</span>
                         </div>
@@ -526,15 +614,73 @@ export function openSettingsApp() {
             </div>
         </details>
 
-        <!-- ═══ 通知设置 ═══ -->
+        <!-- ═══ 树树设置 (Tree Settings) ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
-                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #667EEA, #764BA2);"><i class="fa-solid fa-bell"></i></span>
-                <span>通知设置</span>
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #A8E063, #56AB2F);"><i class="fa-solid fa-leaf"></i></span>
+                <span>树树</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
-                <div class="phone-settings-coming-soon">🚀 即将上线</div>
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label"></i>世界书条目注入</span>
+                        <button id="${P}_tree_wb_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="phone-settings-actions">
+                    <button id="${P}_tree_rename_btn" class="phone-settings-btn phone-settings-btn-primary">修改树名</button>
+                    <button id="${P}_tree_regen_btn" class="phone-settings-btn" style="background: rgba(45, 147, 108, 0.1); color: #2d936c; border: none;">重新生成内容</button>
+                </div>
+
+            </div>
+        </details>
+
+        <!-- ═══ 消息提醒 (Notification & Keep-Alive) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #667EEA, #764BA2);"><i class="fa-solid fa-bell"></i></span>
+                <span>消息提醒</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-group-title">后台保活</div>
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">静默保活（iOS推荐开启）</span>
+                        <button id="${P}_keepalive_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    防止浏览器杀掉后台进程。开启后，发送聊天消息时会自动播放无声音频保持页面活跃（注意，不能看视频/听音乐）。推荐 iOS 用户开启。
+                </div>
+
+                <div class="phone-settings-group-title">主动消息</div>
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">让你对象主动发消息</span>
+                        <button id="${P}_auto_msg_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div id="${P}_auto_msg_settings" style="display: none;">
+                    <div class="phone-settings-row">
+                        <label>间隔时间</label>
+                        <div class="phone-settings-slider-row">
+                            <input id="${P}_auto_msg_interval" type="range" min="1" max="480" step="1" class="phone-settings-slider" />
+                            <span id="${P}_auto_msg_interval_val" class="phone-settings-slider-val">30分钟</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </details>
 
@@ -542,7 +688,7 @@ export function openSettingsApp() {
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
                 <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #38B2AC, #2C7A7B);"><i class="fa-solid fa-palette"></i></span>
-                <span>外观设置</span>
+                <span>外观</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
@@ -573,6 +719,73 @@ export function openSettingsApp() {
                             <span class="phone-settings-ios-toggle-knob"></span>
                         </button>
                     </div>
+                </div>
+
+            </div>
+        </details>
+
+        <!-- ═══ 回家模式 (Return Home Settings) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #F093FB, #F5576C);"><i class="fa-solid fa-house-chimney"></i></span>
+                <span>回家模式</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-group-title">记忆碎片提取</div>
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">回家时提取记忆碎片</span>
+                        <button id="${P}_rh_memory_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后，点击“我已回家”时会先调用鬼面记忆碎片系统，从手机聊天记录中提取关键信息写入世界书（绿灯条目）。适合使用了 GhostFace 世界书记忆系统的用户。
+                </div>
+
+                <div class="phone-settings-group-title">同步方式</div>
+                <div class="phone-settings-row" style="flex-direction: column; gap: 8px;">
+                    <div class="phone-settings-mode-card" data-rh-mode="summary" id="${P}_rh_mode_summary">
+                        <div class="phone-settings-mode-card-header">
+                            <span class="phone-settings-mode-card-title">压缩总结</span>
+                            <span class="phone-settings-mode-card-badge">推荐</span>
+                        </div>
+                        <div class="phone-settings-mode-card-desc">鬼面将手机聊天内容总结为结构化摘要后，作为用户消息发送到酒馆本体。省 Token，信息完整。</div>
+                    </div>
+                    <div class="phone-settings-mode-card" data-rh-mode="raw" id="${P}_rh_mode_raw">
+                        <div class="phone-settings-mode-card-header">
+                            <span class="phone-settings-mode-card-title">原文灌入</span>
+                            <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">⚠️ 高Token</span>
+                        </div>
+                        <div class="phone-settings-mode-card-desc">将全部手机聊天记录原文直接作为用户消息送入酒馆本体。保留原汁原味的对话细节，但会占用大量 Token（几百条聊天可能超出上下文限制）。</div>
+                    </div>
+                </div>
+
+            </div>
+        </details>
+
+        <!-- ═══ 开发者工具 (Dev Tools) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #1e1e1e, #3a3a3a);"><i class="fa-solid fa-terminal"></i></span>
+                <span>开发者工具</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">Console 调试工具</span>
+                        <button id="${P}_console_enable_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后 Console App 可正常使用，实时查看模块日志和发出的提示词。
                 </div>
 
             </div>
@@ -691,6 +904,194 @@ export function openSettingsApp() {
                 showToast(`日记模式: ${label}`);
             });
         });
+
+        // ═══ Tree Settings ═══
+        const treeData = loadTreeData();
+        const treeWbToggle = document.getElementById(`${P}_tree_wb_toggle`);
+        if (treeWbToggle) {
+            const isWbOn = !!treeData.settings.injectWorldBook;
+            treeWbToggle.setAttribute('aria-checked', String(isWbOn));
+            if (isWbOn) treeWbToggle.classList.add('active');
+
+            treeWbToggle.addEventListener('click', () => {
+                const wasOn = treeWbToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                treeWbToggle.setAttribute('aria-checked', String(newState));
+                treeWbToggle.classList.toggle('active', newState);
+                updateTreeSettings({ injectWorldBook: newState });
+
+                if (newState) {
+                    const state = getTreeState();
+                    if (state && state.treeName) {
+                        const season = getCurrentSeason();
+                        const stage = getStageByGrowth(state.growth);
+                        const charName = getPhoneCharInfo()?.name || '恋人';
+                        const userName = getPhoneUserName() || '玩家';
+                        updateTreeWorldInfo(state, season, stage, charName, userName).catch(e => {
+                            console.warn('[Settings] 树树世界书条目更新:', e);
+                        });
+                    }
+                } else {
+                    disableTreeWorldInfo();
+                }
+                showToast(newState ? '世界书注入已开启' : '世界书注入已关闭');
+            });
+        }
+
+        onClick(`${P}_tree_rename_btn`, () => {
+            const state = getTreeState();
+            if (!state || !state.treeName) {
+                return showToast('你还没有领养小树哦！');
+            }
+            const newName = prompt('给小树改个名字:', state.treeName);
+            if (newName !== null && newName.trim()) {
+                updateTreeState({ treeName: newName.trim() });
+                showToast(`已改名为: ${newName.trim()}`);
+            }
+        });
+
+        onClick(`${P}_tree_regen_btn`, () => {
+            const state = getTreeState();
+            if (!state || !state.treeName) {
+                return showToast('你还没有领养小树哦！');
+            }
+            const confirmed = confirm('确定要重新生成所有台词和题目吗？\n（小树成长、图鉴、果实等数据会保留）');
+            if (confirmed) {
+                import('../tree/treeStorage.js').then(({ resetTreeContent }) => {
+                    resetTreeContent();
+                    showToast('内容已清除，打开树树即可重新生成');
+                });
+            }
+        });
+
+        // ═══ Return Home: Memory Toggle + Sync Mode ═══
+        const rhMemoryToggle = document.getElementById(`${P}_rh_memory_toggle`);
+        const rhMemoryOn = localStorage.getItem('gf_phone_rh_memory') === 'true';
+        if (rhMemoryToggle) {
+            rhMemoryToggle.setAttribute('aria-checked', String(rhMemoryOn));
+            if (rhMemoryOn) rhMemoryToggle.classList.add('active');
+            rhMemoryToggle.addEventListener('click', () => {
+                const wasOn = rhMemoryToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                rhMemoryToggle.setAttribute('aria-checked', String(newState));
+                rhMemoryToggle.classList.toggle('active', newState);
+                localStorage.setItem('gf_phone_rh_memory', String(newState));
+                showToast(newState ? '回家时将提取记忆碎片 🧩' : '记忆碎片提取已关闭');
+            });
+        }
+
+        const currentRhMode = localStorage.getItem('gf_phone_rh_sync_mode') || 'summary';
+        const rhModeCards = document.querySelectorAll('.phone-settings-mode-card[data-rh-mode]');
+        rhModeCards.forEach(card => {
+            if (card.dataset.rhMode === currentRhMode) card.classList.add('mode-selected');
+            card.addEventListener('click', () => {
+                rhModeCards.forEach(c => c.classList.remove('mode-selected'));
+                card.classList.add('mode-selected');
+                localStorage.setItem('gf_phone_rh_sync_mode', card.dataset.rhMode);
+                const label = card.dataset.rhMode === 'raw' ? '原文灌入' : '压缩总结';
+                showToast(`回家同步方式: ${label}`);
+            });
+        });
+
+        // ═══ Console: Enable Toggle ═══
+        const consoleToggle = document.getElementById(`${P}_console_enable_toggle`);
+        const consoleOn = isConsoleEnabled();
+        if (consoleToggle) {
+            consoleToggle.setAttribute('aria-checked', String(consoleOn));
+            if (consoleOn) consoleToggle.classList.add('active');
+            consoleToggle.addEventListener('click', () => {
+                const wasOn = consoleToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                consoleToggle.setAttribute('aria-checked', String(newState));
+                consoleToggle.classList.toggle('active', newState);
+                setConsoleEnabled(newState);
+                showToast(newState ? 'Console 已启用 🖥️' : 'Console 已关闭');
+            });
+        }
+
+        // ═══ Keep-Alive: Enable Toggle ═══
+        const keepAliveToggle = document.getElementById(`${P}_keepalive_toggle`);
+        const keepAliveOn = isKeepAliveEnabled();
+        if (keepAliveToggle) {
+            keepAliveToggle.setAttribute('aria-checked', String(keepAliveOn));
+            if (keepAliveOn) keepAliveToggle.classList.add('active');
+            keepAliveToggle.addEventListener('click', () => {
+                const wasOn = keepAliveToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                keepAliveToggle.setAttribute('aria-checked', String(newState));
+                keepAliveToggle.classList.toggle('active', newState);
+                setKeepAliveEnabled(newState);
+                if (newState) {
+                    startKeepAlive();
+                    showToast('静默保活已开启 🔒');
+                } else {
+                    stopKeepAlive();
+                    showToast('静默保活已关闭');
+                }
+            });
+        }
+
+        // ═══ Auto Message: Enable Toggle + Interval Slider ═══
+        const autoMsgToggle = document.getElementById(`${P}_auto_msg_toggle`);
+        const autoMsgSettings = document.getElementById(`${P}_auto_msg_settings`);
+        const autoMsgSlider = document.getElementById(`${P}_auto_msg_interval`);
+        const autoMsgVal = document.getElementById(`${P}_auto_msg_interval_val`);
+
+        const autoMsgConfig = getAutoMsgConfig();
+
+        // Initialize toggle state
+        if (autoMsgToggle) {
+            autoMsgToggle.setAttribute('aria-checked', String(autoMsgConfig.enabled));
+            if (autoMsgConfig.enabled) autoMsgToggle.classList.add('active');
+
+            // Show/hide slider based on enabled state
+            if (autoMsgSettings) {
+                autoMsgSettings.style.display = autoMsgConfig.enabled ? 'block' : 'none';
+            }
+
+            autoMsgToggle.addEventListener('click', () => {
+                const wasOn = autoMsgToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                autoMsgToggle.setAttribute('aria-checked', String(newState));
+                autoMsgToggle.classList.toggle('active', newState);
+                saveAutoMsgConfig({ enabled: newState });
+
+                // Show/hide slider
+                if (autoMsgSettings) {
+                    autoMsgSettings.style.display = newState ? 'block' : 'none';
+                }
+
+                if (newState) {
+                    startAutoMessageTimer();
+                    showToast('主动消息已开启 💬');
+                } else {
+                    stopAutoMessageTimer();
+                    showToast('主动消息已关闭');
+                }
+            });
+        }
+
+        // Initialize slider value from config
+        if (autoMsgSlider) {
+            autoMsgSlider.value = autoMsgConfig.interval || 30;
+            if (autoMsgVal) autoMsgVal.textContent = formatIntervalLabel(autoMsgConfig.interval || 30);
+
+            autoMsgSlider.addEventListener('input', () => {
+                const val = parseInt(autoMsgSlider.value, 10);
+                if (autoMsgVal) autoMsgVal.textContent = formatIntervalLabel(val);
+            });
+
+            autoMsgSlider.addEventListener('change', () => {
+                const val = parseInt(autoMsgSlider.value, 10);
+                saveAutoMsgConfig({ interval: val });
+                // Restart timer with new interval if enabled
+                const cfg = getAutoMsgConfig();
+                if (cfg.enabled) {
+                    startAutoMessageTimer();
+                }
+            });
+        }
+
     });
 }
 

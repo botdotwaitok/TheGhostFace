@@ -62,10 +62,6 @@ export const momentsPanelTemplate = String.raw`
 
             <!-- ═══ Compose Area ═══ -->
             <div id="moments_compose_section" class="moments-compose" style="display: none;">
-                <div class="moments-compose-avatar">
-                    <img id="moments_compose_avatar_img" src="" style="display:none; width: 100%; height: 100%; object-fit: cover; border-radius: 5px;" />
-                    <i id="moments_compose_avatar_placeholder" class="fa-solid fa-user"></i>
-                </div>
                 <div class="moments-compose-content-wrapper" style="flex: 1;">
                     <div class="moments-compose-input-wrapper">
                         <textarea id="moments_compose_text" class="moments-compose-input"
