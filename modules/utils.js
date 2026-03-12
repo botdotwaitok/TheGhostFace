@@ -122,7 +122,7 @@ export const logger = {
     success: (msg, details) => logToUI('SUCCESS', msg, details)
 };
 
-// 🆕 获取最新的 character ID
+// 🆕 获取最新的 character ID (数字索引)
 export function getCurrentChid() {
     try {
         const ctx = typeof getContext === 'function' ? getContext() : null;
@@ -131,35 +131,96 @@ export function getCurrentChid() {
     return typeof this_chid !== 'undefined' ? this_chid : null;
 }
 
-//查找绑定世界书
-export async function findActiveWorldBook(opts = {}) {
+// 🆕 获取当前角色的稳定文件名标识符（不随列表顺序变化）
+export function getCharacterFileName() {
     try {
-        // 检查是否有自定义指定的角色世界书
         const currentChid = getCurrentChid();
-        if (currentChid && extension_settings?.the_ghost_face?.customWbMap?.[currentChid]) {
-            const customWbId = extension_settings.the_ghost_face.customWbMap[currentChid];
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect) {
-                const option = Array.from(worldSelect.options).find(opt => opt.value === customWbId);
+        if (currentChid === null || currentChid === undefined) return null;
+        // getCharaFilename 是 ST 内置的，返回角色文件名（不含路径）
+        if (typeof getCharaFilename === 'function') {
+            const fileName = getCharaFilename(currentChid);
+            if (fileName) return fileName;
+        }
+        // fallback: 从 characters 数组取 avatar 字段
+        if (characters && characters[currentChid]) {
+            return characters[currentChid].avatar || null;
+        }
+    } catch (e) {
+        console.warn('[鬼面] getCharacterFileName error:', e);
+    }
+    return null;
+}
+
+// 🔧 一次性迁移：将旧的数字索引 customWbMap 迁移为文件名格式
+export function migrateCustomWbMap() {
+    try {
+        const map = extension_settings?.the_ghost_face?.customWbMap;
+        if (!map || typeof map !== 'object') return;
+
+        // 检查是否需要迁移：如果 key 是纯数字，说明是旧格式
+        const keys = Object.keys(map);
+        const needsMigration = keys.some(k => /^\d+$/.test(k));
+        if (!needsMigration) return;
+
+        console.log('[鬼面] 🔄 开始迁移 customWbMap 从数字索引到文件名格式...');
+        const worldSelect = document.querySelector('#world_editor_select');
+        const newMap = {};
+
+        for (const [oldChid, oldWbValue] of Object.entries(map)) {
+            // 如果 key 已经不是纯数字，保留原样
+            if (!/^\d+$/.test(oldChid)) {
+                newMap[oldChid] = oldWbValue;
+                continue;
+            }
+
+            // 尝试把数字 chid 转换为角色文件名
+            const chidNum = parseInt(oldChid);
+            let charFileName = null;
+            if (typeof getCharaFilename === 'function') {
+                try { charFileName = getCharaFilename(chidNum); } catch { }
+            }
+            if (!charFileName && characters && characters[chidNum]) {
+                charFileName = characters[chidNum]?.avatar;
+            }
+
+            // 尝试把数字 wb value 转换为世界书名
+            let wbName = oldWbValue;
+            if (/^\d+$/.test(oldWbValue) && worldSelect) {
+                const option = Array.from(worldSelect.options).find(opt => opt.value === oldWbValue);
                 if (option) {
-                    const customWbName = option.textContent.trim();
-                    console.log(`🔒 使用为角色指定的绑定世界书 (findActiveWorldBook 返回 ${customWbName})`);
-                    return customWbName;
+                    wbName = option.textContent.trim();
                 }
             }
-            console.log(`🔒 使用为角色指定的绑定世界书 (findActiveWorldBook 返回 ${customWbId})`);
-            return customWbId; // fallback
-        }
 
-        // Fallback: use currently selected worldbook in the ST UI
-        const worldSelect = document.querySelector('#world_editor_select');
-        if (worldSelect && worldSelect.value) {
-            const selectedName = worldSelect.selectedOptions[0].textContent.trim();
-            if (selectedName && selectedName !== "没有任何" && selectedName !== "None") {
-                return selectedName;
+            if (charFileName && wbName) {
+                newMap[charFileName] = wbName;
+                console.log(`[鬼面]   迁移: chid ${oldChid} → "${charFileName}" → wb "${wbName}"`);
+            } else {
+                console.warn(`[鬼面]   跳过: chid ${oldChid} (角色=${charFileName}, 世界书=${wbName})`);
             }
         }
 
+        extension_settings.the_ghost_face.customWbMap = newMap;
+        saveSettingsDebounced();
+        console.log('[鬼面] ✅ customWbMap 迁移完成', newMap);
+    } catch (e) {
+        console.warn('[鬼面] customWbMap 迁移失败:', e);
+    }
+}
+
+//查找绑定世界书（使用稳定的文件名标识符）
+export async function findActiveWorldBook(opts = {}) {
+    try {
+        // 🔒 检查是否有自定义指定的角色世界书（key = 角色文件名，value = 世界书名）
+        const charFileName = getCharacterFileName();
+        if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+            const customWbName = extension_settings.the_ghost_face.customWbMap[charFileName];
+            console.log(`🔒 使用为角色 "${charFileName}" 指定的绑定世界书: ${customWbName}`);
+            return customWbName;
+        }
+
+        // ⚠️ 不再 fallback 到 worldSelect.selectedOptions — 那是编辑器当前选中的，
+        // 跟当前角色无关，会导致切角色后"泄漏"上一个角色的世界书
         return null;
     } catch (e) {
         console.warn('findActiveWorldBook error:', e);

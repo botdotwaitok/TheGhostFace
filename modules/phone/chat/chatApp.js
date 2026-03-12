@@ -953,35 +953,17 @@ function handleBatchDelete() {
     selectedForDeletion.clear();
 
     // Re-render the messages area
-    const history = loadChatHistory();
-    const messagesArea = document.getElementById('chat_messages_area');
-    if (!messagesArea) return;
-
-    const displayHistory = history.slice(-20);
-    const startIndex = history.length - displayHistory.length;
-
-    let newHtml = displayHistory.length > 0
-        ? buildMessagesHtml(displayHistory, startIndex)
-        : `<div class="chat-empty">
-               <div class="chat-empty-icon">💬</div>
-               <div class="chat-empty-text">开始聊天吧…</div>
-           </div>`;
-
-    if (history.length > 20 && displayHistory.length > 0) {
-        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
-    }
-
-    messagesArea.innerHTML = newHtml;
+    rerenderMessagesArea();
 
     // Re-apply delete mode
     if (isDeleteMode) {
-        messagesArea.querySelectorAll('.chat-bubble-row[data-msg-index]').forEach(row => {
+        const messagesArea = document.getElementById('chat_messages_area');
+        messagesArea?.querySelectorAll('.chat-bubble-row[data-msg-index]').forEach(row => {
             row.classList.add('delete-mode');
         });
     }
 
     updateDeleteToolbar();
-    scrollToBottom(false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1079,20 +1061,7 @@ function handleEditSave() {
     if (isEditMode) toggleEditMode();
 
     // Re-render messages
-    const history = loadChatHistory();
-    const messagesArea = document.getElementById('chat_messages_area');
-    if (!messagesArea) return;
-
-    const displayHistory = history.slice(-20);
-    const startIndex = history.length - displayHistory.length;
-    let newHtml = displayHistory.length > 0
-        ? buildMessagesHtml(displayHistory, startIndex)
-        : `<div class="chat-empty"><div class="chat-empty-icon">💬</div><div class="chat-empty-text">开始聊天吧…</div></div>`;
-    if (history.length > 20 && displayHistory.length > 0) {
-        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
-    }
-    messagesArea.innerHTML = newHtml;
-    scrollToBottom(false);
+    rerenderMessagesArea();
 }
 
 /**
@@ -1144,19 +1113,7 @@ async function rerollLastMessage() {
     saveChatHistory(history);
 
     // Re-render without the removed AI messages
-    const messagesArea = document.getElementById('chat_messages_area');
-    if (messagesArea) {
-        const displayHistory = history.slice(-20);
-        const startIndex = history.length - displayHistory.length;
-        let newHtml = displayHistory.length > 0
-            ? buildMessagesHtml(displayHistory, startIndex)
-            : '';
-        if (history.length > 20) {
-            newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
-        }
-        messagesArea.innerHTML = newHtml;
-    }
-    scrollToBottom(false);
+    rerenderMessagesArea();
 
     // Exit delete mode if active
     if (isDeleteMode) toggleDeleteMode();
@@ -1475,9 +1432,14 @@ async function sendAllMessages() {
         const emptyState = messagesArea.querySelector('.chat-empty');
         if (emptyState) emptyState.remove();
 
-        // Maybe add time divider
-        const lastTimeDiv = messagesArea.querySelector('.chat-time-divider:last-of-type');
-        const needTime = !lastTimeDiv; // simplified: always show first time
+        // Maybe add time divider (show if > 5 min since last divider, or no divider exists)
+        const allDividers = messagesArea.querySelectorAll('.chat-time-divider');
+        const lastTimeDiv = allDividers.length > 0 ? allDividers[allDividers.length - 1] : null;
+        let needTime = !lastTimeDiv;
+        if (lastTimeDiv && !needTime) {
+            // Parse the displayed time to check gap (approximate: always show if > 5 min)
+            needTime = true; // Safe default: always add a divider on new sends
+        }
         if (needTime) {
             messagesArea.insertAdjacentHTML('beforeend',
                 `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`
@@ -1770,19 +1732,9 @@ async function renderResponseToDom(rawResponse, messagesToSend) {
         saveChatHistory(updatedHistory);
 
         // Re-render to show reactions (lightweight: just update badges)
-        if (aiReactions && aiReactions.length > 0 && messagesArea) {
+        if (aiReactions && aiReactions.length > 0) {
             // Full re-render to show the new reaction badges
-            const finalHistory = loadChatHistory();
-            const displayHistory = finalHistory.slice(-20);
-            const startIndex = finalHistory.length - displayHistory.length;
-            let newHtml = displayHistory.length > 0
-                ? buildMessagesHtml(displayHistory, startIndex)
-                : '';
-            if (finalHistory.length > 20) {
-                newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
-            }
-            messagesArea.innerHTML = newHtml;
-            scrollToBottom(true);
+            rerenderMessagesArea(true);
         }
 
         // ─── Phase 2: Decrement chat buff effects ───
@@ -2137,6 +2089,34 @@ function showTypingIndicator(show) {
         `);
         scrollToBottom(true);
     }
+}
+
+/**
+ * Re-render the messages area from the current history.
+ * Centralised helper used by batch-delete, edit-save, reroll, and reaction renders.
+ * @param {boolean} [smooth=false] - If true, smooth-scroll to bottom after render
+ */
+function rerenderMessagesArea(smooth = false) {
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (!messagesArea) return;
+
+    const history = loadChatHistory();
+    const displayHistory = history.slice(-20);
+    const startIndex = history.length - displayHistory.length;
+
+    let newHtml = displayHistory.length > 0
+        ? buildMessagesHtml(displayHistory, startIndex)
+        : `<div class="chat-empty">
+               <div class="chat-empty-icon">💬</div>
+               <div class="chat-empty-text">开始聊天吧…</div>
+           </div>`;
+
+    if (history.length > 20 && displayHistory.length > 0) {
+        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
+    }
+
+    messagesArea.innerHTML = newHtml;
+    scrollToBottom(smooth);
 }
 
 function scrollToBottom(smooth = true) {

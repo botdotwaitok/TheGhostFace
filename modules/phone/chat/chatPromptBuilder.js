@@ -51,13 +51,6 @@ export async function buildChatSystemPrompt() {
         ? `<char_profile>\n角色名: ${charName}\n${charInfo.description}\n</char_profile>`
         : `<char_profile>\n你是${charName}，${userName}的恋人。\n</char_profile>`;
 
-    const personality = charInfo?.personality
-        ? `<personality>\n${charInfo.personality}\n</personality>`
-        : '';
-
-    const scenario = charInfo?.scenario
-        ? `<scenario>\n${charInfo.scenario}\n</scenario>`
-        : '';
 
     // User persona from ST settings
     const userPersonaText = getUserPersona();
@@ -624,13 +617,6 @@ export async function buildAutoMessageSystemPrompt() {
         ? `<char_profile>\n角色名: ${charName}\n${charInfo.description}\n</char_profile>`
         : `<char_profile>\n你是${charName}，${userName}的恋人。\n</char_profile>`;
 
-    const personality = charInfo?.personality
-        ? `<personality>\n${charInfo.personality}\n</personality>`
-        : '';
-
-    const scenario = charInfo?.scenario
-        ? `<scenario>\n${charInfo.scenario}\n</scenario>`
-        : '';
 
     // User persona
     const userPersonaText = getUserPersona();

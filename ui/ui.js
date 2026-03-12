@@ -144,7 +144,10 @@ export function loadUserSettings() {
     if (chunkSizeInput && settings.chunkSize) chunkSizeInput.value = settings.chunkSize;
 
 
-    // ✅ 读取当前角色的自定义世界书设置
+    // 🔄 首次加载时，执行一次性迁移（数字索引 → 文件名）
+    utils.migrateCustomWbMap();
+
+    // ✅ 读取当前角色的自定义世界书设置（key = 角色文件名）
     const customWbContainer = document.getElementById('the_ghost_face_custom_wb_container');
     const customWbSelect = document.getElementById('the_ghost_face_custom_wb_select');
     if (customWbContainer && customWbSelect) {
@@ -152,10 +155,10 @@ export function loadUserSettings() {
         // Ensure options are populated
         populateCustomWorldBookSelect();
 
-        // Load saved selection for current character if exists
-        const currentChid = utils.getCurrentChid();
-        if (currentChid && settings.customWbMap && settings.customWbMap[currentChid]) {
-            customWbSelect.value = settings.customWbMap[currentChid];
+        // Load saved selection for current character if exists (key = 角色文件名)
+        const charFileName = utils.getCharacterFileName();
+        if (charFileName && settings.customWbMap && settings.customWbMap[charFileName]) {
+            customWbSelect.value = settings.customWbMap[charFileName];
         } else {
             customWbSelect.value = '';
         }
@@ -163,8 +166,8 @@ export function loadUserSettings() {
         // Need to remove previous listener if we bind it here, or just bind it once using a flag:
         if (!customWbSelect.dataset.listenerBound) {
             customWbSelect.addEventListener('change', (e) => {
-                const currentChid = utils.getCurrentChid();
-                if (!currentChid) {
+                const charFileName = utils.getCharacterFileName();
+                if (!charFileName) {
                     toastr.warning('无法获取当前角色，无法保存世界书设置');
                     return;
                 }
@@ -173,10 +176,11 @@ export function loadUserSettings() {
                 extension_settings.the_ghost_face.customWbMap = extension_settings.the_ghost_face.customWbMap || {};
 
                 if (e.target.value) {
-                    extension_settings.the_ghost_face.customWbMap[currentChid] = e.target.value;
-                    toastr.success(`已为当前角色指定世界书`);
+                    // 🔧 value 现在就是世界书名（文件名），key 是角色文件名
+                    extension_settings.the_ghost_face.customWbMap[charFileName] = e.target.value;
+                    toastr.success(`已为当前角色指定世界书: ${e.target.value}`);
                 } else {
-                    delete extension_settings.the_ghost_face.customWbMap[currentChid];
+                    delete extension_settings.the_ghost_face.customWbMap[charFileName];
                     toastr.info('已清除当前角色的世界书指定');
                 }
 
@@ -302,22 +306,23 @@ export function populateCustomWorldBookSelect() {
     // 清除现有选项
     customSelect.innerHTML = '<option value="">未选择</option>';
 
-    // 从 SillyTavern 的世界书选择器复制选项
+    // 🔧 从 SillyTavern 的世界书选择器复制选项，value 改用世界书名（稳定标识符）
     Array.from(stSelect.options).forEach(opt => {
         if (opt.value) { // 跳过空/默认选项
+            const wbName = opt.textContent.trim();
             const newOpt = document.createElement('option');
-            newOpt.value = opt.value;
-            newOpt.textContent = opt.textContent;
+            newOpt.value = wbName;  // 🔧 用世界书名作为 value（不再用数字索引）
+            newOpt.textContent = wbName;
             customSelect.appendChild(newOpt);
         }
     });
 
-    // 尝试读取当前角色的设定值
-    const currentChid = utils.getCurrentChid();
+    // 🔧 尝试读取当前角色的设定值（key = 角色文件名）
+    const charFileName = utils.getCharacterFileName();
     let targetValue = '';
 
-    if (currentChid && extension_settings?.the_ghost_face?.customWbMap?.[currentChid]) {
-        targetValue = extension_settings.the_ghost_face.customWbMap[currentChid];
+    if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+        targetValue = extension_settings.the_ghost_face.customWbMap[charFileName];
     }
 
     if (targetValue) {
@@ -725,24 +730,10 @@ export async function updateWorldBookDisplay() {
     try {
         let worldBookName = null;
 
-        // Check for custom per-character world book
-        const currentChid = utils.getCurrentChid();
-        if (currentChid && extension_settings?.the_ghost_face?.customWbMap?.[currentChid]) {
-            const customWbId = extension_settings.the_ghost_face.customWbMap[currentChid];
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect) {
-                const option = Array.from(worldSelect.options).find(opt => opt.value === customWbId);
-                if (option) {
-                    worldBookName = option.textContent.trim();
-                }
-            }
-        }
-
-        if (!worldBookName) {
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect && worldSelect.value) {
-                worldBookName = worldSelect.selectedOptions[0].textContent || '未知世界书';
-            }
+        // 🔧 Check for custom per-character world book（key = 角色文件名，value = 世界书名）
+        const charFileName = utils.getCharacterFileName();
+        if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+            worldBookName = extension_settings.the_ghost_face.customWbMap[charFileName];
         }
 
         // ④ 获取角色名

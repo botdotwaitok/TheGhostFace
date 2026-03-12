@@ -18,17 +18,8 @@ export async function getExistingWorldBookContext() {
         let worldBookName = await utils.findActiveWorldBook();
 
         if (!worldBookName) {
-            // 🔄 回退到手动检测方案
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect && worldSelect.value) {
-                worldBookName = worldSelect.selectedOptions[0].textContent;
-                console.log(`🧠 手动检测到世界书: ${worldBookName}`);
-            } else {
-                console.log('🧠 未检测到世界书');
-                return '档案库为空，这是第一次记录。';
-            }
-        } else {
-            console.log(`🧠 自动检测到绑定世界书: ${worldBookName}`);
+            console.log('🧠 未检测到绑定的世界书');
+            return '档案库为空，这是第一次记录。';
         }
 
         const worldBookData = await loadWorldInfo(worldBookName);
@@ -222,16 +213,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
         let worldBookName = await utils.findActiveWorldBook();
 
         if (!worldBookName) {
-            // 🔄 回退到手动检测方案
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect && worldSelect.value) {
-                worldBookName = worldSelect.selectedOptions[0].textContent;
-                console.log(`[鬼面] 手动检测到世界书: ${worldBookName}`);
-            } else {
-                throw new Error('请先在 World Info 页面选择一个世界书，或确保角色已绑定世界书');
-            }
-        } else {
-            console.log(`[鬼面] 自动检测到绑定世界书: ${worldBookName}`);
+            throw new Error('请先在鬼面面板为当前角色指定一个世界书');
         }
 
         const currentChatFileIdentifier = await core.getCurrentChatIdentifier();
@@ -497,17 +479,8 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         let worldBookName = await utils.findActiveWorldBook();
 
         if (!worldBookName) {
-            // 🔄 回退到手动检测方案
-            const worldSelect = document.querySelector('#world_editor_select');
-            if (worldSelect && worldSelect.value) {
-                worldBookName = worldSelect.selectedOptions[0].textContent;
-                console.log(`🔍 手动检测到世界书: ${worldBookName}`);
-            } else {
-                console.log('🔍 未检测到世界书');
-                return -1;
-            }
-        } else {
-            console.log(`🔍 自动检测到绑定世界书: ${worldBookName}`);
+            console.log('🔍 未检测到绑定的世界书');
+            return -1;
         }
 
         const currentChatIdentifier = await core.getCurrentChatIdentifier();
