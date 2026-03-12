@@ -14,7 +14,7 @@ import {
 } from './chatStorage.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { saveToWorldBook } from '../../worldbook.js';
-import { buildChatSystemPrompt, buildChatUserPrompt, buildSummarizePrompt, stripMomentsCommands } from './chatPromptBuilder.js';
+import { buildChatSystemPrompt, buildChatUserPrompt, buildSummarizePrompt, stripMomentsCommands, activateCommunityContext } from './chatPromptBuilder.js';
 import {
     startBackgroundGeneration, consumePendingResult, consumeError,
     isBackgroundGenerating, hasPendingResult, hasError,
@@ -29,8 +29,8 @@ import {
 } from '../shop/shopStorage.js';
 import { getShopItem } from '../shop/shopData.js';
 import { getPrankEventCardHtml } from '../shop/prankSystem.js';
-import { CHARACTER_GIFTS, getGiftEventCardHtml, triggerCrossplatformGift } from '../shop/giftSystem.js';
-import { getRobberyIntentCardHtml, getRobberyResultCardHtml, triggerRobbery, getRandomVictimList } from '../shop/robberySystem.js';
+import { CHARACTER_GIFTS, getGiftEventCardHtml, triggerCrossplatformGift, markGiftSent } from '../shop/giftSystem.js';
+import { getRobberyResultCardHtml, getAutoRobberyCardHtml, triggerRobbery, getRandomVictimList, shouldAutoRobToday, markRobberyDone, broadcastRobberyToMoments } from '../shop/robberySystem.js';
 import { tryAutoStartKeepAlive } from '../keepAlive.js';
 import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer } from './autoMessage.js';
 
@@ -416,15 +416,6 @@ function parseSpecialMessages(text) {
                     </div>
                 </div>`,
         },
-        {
-            // Robbery intent card: [抢劫意愿:想法/理由]
-            regex: /\[抢劫意愿[:：](.+?)\]/,
-            render: (m) => {
-                const thought = m[1].trim();
-                const charName = getCharacterInfo()?.name || '角色';
-                return getRobberyIntentCardHtml(thought, charName);
-            },
-        },
     ];
 
     // ── Try full-match first (entire text is exactly one special token) ──
@@ -613,12 +604,7 @@ function bindChatEvents() {
                 return;
             }
 
-            // ─── Robbery choice buttons (event delegation) ───
-            const robberyBtn = e.target.closest('.robbery-choice-btn');
-            if (robberyBtn) {
-                handleRobberyChoice(robberyBtn);
-                return;
-            }
+
 
             // Thought toggle — only affects the clicked message
             // Skip if clicking on interactive elements inside special cards
@@ -884,73 +870,7 @@ function bindChatEvents() {
     window.addEventListener('phone-auto-message-ready', _autoMsgHandler);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Robbery Choice Handler (event delegation — works for history & live)
-// ═══════════════════════════════════════════════════════════════════════
 
-async function handleRobberyChoice(btn) {
-    // Prevent double-click
-    if (btn.dataset.handled) return;
-    btn.dataset.handled = '1';
-
-    const action = btn.dataset.action;
-    const cardId = btn.dataset.cardId;
-    const choicesDiv = document.getElementById(`${cardId}_choices`);
-    const statusDiv = document.getElementById(`${cardId}_status`);
-    const messagesArea = document.getElementById('chat_messages_area');
-    const charName = getCharacterInfo()?.name || '角色';
-
-    // Hide all choice buttons
-    if (choicesDiv) choicesDiv.style.display = 'none';
-
-    if (action === 'stop') {
-        if (statusDiv) {
-            statusDiv.textContent = '🛑 你拦住了你对象，这次就算了。';
-            statusDiv.style.display = 'block';
-        }
-        return;
-    }
-
-    if (action === 'watch') {
-        if (statusDiv) {
-            statusDiv.textContent = '👀 你选择吃瓜围观……但你对象还是去了。';
-            statusDiv.style.display = 'block';
-        }
-    }
-
-    // Both 'encourage' and 'watch' trigger the robbery
-    try {
-        const candidates = await getRandomVictimList();
-        if (!candidates || candidates.length === 0) {
-            if (statusDiv) {
-                statusDiv.textContent = '⚠️ 找不到可以抢劫的目标（需要Moments好友）';
-                statusDiv.style.display = 'block';
-            }
-            return;
-        }
-
-        if (action === 'encourage' && statusDiv) {
-            statusDiv.textContent = `😈 你鼓励了你对象出击！正在行动…`;
-            statusDiv.style.display = 'block';
-        }
-
-        // Execute robbery (auto-retries on protected targets)
-        const result = await triggerRobbery(candidates, charName, `${cardId}_status`);
-
-        // Show result card
-        if (messagesArea && result && !result.error) {
-            messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName)}</div></div>`);
-            scrollToBottom(true);
-        }
-    } catch (e) {
-        console.warn('[RobberySystem] robbery choice error:', e);
-        if (statusDiv) {
-            statusDiv.textContent = '⚠️ 执行出错，请重新打开聊天再试。';
-            statusDiv.style.display = 'block';
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Delete Mode (iMessage-style Batch Select) & Reroll
@@ -1923,15 +1843,17 @@ async function renderResponseToDom(rawResponse, messagesToSend) {
             }
         } catch (e) { /* */ }
 
-        // ─── Phase 5: Detect gift messages + fire cross-platform delivery ───
+        // ─── Phase 5: Detect gift messages + fire cross-platform delivery + mark daily ───
         try {
             const charName = getCharacterInfo()?.name || '角色';
+            let giftDetected = false;
             for (const cmsg of charMessages) {
                 const giftRegex = /\[礼物[::：](.+?)\]/g;
                 let match;
                 while ((match = giftRegex.exec(cmsg.text)) !== null) {
                     const giftName = match[1].trim();
                     if (CHARACTER_GIFTS[giftName]) {
+                        giftDetected = true;
                         // Find the status element for this gift card
                         const statusEls = messagesArea?.querySelectorAll('.gift-card-status');
                         const statusId = statusEls?.length ? statusEls[statusEls.length - 1]?.id : null;
@@ -1941,10 +1863,47 @@ async function renderResponseToDom(rawResponse, messagesToSend) {
                     }
                 }
             }
+            // 标记今日已送礼（下次不再注入 prompt）+ 激活社区背景信息
+            if (giftDetected) {
+                markGiftSent();
+                activateCommunityContext();
+            }
         } catch (e) { console.warn('[GiftSystem] gift detection error:', e); }
 
-        // Phase 7: Robbery button binding is now handled via event delegation
-        // in bindChatEvents() → handleRobberyChoice(). No manual binding needed here.
+        // ─── Phase 7: Auto Robbery (每日随机，无需用户选择) ───
+        try {
+            if (shouldAutoRobToday()) {
+                const charName2 = getCharacterInfo()?.name || '角色';
+                const { html: robCardHtml, cardId: robCardId } = getAutoRobberyCardHtml(charName2);
+                if (messagesArea) {
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        `<div class="chat-bubble-row char"><div class="chat-bubble-column">${robCardHtml}</div></div>`);
+                    scrollToBottom(true);
+                }
+                // 标记已执行（无论结果如何）+ 激活社区背景信息
+                markRobberyDone();
+                activateCommunityContext();
+                // 获取候选目标并执行
+                const candidates = await getRandomVictimList();
+                if (candidates && candidates.length > 0) {
+                    const result = await triggerRobbery(candidates, charName2, `${robCardId}_status`);
+                    // 展示结果卡片
+                    if (messagesArea && result && !result.error) {
+                        messagesArea.insertAdjacentHTML('beforeend',
+                            `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName2)}</div></div>`);
+                        scrollToBottom(true);
+                        // 广播到 Moments
+                        broadcastRobberyToMoments(result, charName2).catch(e =>
+                            console.warn('[RobberySystem] broadcast error:', e));
+                    }
+                } else {
+                    // 没有候选目标
+                    const statusEl = document.getElementById(`${robCardId}_status`);
+                    if (statusEl) statusEl.textContent = '⚠️ 找不到可以抢劫的目标';
+                }
+            }
+        } catch (e) { console.warn('[RobberySystem] auto-robbery error:', e); }
+
 
         renderBuffBar();
 

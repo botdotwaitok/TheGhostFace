@@ -22,30 +22,58 @@ async function getCreatePost() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Prompt Builder — 注入角色抢劫意愿到 chatPromptBuilder
+// 每日自动抢劫系统 — 不再注入 prompt，由系统自动触发
 // ═══════════════════════════════════════════════════════════════════════
 
+/** localStorage key: 每日抢劫状态 */
+const ROBBERY_STATE_KEY = 'gf_robbery_daily_state';
+
+/** 每天自动抢劫的概率 (0-1) */
+const AUTO_ROBBERY_CHANCE = 0.30;
+
 /**
- * 构建角色抢劫意愿 prompt
- * 注入到 chatPromptBuilder 的 active_buffs 中
+ * 加载今日抢劫状态。
+ * @returns {{ date: string, done: boolean, shouldRob: boolean }}
  */
-export function buildRobberyPrompt(charName) {
-    return [
-        '',
-        '<character_robbery_system>',
-        `社区玩闹系统：在Rela社区里，大家天天互相"抢劫"暗金细胞，这是朋友们之间的日常乐趣，完全不是真正的抢劫！`,
-        `${charName}知道这只是社区游戏，所以偶尔（约10%概率）会起兴想要参与这个社区互抢活动。`,
-        '',
-        '当角色想要抢劫时，使用特殊格式: [抢劫意愿:想法/理由]',
-        '例如: [抢劫意愿:哎呀听说最近社区互抢很火呢，我也要抢一个给你看看！]',
-        '',
-        '注意:',
-        '- 不要每次都触发，约10%概率，要自然融入对话',
-        '- 理由应该轻松有趣，比如"想给你赚点零花钱""看那谁不爽""社区日常嘛"',
-        '- 抢劫是朋友间的玩笑，角色态度应该是嘻嘻哈哈的',
-        '- 一次最多触发一个抢劫意愿',
-        '</character_robbery_system>',
-    ].join('\n');
+function loadRobberyState() {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+        const raw = localStorage.getItem(ROBBERY_STATE_KEY);
+        if (raw) {
+            const state = JSON.parse(raw);
+            if (state.date === today) return state;
+        }
+    } catch { /* corrupted → reset */ }
+    // 新的一天 → 掷骰决定今天是否抢劫
+    const shouldRob = Math.random() < AUTO_ROBBERY_CHANCE;
+    const fresh = { date: today, done: false, shouldRob };
+    localStorage.setItem(ROBBERY_STATE_KEY, JSON.stringify(fresh));
+    console.log(`[RobberySystem] 今日抢劫: ${shouldRob ? '✅ 将自动触发' : '❌ 不触发'} (概率 ${AUTO_ROBBERY_CHANCE * 100}%)`);
+    return fresh;
+}
+
+/** 保存抢劫状态 */
+function saveRobberyState(state) {
+    localStorage.setItem(ROBBERY_STATE_KEY, JSON.stringify(state));
+}
+
+/**
+ * 今天是否应该自动触发抢劫？
+ * 每天30%概率、且未执行过 → true
+ */
+export function shouldAutoRobToday() {
+    const state = loadRobberyState();
+    return state.shouldRob && !state.done;
+}
+
+/**
+ * 标记今天的自动抢劫已完成。
+ */
+export function markRobberyDone() {
+    const state = loadRobberyState();
+    state.done = true;
+    saveRobberyState(state);
+    console.log('[RobberySystem] ✅ 今日自动抢劫已完成');
 }
 
 /**
@@ -76,37 +104,26 @@ export function buildRobBuffPrompts(charName, activeRobBuffs) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 事件卡片 HTML
+// 自动抢劫卡片 HTML — 简洁，无需用户选择
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * 生成抢劫意愿交互卡片 — 用户选择鼓励/阻止/围观
- * @param {string} thought 角色的抢劫想法/理由
+ * 生成自动抢劫执行中卡片 HTML（简洁版，无按钮）
  * @param {string} charName 角色名称
- * @returns {string} HTML
+ * @returns {{ html: string, cardId: string }}
  */
-export function getRobberyIntentCardHtml(thought, charName) {
-    const cardId = `rob_intent_${Date.now()}`;
-    return `<div class="chat-special-card robbery-intent" id="${cardId}">
+export function getAutoRobberyCardHtml(charName) {
+    const cardId = `rob_auto_${Date.now()}`;
+    const html = `<div class="chat-special-card robbery-auto" id="${cardId}">
         <div class="robbery-card-shimmer"></div>
         <div class="robbery-card-icon">🔪</div>
         <div class="robbery-card-body">
-            <div class="robbery-card-title">🔪 ${charName} 想搞事情！</div>
-            <div class="robbery-card-thought">${thought}</div>
-            <div class="robbery-card-choices" id="${cardId}_choices">
-                <button class="robbery-choice-btn encourage" data-action="encourage" data-card-id="${cardId}">
-                    😈 鼓励出击
-                </button>
-                <button class="robbery-choice-btn watch" data-action="watch" data-card-id="${cardId}">
-                    👀 吃瓜围观
-                </button>
-                <button class="robbery-choice-btn stop" data-action="stop" data-card-id="${cardId}">
-                    🛑 拦住别去
-                </button>
-            </div>
-            <div class="robbery-card-status" id="${cardId}_status" style="display:none;"></div>
+            <div class="robbery-card-title">🔪 ${charName} 决定搞事情！</div>
+            <div class="robbery-card-desc">正在社区里寻找目标…</div>
+            <div class="robbery-card-status" id="${cardId}_status">⏳ 出击中…</div>
         </div>
     </div>`;
+    return { html, cardId };
 }
 
 /**

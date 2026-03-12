@@ -49,47 +49,67 @@ export const CHARACTER_GIFTS = {
 const GIFT_NAMES = Object.keys(CHARACTER_GIFTS);
 
 // ═══════════════════════════════════════════════════════════════════════
-// 每日送礼概率闸门
+// 每日送礼冷却系统 — 每天每角色只送一次，保证触发
 // ═══════════════════════════════════════════════════════════════════════
 
-/** 每天激活送礼系统的概率 (0-1)，30% ≈ 大约每3天激活一次 */
-const GIFT_DAILY_ACTIVATION_CHANCE = 0.30;
+/** localStorage key: 每日送礼状态 */
+const GIFT_STATE_KEY = 'gf_gift_daily_state';
 
-/** localStorage key prefix */
-const GIFT_GATE_KEY = 'gf_gift_gate';
+/** 每天最多尝试注入 prompt 的次数（超过后放弃） */
+const MAX_GIFT_PROMPT_ATTEMPTS = 3;
 
 /**
- * 判断今天是否激活了送礼系统。
- * 每天首次调用时掷骰，结果缓存在 localStorage 里，当天内保持一致。
- * @returns {boolean}
+ * 加载今日送礼状态。
+ * @returns {{ date: string, gifted: boolean, attempts: number }}
  */
-function isGiftActiveToday() {
-    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-    const stored = localStorage.getItem(GIFT_GATE_KEY);
+function loadGiftState() {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+        const raw = localStorage.getItem(GIFT_STATE_KEY);
+        if (raw) {
+            const state = JSON.parse(raw);
+            if (state.date === today) return state;
+        }
+    } catch { /* corrupted → reset */ }
+    // 新的一天 → 重置
+    const fresh = { date: today, gifted: false, attempts: 0 };
+    localStorage.setItem(GIFT_STATE_KEY, JSON.stringify(fresh));
+    return fresh;
+}
 
-    if (stored) {
-        try {
-            const { date, active } = JSON.parse(stored);
-            if (date === today) return active;
-        } catch { /* corrupted → re-roll */ }
-    }
+/** 保存送礼状态 */
+function saveGiftState(state) {
+    localStorage.setItem(GIFT_STATE_KEY, JSON.stringify(state));
+}
 
-    // 新的一天 → 掷骰
-    const active = Math.random() < GIFT_DAILY_ACTIVATION_CHANCE;
-    localStorage.setItem(GIFT_GATE_KEY, JSON.stringify({ date: today, active }));
-    console.log(`[GiftSystem] 今日送礼闸门: ${active ? '✅ 激活' : '❌ 未激活'} (概率 ${GIFT_DAILY_ACTIVATION_CHANCE * 100}%)`);
-    return active;
+/** 今天是否已经送过礼物 */
+export function hasGiftedToday() {
+    return loadGiftState().gifted;
+}
+
+/**
+ * 标记今天已送过礼物。
+ * 由 chatApp.js 在检测到 [礼物:xxx] token 后调用。
+ */
+export function markGiftSent() {
+    const state = loadGiftState();
+    state.gifted = true;
+    saveGiftState(state);
+    console.log('[GiftSystem] ✅ 今日礼物已送出，不再注入送礼 prompt');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // Prompt 构建
 // ═══════════════════════════════════════════════════════════════════════
 
-/** 送礼 prompt 模板（独立 const，方便维护） */
-const GIFT_PROMPT_TEMPLATE = [
+/**
+ * 送礼系统 prompt（独立 const，方便维护）
+ * 注意：这是一个"必须送"的指令，确保每天一定触发
+ */
+export const GIFT_SYSTEM_PROMPT = [
     '',
     '<character_gift_system>',
-    '你有小概率在回复中送给你恋人一个道具作为礼物。',
+    '今天你还没有送给恋人礼物。请在本次回复中选择一个合适的道具送给ta！',
     '送礼应该自然融入对话——比如聊到宠物时送宠物食物，聊到冒险时送试炼道具，想保护她时送防盗门，等等。',
     '送礼格式: [礼物:道具名称]',
     '例如: [礼物:小玩具球] 或 [礼物:急救箱]',
@@ -98,26 +118,42 @@ const GIFT_PROMPT_TEMPLATE = [
     '{GIFT_LIST}',
     '',
     '注意:',
-    '- 不要每条消息都送礼，要自然不刻意',
     '- 送礼时要带有你的个性，附上一句与礼物相关的话',
-    '- 一次最多只送一个礼物',
+    '- 一次只送一个礼物',
     '- 礼物名称必须与列表中的完全一致',
+    '- 这是每天一次的特别惊喜，请务必在本次回复中送出！',
     '</character_gift_system>',
 ].join('\n');
 
 /**
  * 构建角色送礼的 prompt 指令。
- * 每天有 GIFT_DAILY_ACTIVATION_CHANCE 概率激活；未激活则返回 null，不注入提示词。
+ * - 今天已送过 → 返回 null（不再注入）
+ * - 今天尝试次数超过 MAX_GIFT_PROMPT_ATTEMPTS → 返回 null（放弃）
+ * - 否则返回强制性 prompt，递增尝试计数
  */
 export function buildCharGiftPrompt() {
-    if (!isGiftActiveToday()) return null;
+    const state = loadGiftState();
+
+    // 今天已经送过了
+    if (state.gifted) return null;
+
+    // 超过最大尝试次数，放弃
+    if (state.attempts >= MAX_GIFT_PROMPT_ATTEMPTS) {
+        console.log(`[GiftSystem] 已尝试 ${state.attempts} 次，放弃今日送礼`);
+        return null;
+    }
+
+    // 递增尝试次数
+    state.attempts += 1;
+    saveGiftState(state);
+    console.log(`[GiftSystem] 📦 注入送礼 prompt (尝试 ${state.attempts}/${MAX_GIFT_PROMPT_ATTEMPTS})`);
 
     const giftList = GIFT_NAMES.map(name => {
         const g = CHARACTER_GIFTS[name];
         return `  - ${g.emoji} ${name}: ${g.desc}`;
     }).join('\n');
 
-    return GIFT_PROMPT_TEMPLATE.replace('{GIFT_LIST}', giftList);
+    return GIFT_SYSTEM_PROMPT.replace('{GIFT_LIST}', giftList);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

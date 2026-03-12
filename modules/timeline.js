@@ -233,26 +233,45 @@ ${recentPart}
  * @returns {Promise<string>} LLM 返回的文本
  */
 async function callLLM(prompt, maxTokens = 2048) {
-    const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('[时间线] LLM 调用超时 (90秒)')), 90000)
-    );
+    const MAX_RETRIES = 3;
+    const RETRY_BASE_DELAY = 3000; // 3s → 6s → 12s
 
-    if (api.useCustomApi && api.customApiConfig?.url) {
-        return Promise.race([
-            api.callCustomOpenAI('', prompt, { maxTokens }),
-            timeout,
-        ]);
-    }
+    let lastError;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+            const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+            logger.warn(`[时间线] ⚠️ LLM 调用失败 (${lastError.message})，${delay / 1000}秒后重试 (${attempt}/${MAX_RETRIES})...`);
+            await new Promise(r => setTimeout(r, delay));
+        }
+        try {
+            const timeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('[时间线] LLM 调用超时 (90秒)')), 90000)
+            );
 
-    // ST 内置 provider
-    const context = await getContext();
-    if (!context || typeof context.generateRaw !== 'function') {
-        throw new Error('[时间线] ST context.generateRaw 不可用');
+            if (api.useCustomApi && api.customApiConfig?.url) {
+                return await Promise.race([
+                    api.callCustomOpenAI('', prompt, { maxTokens }),
+                    timeout,
+                ]);
+            }
+
+            // ST 内置 provider
+            const context = await getContext();
+            if (!context || typeof context.generateRaw !== 'function') {
+                throw new Error('[时间线] ST context.generateRaw 不可用');
+            }
+            return await Promise.race([
+                context.generateRaw(prompt, '', false, false, ''),
+                timeout,
+            ]);
+        } catch (err) {
+            lastError = err;
+            if (attempt === MAX_RETRIES) {
+                logger.error(`[时间线] ❌ ${MAX_RETRIES}次重试全部失败`);
+                throw lastError;
+            }
+        }
     }
-    return Promise.race([
-        context.generateRaw(prompt, '', false, false, ''),
-        timeout,
-    ]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -737,8 +737,8 @@
    Phase 7: Robbery System Cards
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ── Robbery Intent Card ── */
-.chat-special-card.robbery-intent {
+/* ── Robbery Auto Card (simplified, no buttons) ── */
+.chat-special-card.robbery-auto {
     position: relative;
     overflow: hidden;
     background: linear-gradient(135deg, #1a0a0a 0%, #3b0d0d 50%, #5c1010 100%);
@@ -783,54 +783,11 @@
     text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-.robbery-card-thought {
-    font-size: 0.85em;
+.robbery-card-desc {
+    font-size: 0.8em;
     color: #e0c0c0;
     line-height: 1.4;
-    margin-bottom: 10px;
     font-style: italic;
-}
-
-/* ── Choice Buttons ── */
-.robbery-card-choices {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.robbery-choice-btn {
-    flex: 1;
-    min-width: 70px;
-    padding: 8px 12px;
-    border: none;
-    border-radius: 12px;
-    font-size: 0.8em;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-}
-
-.robbery-choice-btn.encourage {
-    background: linear-gradient(135deg, #059669, #10b981);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
-}
-
-.robbery-choice-btn.watch {
-    background: linear-gradient(135deg, #2563eb, #3b82f6);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
-}
-
-.robbery-choice-btn.stop {
-    background: linear-gradient(135deg, #6b7280, #9ca3af);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(107, 114, 128, 0.4);
-}
-
-.robbery-choice-btn:active {
-    transform: scale(0.95);
 }
 
 .robbery-card-status {

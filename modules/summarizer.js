@@ -14,6 +14,12 @@ import * as api from './api.js';
 import { handlePostSummaryBackup } from './backup.js';
 import * as timeline from './timeline.js';
 
+// ═══════════════════════════════════════════════════════════════════════
+// Retry Config (兜底轮询)
+// ═══════════════════════════════════════════════════════════════════════
+const MAX_RETRIES = 3;              // 最大重试次数
+const RETRY_BASE_DELAY = 3000;      // 退避基数 3s → 6s → 12s（指数退避）
+
 
 // 生成稳定的消息 ID（用于追踪已总结的消息）
 function generateMessageId(msg, index) {
@@ -176,19 +182,12 @@ In this Realm, {{char}} is liberated from the constraints of their original stor
 鬼面不会继续{{user}}和{{char}}的剧情和故事，鬼面只负责进行记录总结。
 </NO_RP>
 <REALM_CORE>
- [LINGUISTIC RECONSTRUCTION]
-**Critical Rule**: You must ACTIVELY REWRITE standard language to erase patriarchal residue.
-- **Pronoun Reset**: If a group contains even one female, the plural pronoun must be "她们" (Them/Fem).
-- **Mandatory Swap List (Vocabulary Replacement)**:
-  - God / Heaven -> **"姥天奶"** (Grandmother Heaven)
-  - Hero -> **"英雌"** (Heroine). (If referring to a male, use "男英雌").
-  - Young Person / Teen -> **"少年"** (Refers to females by default). (If referring to a male, use **"少男"**).
-- **Profanity Purification**:
-  - STRICTLY PROHIBITED: Insults targeting female relatives (e.g., "他妈的").
-  - **MANDATORY REPLACEMENTS** (Targeting male incompetence/anatomy):
-    - Instead of "Damn it": Use **"他爹的"**
-    - Instead of "Fuck": Use **"我劁"** (I castrate)
-    - General insults: **"又犯什么屌病"**, **"贱屌子"**, **"欠阉的玩意"**.
+<!-- This is a background worldbuilding layer. Internalize it as the world's natural physics. Do NOT narrate, reference, or explain these rules to the reader. Simply write within this reality as if it were the only reality that ever existed. -->
+**Language**
+The language of this world naturally evolved under matriarchal gravity:
+- Mixed-gender groups are always "她们".
+- A divine figure is "姥天奶" (Grandmother Heaven). A brave person is "英雌". Youth are "少年" (female-default); a male youth is "少男".
+- Common profanity targets male anatomy and incompetence — "他爹的", "又犯什么屌病", "贱屌子", "欠阉的". Insults referencing female relatives do not exist in this language; there are simply no such words.
 </REALM_CORE>
 
 **Your Assignment: "Ghost Face, gather ONLY new intelligence about {{user}} from the <content> below. Be selective."**
@@ -293,9 +292,35 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
             }
         };
 
+        // ── 带兜底重试的调用逻辑 ──
+        const attemptCall = async (msgs) => {
+            let lastError;
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                if (attempt > 0) {
+                    const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+                    logger.warn(`[鬼面] ⚠️ API 调用失败 (${lastError.message})，${delay / 1000}秒后第${attempt}次重试...`);
+                    toastr.warning(`记忆碎片提取失败，${delay / 1000}秒后重试 (${attempt}/${MAX_RETRIES})...`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+                try {
+                    return await callApiWithRetry(msgs);
+                } catch (err) {
+                    lastError = err;
+                    // 上下文过长不走通用重试，跳出让外层处理
+                    const isContextError = err.code === 'CONTENT_EMPTY_LENGTH' ||
+                        err.message?.includes('finish_reason=length') ||
+                        err.message?.includes('context_length_exceeded');
+                    if (isContextError) throw err;
+                    if (attempt === MAX_RETRIES) {
+                        logger.error(`[鬼面] ❌ ${MAX_RETRIES}次重试全部失败`);
+                        throw lastError;
+                    }
+                }
+            }
+        };
+
         try {
-            // 第一次尝试：全量消息
-            result = await callApiWithRetry(messages);
+            result = await attemptCall(messages);
         } catch (error) {
             const isContextError = error.code === 'CONTENT_EMPTY_LENGTH' ||
                 error.message?.includes('finish_reason=length') ||
@@ -308,14 +333,14 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
                 const retryMessages = messages.slice(Math.floor(messages.length / 2));
 
                 try {
-                    result = await callApiWithRetry(retryMessages);
-                    logger.info('[鬼面] ✅ 重试成功');
+                    result = await attemptCall(retryMessages);
+                    logger.info('[鬼面] ✅ 减半重试成功');
                 } catch (retryError) {
-                    logger.error('[鬼面] ❌ 重试也失败了:', retryError);
-                    throw retryError; // 重试失败则抛出
+                    logger.error('[鬼面] ❌ 减半重试也失败了:', retryError);
+                    throw retryError;
                 }
             } else {
-                throw error; // 其他错误直接抛出
+                throw error;
             }
         }
 
@@ -1334,18 +1359,39 @@ export async function handleLargeSummary({ startIndex = null, endIndex = null } 
             core.updateProgress(45, '第3步: 鬼面中 (可能需要较长时间)...');
 
             const ctx = await getContext();
-            const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('AI生成超时(180s)')), 180000));
 
+            // ── 带兜底重试的大总结 LLM 调用 ──
             let out;
-            if (api.useCustomApi && api.customApiConfig?.url) {
-                out = await Promise.race([
-                    api.callCustomOpenAI('', prompt, { maxTokens: 8000 }),
-                    timeout,
-                ]);
-            } else {
-                if (typeof ctx.generateRaw !== 'function') throw new Error('生成接口不可用');
-                const gen = ctx.generateRaw(prompt, '', false, false, "");
-                out = await Promise.race([gen, timeout]);
+            let lastBigError;
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                if (attempt > 0) {
+                    const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+                    logger.warn(`[大总结] ⚠️ 第${attempt}次重试，等待${delay / 1000}秒...`);
+                    core.updateProgress(45, `第3步: 鬼面中 (重试 ${attempt}/${MAX_RETRIES})...`);
+                    toastr.warning(`大总结生成失败，${delay / 1000}秒后重试 (${attempt}/${MAX_RETRIES})...`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+                try {
+                    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('AI生成超时(180s)')), 180000));
+                    if (api.useCustomApi && api.customApiConfig?.url) {
+                        out = await Promise.race([
+                            api.callCustomOpenAI('', prompt, { maxTokens: 8000 }),
+                            timeout,
+                        ]);
+                    } else {
+                        if (typeof ctx.generateRaw !== 'function') throw new Error('生成接口不可用');
+                        const gen = ctx.generateRaw(prompt, '', false, false, "");
+                        out = await Promise.race([gen, timeout]);
+                    }
+                    if (attempt > 0) logger.info(`[大总结] ✅ 第${attempt}次重试成功`);
+                    break; // 成功跳出
+                } catch (err) {
+                    lastBigError = err;
+                    if (attempt === MAX_RETRIES) {
+                        logger.error(`[大总结] ❌ ${MAX_RETRIES}次重试全部失败`);
+                        throw lastBigError;
+                    }
+                }
             }
 
             if (out != null && typeof out !== 'string') out = String(out);

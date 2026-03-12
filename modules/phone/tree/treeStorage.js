@@ -91,7 +91,16 @@ export function loadTreeData() {
         if (!raw) return createDefaultData();
         const parsed = JSON.parse(raw);
         // 合并默认值，确保新加的字段不会 undefined
-        return deepMerge(createDefaultData(), parsed);
+        const data = deepMerge(createDefaultData(), parsed);
+        // 修正阶段：旧版 _getStageId 阈值与 treeConfig 不一致，
+        // 可能导致 treeState.stage 与实际 growth 不匹配
+        const correctStage = _getStageId(data.treeState.growth);
+        if (data.treeState.stage !== correctStage) {
+            console.log(`${TREE_LOG_PREFIX} 修正阶段: "${data.treeState.stage}" → "${correctStage}" (growth=${data.treeState.growth})`);
+            data.treeState.stage = correctStage;
+            saveTreeData(data);
+        }
+        return data;
     } catch (e) {
         console.warn(`${TREE_LOG_PREFIX} Failed to load tree data:`, e);
         return createDefaultData();
@@ -601,10 +610,10 @@ function deepMerge(target, source) {
  * 阈值与 treeConfig.GROWTH_STAGES 保持一致
  */
 function _getStageId(growth) {
-    if (growth >= 1000) return 'big';
-    if (growth >= 600) return 'medium';
-    if (growth >= 300) return 'small';
-    if (growth >= 100) return 'sprout';
+    if (growth >= 2000) return 'big';
+    if (growth >= 1200) return 'medium';
+    if (growth >= 600) return 'small';
+    if (growth >= 200) return 'sprout';
     return 'seed';
 }
 

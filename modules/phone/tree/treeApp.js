@@ -44,6 +44,9 @@ const _debugState = {
     stageOverride: null,  // null = use real stage
 };
 
+// Re-entry guard: prevents _triggerBackgroundRefill → showRefillQCPage → showTreeMainPage → _triggerBackgroundRefill loop
+let _refillInProgress = false;
+
 // ═══════════════════════════════════════════════════════════════════════
 // Entry Point
 // ═══════════════════════════════════════════════════════════════════════
@@ -704,6 +707,8 @@ function bindTreeMainEvents() {
 
     // Refill bar — enters QC flow
     document.getElementById('tree_refill_btn')?.addEventListener('click', () => {
+        if (_refillInProgress) return;
+        _refillInProgress = true;
         showRefillQCPage({ forceCareLines: true });
     });
 }
@@ -1112,6 +1117,9 @@ async function _runRefillGeneration(skipCareLines, skipQuiz, skipTod) {
         stopKeepAlive();
     }
 
+    // Clear re-entry guard BEFORE returning to main page
+    _refillInProgress = false;
+
     // Brief pause so user sees completion before transitioning
     if (fillEl) fillEl.style.width = '100%';
     if (textEl) textEl.textContent = '补充完毕！';
@@ -1148,10 +1156,18 @@ function _handlePostStageUp(newStageId) {
  * Called when tree main page opens.
  */
 function _triggerBackgroundRefill(currentStageId) {
+    // Re-entry guard: if a refill is already in progress, skip
+    if (_refillInProgress) {
+        console.log(`${TREE_LOG} 跳过内容补充检查（补充流程进行中）`);
+        return;
+    }
+
     const data = loadTreeData();
+    const remainingLines = getRemainingCareLines();
+    const cachedStage = data.dialogueCache.currentStage;
     const needsCareLines =
-        getRemainingCareLines() === 0 ||
-        data.dialogueCache.currentStage !== currentStageId;
+        remainingLines === 0 ||
+        cachedStage !== currentStageId;
 
     const remaining = getRemainingQuestions();
     const needsQuiz = remaining.quiz < QUIZ_LOW_THRESHOLD;
@@ -1159,6 +1175,8 @@ function _triggerBackgroundRefill(currentStageId) {
 
     if (needsCareLines || needsQuiz || needsTod) {
         console.log(`${TREE_LOG} 内容不足，进入质检补充流程 (台词=${needsCareLines}, 默契=${needsQuiz}, 真心话=${needsTod})`);
+        console.log(`${TREE_LOG}   ↳ 台词诊断: 剩余=${remainingLines}, 缓存阶段="${cachedStage}", 当前阶段="${currentStageId}"`);
+        _refillInProgress = true;
         showRefillQCPage({
             forceCareLines: needsCareLines,
             skipQuiz: !needsQuiz,
