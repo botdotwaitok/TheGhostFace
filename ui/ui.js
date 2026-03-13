@@ -155,10 +155,14 @@ export function loadUserSettings() {
         // Ensure options are populated
         populateCustomWorldBookSelect();
 
-        // Load saved selection for current character if exists (key = 角色文件名)
+        // Load saved selection for current chat if exists (key = 聊天ID，fallback 角色文件名)
+        const chatId = utils.getCurrentChatId();
         const charFileName = utils.getCharacterFileName();
-        if (charFileName && settings.customWbMap && settings.customWbMap[charFileName]) {
-            customWbSelect.value = settings.customWbMap[charFileName];
+        const bindingKey = (chatId && settings.customWbMap?.[chatId]) ? chatId
+                         : (charFileName && settings.customWbMap?.[charFileName]) ? charFileName
+                         : null;
+        if (bindingKey && settings.customWbMap[bindingKey]) {
+            customWbSelect.value = settings.customWbMap[bindingKey];
         } else {
             customWbSelect.value = '';
         }
@@ -166,9 +170,9 @@ export function loadUserSettings() {
         // Need to remove previous listener if we bind it here, or just bind it once using a flag:
         if (!customWbSelect.dataset.listenerBound) {
             customWbSelect.addEventListener('change', (e) => {
-                const charFileName = utils.getCharacterFileName();
-                if (!charFileName) {
-                    toastr.warning('无法获取当前角色，无法保存世界书设置');
+                const chatId = utils.getCurrentChatId();
+                if (!chatId) {
+                    toastr.warning('无法获取当前聊天ID，无法保存世界书设置');
                     return;
                 }
 
@@ -176,12 +180,12 @@ export function loadUserSettings() {
                 extension_settings.the_ghost_face.customWbMap = extension_settings.the_ghost_face.customWbMap || {};
 
                 if (e.target.value) {
-                    // 🔧 value 现在就是世界书名（文件名），key 是角色文件名
-                    extension_settings.the_ghost_face.customWbMap[charFileName] = e.target.value;
-                    toastr.success(`已为当前角色指定世界书: ${e.target.value}`);
+                    // 🔧 key = 聊天ID（per-chat 绑定）
+                    extension_settings.the_ghost_face.customWbMap[chatId] = e.target.value;
+                    toastr.success(`已为当前聊天指定世界书: ${e.target.value}`);
                 } else {
-                    delete extension_settings.the_ghost_face.customWbMap[charFileName];
-                    toastr.info('已清除当前角色的世界书指定');
+                    delete extension_settings.the_ghost_face.customWbMap[chatId];
+                    toastr.info('已清除当前聊天的世界书指定');
                 }
 
                 saveSettingsDebounced();
@@ -317,11 +321,14 @@ export function populateCustomWorldBookSelect() {
         }
     });
 
-    // 🔧 尝试读取当前角色的设定值（key = 角色文件名）
+    // 🔧 尝试读取当前聊天的设定值（key = 聊天ID，fallback 角色文件名）
+    const chatId = utils.getCurrentChatId();
     const charFileName = utils.getCharacterFileName();
     let targetValue = '';
 
-    if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+    if (chatId && extension_settings?.the_ghost_face?.customWbMap?.[chatId]) {
+        targetValue = extension_settings.the_ghost_face.customWbMap[chatId];
+    } else if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
         targetValue = extension_settings.the_ghost_face.customWbMap[charFileName];
     }
 
@@ -730,9 +737,12 @@ export async function updateWorldBookDisplay() {
     try {
         let worldBookName = null;
 
-        // 🔧 Check for custom per-character world book（key = 角色文件名，value = 世界书名）
+        // 🔧 Check for custom per-chat world book（优先 chatId，fallback charFileName）
+        const chatId = utils.getCurrentChatId();
         const charFileName = utils.getCharacterFileName();
-        if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+        if (chatId && extension_settings?.the_ghost_face?.customWbMap?.[chatId]) {
+            worldBookName = extension_settings.the_ghost_face.customWbMap[chatId];
+        } else if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
             worldBookName = extension_settings.the_ghost_face.customWbMap[charFileName];
         }
 

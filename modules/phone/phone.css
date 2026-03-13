@@ -1559,3 +1559,210 @@
 .phone-dark-mode .phone-notif-time {
     color: #636366;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   World Book Blacklist UI
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Scope Tab Switcher ─── */
+.phone-wb-bl-tabs {
+    display: flex;
+    gap: 0;
+    background: rgba(120, 120, 128, 0.08);
+    border-radius: 10px;
+    padding: 2px;
+    margin-bottom: 12px;
+}
+
+.phone-wb-bl-tab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #8e8e93;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.phone-wb-bl-tab.active {
+    background: #fff;
+    color: #1c1c1e;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Book List Container ─── */
+.phone-wb-bl-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ─── Individual Book ─── */
+.phone-wb-bl-book {
+    background: rgba(120, 120, 128, 0.06);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(120, 120, 128, 0.1);
+}
+
+.phone-wb-bl-book-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    gap: 10px;
+}
+
+.phone-wb-bl-book-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.phone-wb-bl-expand-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    color: #8e8e93;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    transition: color 0.15s ease;
+}
+
+.phone-wb-bl-expand-btn:hover {
+    color: #636366;
+}
+
+.phone-wb-bl-expand-btn i {
+    transition: transform 0.2s ease;
+}
+
+.phone-wb-bl-book-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.phone-wb-bl-book-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c1c1e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.phone-wb-bl-book-count {
+    font-size: 11px;
+    color: #8e8e93;
+    margin-top: 1px;
+}
+
+/* Toggle in blocked state (red instead of green) */
+.phone-settings-ios-toggle.blocked {
+    background: #FF6B6B !important;
+}
+
+/* ─── Entry List (expandable) ─── */
+.phone-wb-bl-entries {
+    border-top: 1px solid rgba(120, 120, 128, 0.1);
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.phone-wb-bl-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 36px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-size: 13px;
+    color: #3a3a3c;
+}
+
+.phone-wb-bl-entry:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.phone-wb-bl-entry.blocked {
+    color: #FF6B6B;
+}
+
+.phone-wb-bl-entry.disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.phone-wb-bl-entry input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #FF6B6B;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.phone-wb-bl-entry.disabled input[type="checkbox"] {
+    cursor: default;
+}
+
+.phone-wb-bl-entry-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.phone-wb-bl-entry-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    background: rgba(142, 142, 147, 0.12);
+    color: #8e8e93;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* ─── Dark Mode Overrides ─── */
+.phone-dark-mode .phone-wb-bl-tab {
+    color: #8e8e93;
+}
+
+.phone-dark-mode .phone-wb-bl-tab.active {
+    background: rgba(99, 99, 102, 0.3);
+    color: #f2f2f7;
+    box-shadow: none;
+}
+
+.phone-dark-mode .phone-wb-bl-book {
+    background: rgba(44, 44, 46, 0.6);
+    border-color: rgba(99, 99, 102, 0.2);
+}
+
+.phone-dark-mode .phone-wb-bl-book-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-wb-bl-entry {
+    color: #d1d1d6;
+}
+
+.phone-dark-mode .phone-wb-bl-entry:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.phone-dark-mode .phone-wb-bl-entries {
+    border-top-color: rgba(99, 99, 102, 0.2);
+}

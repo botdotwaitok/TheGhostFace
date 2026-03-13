@@ -2,7 +2,8 @@
 // Extracted from phoneController.js for modular organization.
 
 import { openAppInViewport } from '../phoneController.js';
-import { loadFriendsUI, addFriendFromUI, onClick } from '../moments/momentsUI.js';
+import { loadFriendsUI, addFriendFromUI } from './friendsUI.js';
+import { onClick } from '../utils/helpers.js';
 
 export function openFriendsApp() {
     const P = 'phone_friends'; // prefix for unique IDs

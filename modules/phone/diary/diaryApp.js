@@ -3,8 +3,9 @@
 
 import { openAppInViewport } from '../phoneController.js';
 // API mode routing is handled internally by callPhoneLLM in diaryGeneration.js
-import { generateCharacterDiaryEntry } from './diaryGeneration.js';
+import { generateCharacterDiaryEntry, generateProactiveDiaryEntry } from './diaryGeneration.js';
 import { updateDiaryWorldInfo, parseDiaryFromChatOutput } from './diaryWorldInfo.js';
+import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata, saveSettingsDebounced } from '../../../../../../../script.js';
 
@@ -13,10 +14,9 @@ import { chat_metadata, saveSettingsDebounced } from '../../../../../../../scrip
 // ═══════════════════════════════════════════════════════════════════════
 
 const MODULE_NAME = 'the_ghost_face';
-const DIARY_STORAGE_KEY_PREFIX = `${MODULE_NAME}_diary_v1_`; // legacy localStorage key
+const DIARY_STORAGE_KEY_PREFIX = `${MODULE_NAME}_diary_v1_`; // used by legacy localStorage migration
 const DIARY_LOG_PREFIX = '[日记本]';
 const META_KEY_DIARY = 'gf_phoneDiaryEntries'; // chat_metadata key
-const MOODS = ['🥰', '☺️', '🌸', '✨', '🌙', '🍃', '☁️', '🌈', '💫', '🎀', '🧸', '🍰'];
 const DIARY_THEME_KEY = 'gf_phone_diary_theme';
 const DIARY_CUSTOM_KEY = 'gf_phone_diary_custom_vars';
 const DIARY_PAGE_SIZE = 10; // entries per page
@@ -112,33 +112,7 @@ function _getCharacterId() {
     }
 }
 
-function _getStorageKey() {
-    return `${DIARY_STORAGE_KEY_PREFIX}${_getCharacterId()}`;
-}
-
-function _getCharacterInfo() {
-    try {
-        const context = getContext();
-        const charId = context.characterId;
-        const charData = (context.characters ?? [])[charId];
-        if (!charData) return null;
-        return {
-            name: charData.name || context.name2 || 'Character',
-            avatar: charData.avatar || '',
-        };
-    } catch {
-        return null;
-    }
-}
-
-function _getUserName() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
+// _getCharacterInfo / _getUserName → use centralized getPhoneCharInfo / getPhoneUserName from phoneContext.js
 
 /**
  * Load diary entries from storage.
@@ -243,17 +217,28 @@ function _nextId(entries) {
  * Parse main LLM output for diary content.
  * Finds the most recent entry that's missing a char segment and appends.
  * @param {string} content - The character's chat message
+ * @param {number} [messageIndex] - The chat message index (for dedup tracking)
  * @returns {boolean} true if a diary entry was created
  */
-export function handleDiaryChatOutput(content) {
+export function handleDiaryChatOutput(content, messageIndex) {
     // Guard: disabled or manual mode → skip
     if (!isDiaryEnabled() || getDiaryMode() !== 'auto') return false;
+
+    // Layer 2: dedup — skip if this message was already processed
+    const META_KEY_PROCESSED = 'gf_diaryProcessedMsgIds';
+    if (messageIndex != null) {
+        const processedIds = chat_metadata?.[META_KEY_PROCESSED] || [];
+        if (processedIds.includes(messageIndex)) {
+            console.log(`${DIARY_LOG_PREFIX} 消息 #${messageIndex} 已处理过，跳过`);
+            return false;
+        }
+    }
 
     const parsed = parseDiaryFromChatOutput(content);
     if (!parsed) return false;
 
     const entries = loadDiaryEntries();
-    const charInfo = _getCharacterInfo();
+    const charInfo = getPhoneCharInfo();
     if (!charInfo) return false;
 
     // Find the most recent entry that's missing a char segment
@@ -266,6 +251,16 @@ export function handleDiaryChatOutput(content) {
         });
         saveDiaryEntries(entries);
         console.log(`${DIARY_LOG_PREFIX} 从主 LLM 输出追加了角色日记段落`);
+
+        // Layer 2: record processed message index
+        if (messageIndex != null) {
+            const processedIds = chat_metadata?.[META_KEY_PROCESSED] || [];
+            processedIds.push(messageIndex);
+            if (chat_metadata) {
+                chat_metadata[META_KEY_PROCESSED] = processedIds;
+                saveMetadataDebounced();
+            }
+        }
 
         // Notify UI to refresh if diary is open
         window.dispatchEvent(new CustomEvent('diary-entries-updated'));
@@ -309,12 +304,12 @@ export function openDiaryApp() {
  * Check if there's already a diary entry for today.
  */
 function _hasTodayEntry(entries) {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     return entries.some(e => e.date === todayStr);
 }
 
 function buildDiaryPage(entries) {
-    const charInfo = _getCharacterInfo();
+    const charInfo = getPhoneCharInfo();
     const charName = charInfo?.name || '角色';
 
     if (entries.length === 0) {
@@ -496,11 +491,11 @@ function buildDateGroup(dateStr, entries) {
 function buildEntryCard(entry) {
     const segmentsHtml = entry.segments.map(seg => `
         <div class="diary-segment diary-segment-${seg.author}">
-            <div class="diary-segment-content">${nl2br(truncate(seg.content, 80))}</div>
+            <div class="diary-segment-content">${nl2br(escHtml(truncate(seg.content, 80)))}</div>
         </div>
     `).join('');
 
-    const tagsHtml = entry.tags.map(t => `<span class="diary-tag">#${t}</span>`).join('');
+    const tagsHtml = (entry.tags || []).map(t => `<span class="diary-tag">#${escHtml(t)}</span>`).join('');
 
     const pendingBadge = !entry.segments.some(s => s.author === 'char')
         ? '<span class="diary-pending-badge">等待回应</span>'
@@ -532,10 +527,6 @@ function buildEntryCard(entry) {
 }
 
 function buildComposeOverlay(isContinuation = false) {
-    const moodGrid = MOODS.map((m, i) => `
-        <div class="diary-mood-option ${i === 0 ? 'mood-selected' : ''}" data-mood="${m}">${m}</div>
-    `).join('');
-
     const today = new Date();
     const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
 
@@ -553,7 +544,12 @@ function buildComposeOverlay(isContinuation = false) {
         <div class="diary-compose-header">
             <button class="diary-compose-cancel" id="diary_compose_cancel">取消</button>
             <div class="diary-compose-title">${composeTitle}</div>
-            <button class="diary-compose-submit" id="diary_compose_submit">${submitLabel}</button>
+            <div class="diary-compose-header-actions">
+                <button class="diary-compose-submit" id="diary_compose_submit">${submitLabel}</button>
+                <button class="diary-compose-submit" id="diary_compose_ai_write" title="让你对象主动写日记">
+                    让TA写
+                </button>
+            </div>
         </div>
         <div class="diary-compose-body">
             ${continuationHint}
@@ -566,8 +562,10 @@ function buildComposeOverlay(isContinuation = false) {
             <!-- Mood -->
             <div class="diary-compose-mood-section">
                 <div class="diary-compose-section-label">今天的心情 ✧</div>
-                <div class="diary-compose-mood-grid" id="diary_mood_grid">
-                    ${moodGrid}
+                <div class="diary-compose-mood-input-row">
+                    <input type="text" class="diary-compose-mood-emoji-input" id="diary_mood_input"
+                        value="🥰" maxlength="4" placeholder="🥰" />
+                    <span class="diary-compose-mood-hint">输入任意 emoji</span>
                 </div>
             </div>
 
@@ -593,13 +591,13 @@ function buildComposeOverlay(isContinuation = false) {
 }
 
 function buildDetailView(entry) {
-    const segmentsHtml = entry.segments.map(seg => `
-        <div class="diary-segment diary-segment-${seg.author}">
-            <div class="diary-segment-content">${nl2br(seg.content)}</div>
+    const segmentsHtml = entry.segments.map((seg, idx) => `
+        <div class="diary-segment diary-segment-${seg.author}" data-seg-idx="${idx}">
+            <div class="diary-segment-content">${nl2br(escHtml(seg.content))}</div>
         </div>
     `).join('');
 
-    const tagsHtml = entry.tags.map(t => `<span class="diary-tag">#${t}</span>`).join('');
+    const tagsHtml = (entry.tags || []).map(t => `<span class="diary-tag">#${escHtml(t)}</span>`).join('');
 
     return `
         <div class="diary-detail-header">
@@ -608,6 +606,9 @@ function buildDetailView(entry) {
             </button>
             <span class="diary-detail-date">${formatFullDate(entry.date)}</span>
             <div class="diary-detail-actions">
+                <button class="diary-detail-edit-btn" id="diary_detail_edit_btn" title="编辑日记">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
                 <button class="diary-detail-print-btn" id="diary_detail_print_btn" title="打印这篇日记">
                     <i class="fa-solid fa-print"></i>
                 </button>
@@ -1291,7 +1292,7 @@ function bindDiaryEvents() {
     onClick('diary_customize_reset', () => {
         clearCustomVars();
         // Reset all inputs to defaults
-        const body = document.querySelector('.diary-customize-body');
+        const body = document.querySelector('.diary-settings-body');
         if (body) {
             body.querySelectorAll('[data-var]').forEach(input => {
                 const key = input.dataset.var;
@@ -1380,8 +1381,8 @@ function bindDiaryEvents() {
         if (!content) return;
 
         // Gather mood
-        const selectedMood = document.querySelector('#diary_mood_grid .mood-selected');
-        const mood = selectedMood?.dataset?.mood || '✨';
+        const moodInput = document.getElementById('diary_mood_input');
+        const mood = moodInput?.value?.trim() || '🥰';
 
         // Gather tags
         const tags = [];
@@ -1390,8 +1391,8 @@ function bindDiaryEvents() {
             if (text) tags.push(text);
         });
 
-        const userName = _getUserName();
-        const charInfo = _getCharacterInfo();
+        const userName = getPhoneUserName();
+        const charInfo = getPhoneCharInfo();
         const charName = charInfo?.name || 'Character';
 
         const entries = loadDiaryEntries();
@@ -1445,10 +1446,9 @@ function bindDiaryEvents() {
         if (textarea) textarea.value = '';
         const charCount = document.getElementById('diary_char_count');
         if (charCount) charCount.textContent = '0';
-        // Reset mood selection
-        document.querySelectorAll('#diary_mood_grid .diary-mood-option').forEach((opt, i) => {
-            opt.classList.toggle('mood-selected', i === 0);
-        });
+        // Reset mood input
+        const moodInput2 = document.getElementById('diary_mood_input');
+        if (moodInput2) moodInput2.value = '🥰';
         // Remove tag chips
         document.querySelectorAll('#diary_tags_row .diary-compose-tag-chip').forEach(chip => chip.remove());
 
@@ -1487,16 +1487,67 @@ function bindDiaryEvents() {
         }
     });
 
-    // Mood selection
-    const moodGrid = document.getElementById('diary_mood_grid');
-    if (moodGrid) {
-        moodGrid.addEventListener('click', (e) => {
-            const option = e.target.closest('.diary-mood-option');
-            if (!option) return;
-            moodGrid.querySelectorAll('.diary-mood-option').forEach(o => o.classList.remove('mood-selected'));
-            option.classList.add('mood-selected');
-        });
-    }
+    // AI proactive diary write button — 让角色主动写日记
+    onClick('diary_compose_ai_write', async () => {
+        const charInfo = getPhoneCharInfo();
+        const charName = charInfo?.name || 'Character';
+        const entries = loadDiaryEntries();
+        const todayStr = getLocalDateString();
+        const existingToday = entries.find(e => e.date === todayStr);
+
+        // Close compose overlay
+        const overlay = document.getElementById('diary_compose_overlay');
+        if (overlay) overlay.classList.remove('compose-active');
+
+        // Show loading
+        showLoading(true);
+        try {
+            const existingSegments = existingToday ? [...existingToday.segments] : [];
+            const contextEntries = entries.filter(e => e.date !== todayStr).slice(0, 3);
+            const result = await generateProactiveDiaryEntry(contextEntries, existingSegments);
+
+            if (result) {
+                const latest = loadDiaryEntries();
+                const todayEntry = latest.find(e => e.date === todayStr);
+
+                if (todayEntry) {
+                    // Append to existing today entry
+                    todayEntry.segments.push({
+                        author: 'char',
+                        name: charName,
+                        content: result.content,
+                    });
+                    if (result.moodText) todayEntry.moodText = result.moodText;
+                    if (result.mood) todayEntry.mood = result.mood;
+                    saveDiaryEntries(latest);
+                } else {
+                    // Create brand new entry written entirely by the character
+                    const newEntry = {
+                        id: _nextId(latest),
+                        date: todayStr,
+                        mood: result.mood || '📝',
+                        moodText: result.moodText || '心有所感',
+                        segments: [
+                            { author: 'char', name: charName, content: result.content },
+                        ],
+                        tags: [],
+                        liked: false,
+                        createdAt: new Date().toISOString(),
+                    };
+                    latest.unshift(newEntry);
+                    saveDiaryEntries(latest);
+                }
+                refreshFeed();
+            } else {
+                console.warn(`${DIARY_LOG_PREFIX} 角色主动写日记返回空结果`);
+            }
+        } catch (e) {
+            console.warn(`${DIARY_LOG_PREFIX} AI proactive diary write failed:`, e);
+        } finally {
+            showLoading(false);
+        }
+    });
+
 
     // Character count
     const textarea = document.getElementById('diary_compose_text');
@@ -1687,12 +1738,107 @@ function openDetail(entry) {
         });
     }
 
+    // Edit button in detail view
+    const editBtn = document.getElementById('diary_detail_edit_btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleEditMode(entry, overlay);
+        });
+    }
+
     // Close button in detail view
     const closeBtn = document.getElementById('diary_detail_close_btn');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             overlay.classList.remove('detail-active');
             setTimeout(() => { overlay.innerHTML = ''; }, 300);
+        });
+    }
+}
+
+/**
+ * Toggle edit mode for the detail view.
+ * Replaces segment content divs with textareas, adds save/cancel buttons.
+ */
+function toggleEditMode(entry, overlay) {
+    const page = overlay.querySelector('.diary-detail-page');
+    const editBtn = document.getElementById('diary_detail_edit_btn');
+    if (!page) return;
+
+    const isEditing = page.classList.contains('diary-editing');
+    if (isEditing) {
+        // Cancel edit → re-render
+        overlay.innerHTML = buildDetailView(entry);
+        // Re-bind buttons
+        openDetail(entry);
+        return;
+    }
+
+    // Enter edit mode
+    page.classList.add('diary-editing');
+    if (editBtn) {
+        editBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        editBtn.title = '取消编辑';
+    }
+
+    // Replace each segment content with a textarea
+    page.querySelectorAll('.diary-segment').forEach(segEl => {
+        const idx = parseInt(segEl.dataset.segIdx);
+        const contentEl = segEl.querySelector('.diary-segment-content');
+        if (!contentEl || isNaN(idx)) return;
+
+        const seg = entry.segments[idx];
+        if (!seg) return;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'diary-edit-textarea';
+        textarea.value = seg.content;
+        textarea.dataset.segIdx = idx;
+        textarea.rows = Math.max(3, Math.ceil(seg.content.length / 30));
+
+        contentEl.replaceWith(textarea);
+    });
+
+    // Add save button at bottom of page
+    const saveBar = document.createElement('div');
+    saveBar.className = 'diary-edit-save-bar';
+    saveBar.innerHTML = `
+        <button class="diary-edit-save-btn" id="diary_edit_save">
+            <i class="fa-solid fa-check"></i> 保存修改
+        </button>
+    `;
+    page.appendChild(saveBar);
+
+    // Save handler
+    const saveBtn = document.getElementById('diary_edit_save');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            // Read all textareas and update entry
+            const textareas = page.querySelectorAll('.diary-edit-textarea');
+            textareas.forEach(ta => {
+                const segIdx = parseInt(ta.dataset.segIdx);
+                if (!isNaN(segIdx) && entry.segments[segIdx]) {
+                    entry.segments[segIdx].content = ta.value.trim();
+                }
+            });
+
+            // Persist
+            const entries = loadDiaryEntries();
+            const target = entries.find(e => e.id === entry.id);
+            if (target) {
+                target.segments = entry.segments;
+                saveDiaryEntries(entries);
+            }
+
+            console.log(`${DIARY_LOG_PREFIX} 日记已编辑保存 (id=${entry.id})`);
+
+            // Re-render detail view with updated content
+            overlay.innerHTML = buildDetailView(entry);
+            openDetail(entry);
+
+            // Refresh feed in background
+            refreshFeed();
         });
     }
 }
@@ -1720,7 +1866,10 @@ function calculateStreak(entries) {
     for (let i = 0; i < dates.length; i++) {
         const expected = new Date(today);
         expected.setDate(expected.getDate() - i);
-        const expectedStr = expected.toISOString().split('T')[0];
+        const y = expected.getFullYear();
+        const m = String(expected.getMonth() + 1).padStart(2, '0');
+        const d = String(expected.getDate()).padStart(2, '0');
+        const expectedStr = `${y}-${m}-${d}`;
         if (dates[i] === expectedStr) {
             streak++;
         } else {

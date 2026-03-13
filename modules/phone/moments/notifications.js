@@ -4,6 +4,8 @@
 import { getSettings } from './state.js';
 import { getCharacterId } from './constants.js';
 import { saveSettings } from './settings.js';
+import { getContext } from '../../../../../../extensions.js';
+import { getMyAuthorIds, getUserNameFallback, getCharNameFallback } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Notification Management
@@ -13,8 +15,8 @@ export function getNotificationType(post, comment) {
     const settings = getSettings();
     const myName = settings.displayName || 'Anonymous';
     const myCamoName = settings.customUserName || '';
-    const stUserName = _getUserNameFallback();
-    const myCharName = _getCharNameFallback();
+    const stUserName = getUserNameFallback();
+    const myCharName = getCharNameFallback();
     const myCharCamoName = settings.customCharName || '';
 
     const isMe = comment.authorId === settings.userId || comment.authorName === myName || (settings.customUserName && comment.authorName === settings.customUserName) || comment.authorName === stUserName;
@@ -36,7 +38,7 @@ export function getNotificationType(post, comment) {
     }
 
     // 3. Is it a comment on my post? (and not a reply to someone else)
-    const myAuthorIds = _getMyAuthorIds();
+    const myAuthorIds = getMyAuthorIds();
     const isMyPost = myAuthorIds.has(post.authorId);
     if (isMyPost && !comment.replyToId) return 'comment';
 
@@ -89,40 +91,4 @@ export function clearNotifications() {
     window.dispatchEvent(new CustomEvent('moments-notifications-updated', {
         detail: { notifications: settings.notifications }
     }));
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Internal helpers (avoid importing from moments.js to prevent cycles)
-// ═══════════════════════════════════════════════════════════════════════
-
-import { getContext } from '../../../../../../extensions.js';
-
-function _getUserNameFallback() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
-
-function _getCharNameFallback() {
-    try {
-        const context = getContext();
-        const charId = context.characterId;
-        const charData = (context.characters ?? [])[charId];
-        return charData ? (charData.name || context.name2 || 'Character') : null;
-    } catch {
-        return null;
-    }
-}
-
-function _getMyAuthorIds() {
-    const settings = getSettings();
-    const ids = new Set();
-    if (settings.userId) ids.add(settings.userId);
-    ids.add('guest');
-    const charId = getCharacterId();
-    ids.add(charId);
-    return ids;
 }

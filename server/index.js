@@ -119,6 +119,7 @@ const walletRouter = require('./routes/wallet');
 const discordManageRouter = require('./routes/discord-manage');
 const { router: shopRouterHandler, registerPublicShopRoute } = require('./routes/shop');
 const treeRouter = require('./routes/tree');
+const calendarRouter = require('./routes/calendar');
 // ── Public shop catalog (no auth needed for SillyTavern plugin) ─────────────
 registerPublicShopRoute(app);
 
@@ -132,6 +133,7 @@ app.use('/api/wallet', walletRouter);
 app.use('/api/discord-manage', discordManageRouter);
 app.use('/api/shop', shopRouterHandler);
 app.use('/api/tree', treeRouter);
+app.use('/api/calendar', calendarRouter);
 
 // ── 404 catch-all ───────────────────────────────────────────────────
 app.use((_req, res) => {

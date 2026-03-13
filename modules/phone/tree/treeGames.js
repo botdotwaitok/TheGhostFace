@@ -762,78 +762,42 @@ function handleTodFire(state, onFinish) {
         cylinder.style.transform = `rotate(${randomDeg}deg)`;
     }
 
-    // Always hit — every spin means someone answers a question
-    const isHit = true;
-
     setTimeout(() => {
-        if (isHit) {
-            // Got hit! 从对应角色的题池中取题
-            const effectiveType = state.isPlayerTurn ? 'player' : 'ai';
-            let q;
-            if (effectiveType === 'player' && state.playerIdx < state.playerQuestions.length) {
+        // 从对应角色的题池中取题
+        const effectiveType = state.isPlayerTurn ? 'player' : 'ai';
+        let q;
+        if (effectiveType === 'player' && state.playerIdx < state.playerQuestions.length) {
+            q = state.playerQuestions[state.playerIdx];
+            state.playerIdx++;
+        } else if (effectiveType === 'ai' && state.aiIdx < state.aiQuestions.length) {
+            q = state.aiQuestions[state.aiIdx];
+            state.aiIdx++;
+        } else {
+            // 当前类型题池用完，从另一个池子取
+            const fallbackType = effectiveType === 'player' ? 'ai' : 'player';
+            if (fallbackType === 'player' && state.playerIdx < state.playerQuestions.length) {
                 q = state.playerQuestions[state.playerIdx];
                 state.playerIdx++;
-            } else if (effectiveType === 'ai' && state.aiIdx < state.aiQuestions.length) {
+            } else if (fallbackType === 'ai' && state.aiIdx < state.aiQuestions.length) {
                 q = state.aiQuestions[state.aiIdx];
                 state.aiIdx++;
-            } else {
-                // 当前类型题池用完，从另一个池子取
-                const fallbackType = effectiveType === 'player' ? 'ai' : 'player';
-                if (fallbackType === 'player' && state.playerIdx < state.playerQuestions.length) {
-                    q = state.playerQuestions[state.playerIdx];
-                    state.playerIdx++;
-                } else if (fallbackType === 'ai' && state.aiIdx < state.aiQuestions.length) {
-                    q = state.aiQuestions[state.aiIdx];
-                    state.aiIdx++;
-                }
-                // 注意：fallback 时 effectiveType 要跟着题目的 type 走
-                if (q) {
-                    renderTodQuestion(state, q, q.type || fallbackType, onFinish);
-                    return;
-                }
             }
-
+            // 注意：fallback 时 effectiveType 要跟着题目的 type 走
             if (q) {
-                renderTodQuestion(state, q, effectiveType, onFinish);
-            } else {
-                // 全部用完，结束游戏
-                finishTodGame(state, onFinish);
+                renderTodQuestion(state, q, q.type || fallbackType, onFinish);
+                return;
             }
+        }
+
+        if (q) {
+            renderTodQuestion(state, q, effectiveType, onFinish);
         } else {
-            // Safe! Show safe message, then next round
-            renderTodSafe(state, onFinish);
+            // 全部用完，结束游戏
+            finishTodGame(state, onFinish);
         }
     }, 1400);
 }
 
-function renderTodSafe(state, onFinish) {
-    const root = document.getElementById('tree_page_root');
-    if (!root) return;
-
-    // Create safe overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'tg-tod-result-overlay';
-    overlay.innerHTML = `
-        <div class="tg-tod-result-card safe">
-            <i class="fa-solid fa-shield-halved"></i>
-            <div class="tg-tod-result-text">安全！</div>
-            <div class="tg-tod-result-sub">松了一口气~</div>
-        </div>`;
-    root.appendChild(overlay);
-
-    setTimeout(() => {
-        overlay.remove();
-        // Alternate turns
-        state.isPlayerTurn = !state.isPlayerTurn;
-
-        const totalUsed = state.playerIdx + state.aiIdx;
-        if (totalUsed >= state.totalRounds) {
-            finishTodGame(state, onFinish);
-        } else {
-            renderTodRoulette(state, onFinish);
-        }
-    }, 1200);
-}
 
 /**
  * Render chat log bubbles HTML from state.chatLog

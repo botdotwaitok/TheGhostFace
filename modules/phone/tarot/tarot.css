@@ -319,25 +319,6 @@
     cursor: not-allowed;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   New Session Button
-   ═══════════════════════════════════════════════════════════════════════ */
-
-.tarot-new-session-btn {
-    background: none;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.7);
-    border-radius: 20px;
-    padding: 6px 16px;
-    font-size: 12px;
-    cursor: pointer;
-    align-self: center;
-    margin: 8px 0;
-}
-
-.tarot-new-session-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
 
 /* ═══════════════════════════════════════════════════════════════════════
    System Messages (divider-style)

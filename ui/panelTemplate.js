@@ -790,6 +790,10 @@ export const ghostFacePanelTemplate = String.raw`
                         <div style="font-size: 10px; color: #666; margin-bottom: 6px;">
                             💡 密码请使用邮箱的「授权码」而非登录密码
                         </div>
+                        <div style="font-size: 9px; color: #888; margin-bottom: 6px; padding: 4px 6px; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 2px solid #7b9fdb;">
+                            🔒 安全提示：你的授权码仅保存在 SillyTavern 扩展设置中，不会存入浏览器 localStorage。<br>
+                            <span style="opacity: 0.8;">原因：同源环境下其他第三方扩展可读取 localStorage，为保护你的邮箱凭据安全，敏感信息只通过 ST 的受保护存储保存。</span>
+                        </div>
 
                         <div style="margin-bottom: 6px;">
                             <label style="color: var(--SmartThemeBodyColor); font-size: 11px;">发件邮箱</label>

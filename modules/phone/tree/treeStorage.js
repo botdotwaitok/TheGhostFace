@@ -22,6 +22,7 @@ function createDefaultData() {
             stage: 'seed',              // 当前阶段 ID
             dailyCareUsedActions: [],    // 今日已使用的照顾动作 ID 列表（每个动作每天限 1 次）
             lastCareDate: '',           // 上次照顾的日期 (YYYY-MM-DD)
+            careDateHistory: [],        // 历史照顾日期列表 ['YYYY-MM-DD']（供日历模块使用）
             bonusCareCount: 0,          // 额外照顾次数（来自小游戏/道具）
             aiCaredToday: false,        // 恋人今日是否已自动照顾
             adoptedAt: '',              // 领养日期
@@ -74,6 +75,7 @@ function createDefaultData() {
 
         // ── 元信息 ──
         _version: 2,
+        _updatedAt: '',             // ISO 时间戳，每次 saveTreeData 自动更新
     };
 }
 
@@ -112,12 +114,14 @@ export function loadTreeData() {
  * @param {Object} data - 完整的树数据对象
  */
 export function saveTreeData(data) {
+    // 每次保存自动更新时间戳
+    data._updatedAt = new Date().toISOString();
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
         console.error(`${TREE_LOG_PREFIX} Failed to save tree data:`, e);
     }
-    // Stage 6: 异步火忘同步到服务器
+    // 异步火忘同步到服务器
     _syncToServer(data);
 }
 
@@ -146,9 +150,10 @@ export function updateTreeState(updates) {
 /**
  * 增加成长值
  * @param {number} amount - 增加量
+ * @param {Object} [extraState] - 额外要更新的 treeState 字段
  * @returns {{ newGrowth: number, stageChanged: boolean, newStage: string }}
  */
-export function addGrowth(amount) {
+export function addGrowth(amount, extraState) {
     const data = loadTreeData();
     const oldGrowth = data.treeState.growth;
     data.treeState.growth = oldGrowth + amount;
@@ -158,6 +163,11 @@ export function addGrowth(amount) {
     const newStageId = _getStageId(data.treeState.growth);
     data.treeState.stage = newStageId;
     const stageChanged = oldStage !== newStageId;
+
+    // Merge any extra state fields atomically
+    if (extraState && typeof extraState === 'object') {
+        Object.assign(data.treeState, extraState);
+    }
 
     saveTreeData(data);
     return {
@@ -201,6 +211,12 @@ export function checkDailyReset() {
         }
 
         data.treeState.lastCareDate = today;
+
+        // 记录到历史照顾日期（供日历模块追踪）
+        if (!data.treeState.careDateHistory) data.treeState.careDateHistory = [];
+        if (!data.treeState.careDateHistory.includes(today)) {
+            data.treeState.careDateHistory.push(today);
+        }
         saveTreeData(data);
         console.log(`${TREE_LOG_PREFIX} 新的一天！每日次数已重置`);
     }
@@ -464,6 +480,17 @@ export function importTreeData(data) {
 let _syncTimer = null;
 const SYNC_DEBOUNCE_MS = 3000; // 3 秒内多次保存只同步一次
 
+/** 是否有待上传的数据（本地已保存但尚未成功同步到服务器） */
+let _hasPendingSync = false;
+
+/**
+ * 查询是否有待上传的数据
+ * @returns {boolean}
+ */
+export function hasPendingSync() {
+    return _hasPendingSync;
+}
+
 /**
  * 异步火忘同步到服务器（防抖）
  * @param {Object} data - 完整的树数据
@@ -478,16 +505,57 @@ function _syncToServer(data) {
         return;
     }
 
+    _hasPendingSync = true;
+
     // 防抖：短时间内多次保存只触发最后一次
     if (_syncTimer) clearTimeout(_syncTimer);
     _syncTimer = setTimeout(async () => {
         try {
             await apiRequest('POST', `/api/tree/${encodeURIComponent(settings.userId)}`, { data });
+            _hasPendingSync = false;
             console.log(`${TREE_LOG_PREFIX} 数据已同步到服务器 ✅`);
         } catch (e) {
             console.warn(`${TREE_LOG_PREFIX} 服务器同步失败（不影响本地使用）:`, e.message);
         }
     }, SYNC_DEBOUNCE_MS);
+}
+
+/**
+ * 立即同步当前数据到服务器（取消防抖，强制立即发送）。
+ * 用于用户离开树树 App 时确保数据上传完毕。
+ * @returns {Promise<boolean>} 同步是否成功
+ */
+export async function flushSyncNow() {
+    // 取消待执行的防抖定时器
+    if (_syncTimer) {
+        clearTimeout(_syncTimer);
+        _syncTimer = null;
+    }
+
+    if (!_hasPendingSync) return true; // 没有待同步的数据
+
+    const data = loadTreeData();
+    if (!data?.treeState?.treeName) {
+        _hasPendingSync = false;
+        return true;
+    }
+
+    const settings = getSettings();
+    if (!settings.backendUrl || !settings.userId) {
+        console.warn(`${TREE_LOG_PREFIX} flushSyncNow: 缺少 backendUrl 或 userId，无法同步`);
+        _hasPendingSync = false;
+        return false;
+    }
+
+    try {
+        await apiRequest('POST', `/api/tree/${encodeURIComponent(settings.userId)}`, { data });
+        _hasPendingSync = false;
+        console.log(`${TREE_LOG_PREFIX} 数据已立即同步到服务器 ✅`);
+        return true;
+    } catch (e) {
+        console.warn(`${TREE_LOG_PREFIX} 立即同步失败:`, e.message);
+        return false;
+    }
 }
 
 /**
@@ -543,39 +611,65 @@ async function _pullFromServer() {
 }
 
 /**
- * 异步初始化：如果本地无数据，尝试从服务器恢复
- * 应在 treeApp.js 首次打开时调用
- * @returns {Promise<Object>} 树数据（本地或服务器来源）
+ * 异步初始化：以云端为准 + 时间戳对比
+ * 每次打开树树时调用。拉取服务器数据并与本地比较 _updatedAt，
+ * 取更新的那份。
+ * @returns {Promise<Object>} 树数据（来自本地或服务器中更新的一方）
  */
 export async function initTreeDataFromServer() {
+    // ── 1. 读取本地数据 ──
+    let localData = null;
+    let localTime = 0;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
         try {
-            const local = JSON.parse(raw);
-            // 本地有数据且有树名 → 真实数据，直接用本地
-            if (local?.treeState?.treeName) {
-                console.log(`${TREE_LOG_PREFIX} [云端恢复] 本地已有有效数据 (${local.treeState.treeName})，跳过服务器拉取`);
-                return loadTreeData();
+            const parsed = JSON.parse(raw);
+            if (parsed?.treeState?.treeName) {
+                localData = deepMerge(createDefaultData(), parsed);
+                localTime = localData._updatedAt ? new Date(localData._updatedAt).getTime() : 0;
             }
-            // 本地有数据但无树名 → 之前只写了空白默认值，仍需尝试服务器
-            console.log(`${TREE_LOG_PREFIX} [云端恢复] 本地有数据但无树名（空白默认值），尝试从服务器拉取…`);
         } catch (e) {
-            console.warn(`${TREE_LOG_PREFIX} [云端恢复] 本地数据解析失败，尝试从服务器拉取…`);
+            console.warn(`${TREE_LOG_PREFIX} [同步] 本地数据解析失败`);
         }
-    } else {
-        console.log(`${TREE_LOG_PREFIX} [云端恢复] 本地无数据，尝试从服务器拉取…`);
     }
 
-    // 本地无有效数据，尝试从服务器恢复
-    const serverData = await _pullFromServer();
-    if (serverData) {
-        const merged = deepMerge(createDefaultData(), serverData);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        console.log(`${TREE_LOG_PREFIX} 已从服务器恢复数据到本地 ✅`);
-        return merged;
+    // ── 2. 拉取服务器数据 ──
+    const serverResult = await _pullFromServer();
+    let serverData = null;
+    let serverTime = 0;
+    if (serverResult?.treeState?.treeName) {
+        serverData = deepMerge(createDefaultData(), serverResult);
+        // 服务器返回的 updatedAt 在 _pullFromServer 的外层 result 中
+        // 同时数据自身也可能携带 _updatedAt
+        serverTime = serverData._updatedAt ? new Date(serverData._updatedAt).getTime() : 0;
     }
 
-    console.warn(`${TREE_LOG_PREFIX} [云端恢复] 服务器也无数据，使用全新默认值`);
+    // ── 3. 决策：谁更新用谁 ──
+    if (serverData && localData) {
+        // 两边都有有效数据 → 比较时间戳
+        if (localTime > serverTime) {
+            console.log(`${TREE_LOG_PREFIX} [同步] 本地更新 (本地=${localData._updatedAt}, 云端=${serverData._updatedAt}) → 保留本地，上传到服务器`);
+            _syncToServer(localData);
+            return localData;
+        } else {
+            console.log(`${TREE_LOG_PREFIX} [同步] 云端更新 (云端=${serverData._updatedAt}, 本地=${localData._updatedAt}) → 用云端覆盖本地`);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
+            return serverData;
+        }
+    } else if (serverData) {
+        // 只有服务器有 → 恢复到本地
+        console.log(`${TREE_LOG_PREFIX} [同步] 本地无数据，从云端恢复 ✅`);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
+        return serverData;
+    } else if (localData) {
+        // 只有本地有 → 上传到服务器
+        console.log(`${TREE_LOG_PREFIX} [同步] 云端无数据，上传本地到服务器`);
+        _syncToServer(localData);
+        return localData;
+    }
+
+    // 两边都没有 → 全新用户
+    console.log(`${TREE_LOG_PREFIX} [同步] 本地和云端都无数据，使用默认值`);
     return createDefaultData();
 }
 
@@ -673,7 +767,7 @@ export function archiveCurrentTree(newTreeType, newTreeName) {
         treeType: newTreeType,
         growth: 0,
         stage: 'seed',
-        dailyCareCount: 0,
+        dailyCareUsedActions: [],
         lastCareDate: '',
         bonusCareCount: 0,
         aiCaredToday: false,

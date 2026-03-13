@@ -2,18 +2,18 @@
 // modules/moments/moments.js — 统一入口 & Re-Export
 // 所有子模块通过此文件对外暴露，消费者（momentsUI.js, index.js）无需修改。
 
-import { getContext } from '../../../../../../extensions.js';
 import { MOMENTS_LOG_PREFIX, getCharacterId, logMoments } from './constants.js';
-import { getSettings as _getSettings, getFeedCache, setFeedCache, setLastCharacterId, getLastCharacterId, resetSettings } from './state.js';
+import { getSettings, getFeedCache, setFeedCache, setLastCharacterId, getLastCharacterId, resetSettings } from './state.js';
 import { loadSettings, saveSettings, updateSettings } from './settings.js';
 import { loadLocalFeed, saveLocalFeed, sortFeedCache } from './persistence.js';
 import { registerUser } from './apiClient.js';
 import { startSync, stopSync } from './sync.js';
 import { updateMomentsWorldInfo } from './momentsWorldInfo.js';
 
-// ═══════════════════════════════════════════════════════════════════════
+// ========================================================================
 // Re-Exports — 维持对外 API 不变
-// ═══════════════════════════════════════════════════════════════════════
+// ❓ 添加新导出时请同步更新以下列表！
+// ========================================================================
 
 // constants
 export { logMoments } from './constants.js';
@@ -30,7 +30,7 @@ export { addNotification, markNotificationsRead, getUnreadNotifications, clearNo
 // persistence
 export { avatarCache, saveLocalFeed, loadLocalFeed, createLocalPost, deletePost, addLocalComment, deleteComment, sortFeedCache } from './persistence.js';
 
-// apiClient
+// apiClient (Shop Review APIs removed — were dead code)
 export { apiRequest, login, register, logout, getUserInfo, getUserProfile, getUserPosts, updateUserProfile, registerUser, addFriend, removeFriend, listFriends, createPost, publishPost, getFeed, getPostDetail, addComment, getComments, toggleLike, getWalletBalance, walletDeduct, walletAdd, bindDiscordByCode } from './apiClient.js';
 
 // generation
@@ -40,40 +40,10 @@ export { pendingInteractions, queueComment, queueReply, processPendingInteractio
 export { syncFeed, startSync, stopSync } from './sync.js';
 
 // worldinfo
-export { updateMomentsWorldInfo, getMomentsSystemPrompt, handleMainChatOutput, showToast } from './momentsWorldInfo.js';
+export { updateMomentsWorldInfo, getMomentsSystemPrompt, handleMainChatOutput } from './momentsWorldInfo.js';
 
-// ═══════════════════════════════════════════════════════════════════════
-// Context Gathering (used by multiple sub-modules, kept here as canonical)
-// ═══════════════════════════════════════════════════════════════════════
-
-export function getCharacterInfo() {
-    try {
-        const context = getContext();
-        const charId = context.characterId;
-        const charData = (context.characters ?? [])[charId];
-        if (!charData) return null;
-
-        return {
-            name: charData.name || context.name2 || 'Character',
-            description: charData.description || charData.data?.description || '',
-            personality: charData.personality || charData.data?.personality || '',
-            scenario: charData.scenario || charData.data?.scenario || '',
-            avatar: charData.avatar || '',
-        };
-    } catch (e) {
-        console.warn(`${MOMENTS_LOG_PREFIX} getCharacterInfo failed:`, e);
-        return null;
-    }
-}
-
-export function getUserName() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
+// shared helpers
+export { getMyAuthorIds, getUserNameFallback, getCharNameFallback, getCharacterInfo, getUserName, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Character Switch Handling
@@ -101,7 +71,7 @@ export async function onCharacterChanged() {
     }));
 
     // 5. Restart sync if enabled for this new character
-    const settings = _getSettings();
+    const settings = getSettings();
     if (settings.enabled && settings.backendUrl && settings.secretToken) {
         try {
             await registerUser();
@@ -133,7 +103,7 @@ export async function initialize() {
         }));
     }
 
-    const settings = _getSettings();
+    const settings = getSettings();
     if (settings.enabled && settings.backendUrl && settings.secretToken) {
         try {
             await registerUser();

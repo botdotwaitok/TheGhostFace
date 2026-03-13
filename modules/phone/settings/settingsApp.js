@@ -2,6 +2,7 @@
 // iPhone-style layout: top profile card → account detail page → module settings
 
 import { openAppInViewport } from '../phoneController.js';
+import { escapeHtml } from '../utils/helpers.js';
 import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
 import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 import { getConfig as getAutoMsgConfig, saveConfig as saveAutoMsgConfig, startAutoMessageTimer, stopAutoMessageTimer, formatIntervalLabel } from '../chat/autoMessage.js';
@@ -15,6 +16,11 @@ import { loadTreeData, getTreeState, updateTreeState, updateTreeSettings } from 
 import { disableTreeWorldInfo, updateTreeWorldInfo } from '../tree/treeWorldInfo.js';
 import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
+import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbookManager.js';
+import {
+    isBookBlockedInScope, isEntryBlockedInScope,
+    toggleBookBlock, toggleEntryBlock
+} from './wbBlacklist.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Discord Binding Section (reused in account detail page)
@@ -80,14 +86,7 @@ async function renderDiscordBindSection(P) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Helper: escape HTML
-// ═══════════════════════════════════════════════════════════════════════
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-}
+// escapeHtml is now imported from '../utils/helpers.js'
 
 // ═══════════════════════════════════════════════════════════════════════
 // Account Detail Page (opened when tapping the profile card)
@@ -514,6 +513,157 @@ function buildProfileCardHtml() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// World Book Blacklist — Dynamic render helper
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Render the world book blacklist panel into the list container.
+ * Called when the section is expanded or when the scope tab changes.
+ * @param {string} P - Settings prefix
+ * @param {'global'|'char'} scope
+ */
+async function renderWbBlacklist(P, scope) {
+    const container = document.getElementById(`${P}_wb_bl_list`);
+    if (!container) return;
+
+    // Lock height to prevent page jitter during async reload
+    const prevHeight = container.offsetHeight;
+    if (prevHeight > 0) container.style.minHeight = `${prevHeight}px`;
+
+    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #8e8e93; font-size: 13px;">
+        <i class="fa-solid fa-spinner fa-spin"></i> 加载世界书...
+    </div>`;
+
+    try {
+        const bookNames = await getAllActiveWorldBookNames();
+        if (!bookNames || bookNames.length === 0) {
+            container.innerHTML = `<div style="text-align: center; padding: 20px; color: #8e8e93; font-size: 13px;">
+                当前没有激活的世界书
+            </div>`;
+            return;
+        }
+
+        // Load all entries grouped by book
+        const bookEntries = {};
+        for (const bookName of bookNames) {
+            try {
+                const entries = await getAllActiveEntries([bookName]);
+                bookEntries[bookName] = entries.filter(e => e && (e.comment || '').trim());
+            } catch { bookEntries[bookName] = []; }
+        }
+
+        // Build HTML
+        let html = '';
+        for (const bookName of bookNames) {
+            const isBlocked = isBookBlockedInScope(bookName, scope);
+            const entries = bookEntries[bookName] || [];
+            const entryCount = entries.length;
+            const blockedEntryCount = entries.filter(e =>
+                isEntryBlockedInScope(bookName, (e.comment || '').trim(), scope)
+            ).length;
+
+            const bookId = `${P}_wb_bl_book_${_hashStr(bookName)}`;
+
+            html += `<div class="phone-wb-bl-book" data-book="${escapeHtml(bookName)}">
+                <div class="phone-wb-bl-book-header">
+                    <div class="phone-wb-bl-book-info">
+                        <button class="phone-wb-bl-expand-btn" id="${bookId}_expand" title="展开条目">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                        <div class="phone-wb-bl-book-meta">
+                            <span class="phone-wb-bl-book-name">${escapeHtml(bookName)}</span>
+                            <span class="phone-wb-bl-book-count">${entryCount} 条${blockedEntryCount > 0 ? ` · <span style="color: #FF6B6B;">${blockedEntryCount} 已屏蔽</span>` : ''}</span>
+                        </div>
+                    </div>
+                    <button class="phone-settings-ios-toggle ${isBlocked ? 'active blocked' : ''}"
+                            id="${bookId}_toggle" aria-checked="${isBlocked}" title="${isBlocked ? '已屏蔽整本' : '点击屏蔽整本'}">
+                        <span class="phone-settings-ios-toggle-knob"></span>
+                    </button>
+                </div>
+                <div class="phone-wb-bl-entries" id="${bookId}_entries" style="display: none;">
+                    ${entries.length === 0 ? '<div style="padding: 8px 16px; color: #8e8e93; font-size: 12px;">无条目</div>' : ''}
+                    ${entries.map(entry => {
+                const comment = (entry.comment || '').trim();
+                if (!comment) return '';
+                const entryBlocked = isEntryBlockedInScope(bookName, comment, scope);
+                const isDisabled = !!entry.disable;
+                const entryId = `${bookId}_e_${_hashStr(comment)}`;
+                return `<label class="phone-wb-bl-entry ${isDisabled ? 'disabled' : ''} ${entryBlocked ? 'blocked' : ''}" for="${entryId}">
+                            <input type="checkbox" id="${entryId}" ${entryBlocked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}
+                                   data-book="${escapeHtml(bookName)}" data-comment="${escapeHtml(comment)}" />
+                            <span class="phone-wb-bl-entry-name">${escapeHtml(comment)}</span>
+                            ${isDisabled ? '<span class="phone-wb-bl-entry-badge">已禁用</span>' : ''}
+                        </label>`;
+            }).join('')}
+                </div>
+            </div>`;
+        }
+
+        container.innerHTML = html;
+        container.style.minHeight = ''; // Release height lock
+
+        // Bind events
+        for (const bookName of bookNames) {
+            const bookId = `${P}_wb_bl_book_${_hashStr(bookName)}`;
+
+            // Toggle whole book
+            const toggle = document.getElementById(`${bookId}_toggle`);
+            toggle?.addEventListener('click', () => {
+                toggleBookBlock(bookName, scope);
+                const nowBlocked = isBookBlockedInScope(bookName, scope);
+                toggle.setAttribute('aria-checked', String(nowBlocked));
+                toggle.classList.toggle('active', nowBlocked);
+                toggle.classList.toggle('blocked', nowBlocked);
+                showToast(nowBlocked ? `已屏蔽: ${bookName}` : `已取消屏蔽: ${bookName}`);
+            });
+
+            // Expand/collapse entries
+            const expandBtn = document.getElementById(`${bookId}_expand`);
+            const entriesDiv = document.getElementById(`${bookId}_entries`);
+            expandBtn?.addEventListener('click', () => {
+                const isOpen = entriesDiv.style.display !== 'none';
+                entriesDiv.style.display = isOpen ? 'none' : 'block';
+                expandBtn.querySelector('i').style.transform = isOpen ? '' : 'rotate(90deg)';
+            });
+
+            // Entry checkboxes
+            const checkboxes = entriesDiv?.querySelectorAll('input[type="checkbox"]');
+            checkboxes?.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const bk = cb.dataset.book;
+                    const cm = cb.dataset.comment;
+                    toggleEntryBlock(bk, cm, scope);
+                    cb.parentElement.classList.toggle('blocked', cb.checked);
+                    // Update counter in header (without re-rendering the whole list)
+                    const bookEl = cb.closest('.phone-wb-bl-book');
+                    if (bookEl) {
+                        const allCbs = bookEl.querySelectorAll('.phone-wb-bl-entries input[type="checkbox"]:checked');
+                        const countEl = bookEl.querySelector('.phone-wb-bl-book-count');
+                        const totalEntries = bookEl.querySelectorAll('.phone-wb-bl-entries input[type="checkbox"]').length;
+                        const blockedCount = allCbs.length;
+                        countEl.innerHTML = `${totalEntries} 条${blockedCount > 0 ? ` · <span style="color: #FF6B6B;">${blockedCount} 已屏蔽</span>` : ''}`;
+                    }
+                });
+            });
+        }
+    } catch (e) {
+        console.warn('[Settings] renderWbBlacklist failed:', e);
+        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #FF6B6B; font-size: 13px;">
+            加载失败: ${e.message || '未知错误'}
+        </div>`;
+    }
+}
+
+/** Simple string hash for generating unique DOM IDs */
+function _hashStr(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash).toString(36);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Main Settings Page
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -640,11 +790,11 @@ export function openSettingsApp() {
             </div>
         </details>
 
-        <!-- ═══ 消息提醒 (Notification & Keep-Alive) ═══ -->
+        <!-- ═══ 聊天 (Chat Settings — merged from 消息提醒 + 回家模式) ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
-                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #667EEA, #764BA2);"><i class="fa-solid fa-bell"></i></span>
-                <span>消息提醒</span>
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #667EEA, #764BA2);"><i class="fa-solid fa-comments"></i></span>
+                <span>聊天</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
@@ -678,6 +828,50 @@ export function openSettingsApp() {
                             <input id="${P}_auto_msg_interval" type="range" min="1" max="480" step="1" class="phone-settings-slider" />
                             <span id="${P}_auto_msg_interval_val" class="phone-settings-slider-val">30分钟</span>
                         </div>
+                    </div>
+                </div>
+
+                <div class="phone-settings-group-title">自动压缩</div>
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">自动压缩时提取记忆碎片</span>
+                        <button id="${P}_auto_summarize_memory_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后，聊天自动压缩时也会调用鬼面记忆碎片系统提取关键信息写入世界书。关闭则仅做滚动总结，省一次 API 调用。
+                </div>
+
+                <div class="phone-settings-group-title">回家模式</div>
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">回家时提取记忆碎片</span>
+                        <button id="${P}_rh_memory_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后，点击"我已回家"时会先调用鬼面记忆碎片系统，从手机聊天记录中提取关键信息写入世界书（绿灯条目）。适合使用了 GhostFace 世界书记忆系统的用户。
+                </div>
+
+                <div class="phone-settings-group-title">同步方式</div>
+                <div class="phone-settings-row" style="flex-direction: column; gap: 8px;">
+                    <div class="phone-settings-mode-card" data-rh-mode="summary" id="${P}_rh_mode_summary">
+                        <div class="phone-settings-mode-card-header">
+                            <span class="phone-settings-mode-card-title">压缩总结</span>
+                            <span class="phone-settings-mode-card-badge">推荐</span>
+                        </div>
+                        <div class="phone-settings-mode-card-desc">鬼面将手机聊天内容总结为结构化摘要后，作为用户消息发送到酒馆本体。省 Token，信息完整。</div>
+                    </div>
+                    <div class="phone-settings-mode-card" data-rh-mode="raw" id="${P}_rh_mode_raw">
+                        <div class="phone-settings-mode-card-header">
+                            <span class="phone-settings-mode-card-title">原文灌入</span>
+                            <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">⚠️ 高Token</span>
+                        </div>
+                        <div class="phone-settings-mode-card-desc">将全部手机聊天记录原文直接作为用户消息送入酒馆本体。保留原汁原味的对话细节，但会占用大量 Token（几百条聊天可能超出上下文限制）。</div>
                     </div>
                 </div>
 
@@ -724,43 +918,30 @@ export function openSettingsApp() {
             </div>
         </details>
 
-        <!-- ═══ 回家模式 (Return Home Settings) ═══ -->
+
+
+        <!-- ═══ 世界书黑名单 (World Book Blacklist) ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
-                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #F093FB, #F5576C);"><i class="fa-solid fa-house-chimney"></i></span>
-                <span>回家模式</span>
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #FF8C42, #D45113);"><i class="fa-solid fa-book-skull"></i></span>
+                <span>世界书黑名单</span>
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
 
-                <div class="phone-settings-group-title">记忆碎片提取</div>
-                <div class="phone-settings-row">
-                    <div class="phone-settings-toggle-row">
-                        <span class="phone-settings-toggle-label">回家时提取记忆碎片</span>
-                        <button id="${P}_rh_memory_toggle" class="phone-settings-ios-toggle" aria-checked="false">
-                            <span class="phone-settings-ios-toggle-knob"></span>
-                        </button>
-                    </div>
-                </div>
                 <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
-                    开启后，点击“我已回家”时会先调用鬼面记忆碎片系统，从手机聊天记录中提取关键信息写入世界书（绿灯条目）。适合使用了 GhostFace 世界书记忆系统的用户。
+                    在这里选择不想在手机里发送给 LLM 的世界书或条目，被屏蔽的内容不会出现在手机的提示词中。可以全局屏蔽，也可以针对当前角色屏蔽。建议全局屏蔽交稿日。
                 </div>
 
-                <div class="phone-settings-group-title">同步方式</div>
-                <div class="phone-settings-row" style="flex-direction: column; gap: 8px;">
-                    <div class="phone-settings-mode-card" data-rh-mode="summary" id="${P}_rh_mode_summary">
-                        <div class="phone-settings-mode-card-header">
-                            <span class="phone-settings-mode-card-title">压缩总结</span>
-                            <span class="phone-settings-mode-card-badge">推荐</span>
-                        </div>
-                        <div class="phone-settings-mode-card-desc">鬼面将手机聊天内容总结为结构化摘要后，作为用户消息发送到酒馆本体。省 Token，信息完整。</div>
-                    </div>
-                    <div class="phone-settings-mode-card" data-rh-mode="raw" id="${P}_rh_mode_raw">
-                        <div class="phone-settings-mode-card-header">
-                            <span class="phone-settings-mode-card-title">原文灌入</span>
-                            <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">⚠️ 高Token</span>
-                        </div>
-                        <div class="phone-settings-mode-card-desc">将全部手机聊天记录原文直接作为用户消息送入酒馆本体。保留原汁原味的对话细节，但会占用大量 Token（几百条聊天可能超出上下文限制）。</div>
+                <div class="phone-settings-group-title">范围</div>
+                <div class="phone-wb-bl-tabs" id="${P}_wb_bl_tabs">
+                    <button class="phone-wb-bl-tab active" data-scope="global">全局</button>
+                    <button class="phone-wb-bl-tab" data-scope="char">当前</button>
+                </div>
+
+                <div id="${P}_wb_bl_list" class="phone-wb-bl-list">
+                    <div style="text-align: center; padding: 20px; color: #8e8e93; font-size: 13px;">
+                        <i class="fa-solid fa-spinner fa-spin"></i> 加载世界书...
                     </div>
                 </div>
 
@@ -964,6 +1145,22 @@ export function openSettingsApp() {
             }
         });
 
+        // ═══ Auto-Summarize: Memory Toggle ═══
+        const autoSumMemToggle = document.getElementById(`${P}_auto_summarize_memory_toggle`);
+        const autoSumMemOn = localStorage.getItem('gf_phone_auto_summarize_memory') !== 'false'; // default ON
+        if (autoSumMemToggle) {
+            autoSumMemToggle.setAttribute('aria-checked', String(autoSumMemOn));
+            if (autoSumMemOn) autoSumMemToggle.classList.add('active');
+            autoSumMemToggle.addEventListener('click', () => {
+                const wasOn = autoSumMemToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                autoSumMemToggle.setAttribute('aria-checked', String(newState));
+                autoSumMemToggle.classList.toggle('active', newState);
+                localStorage.setItem('gf_phone_auto_summarize_memory', String(newState));
+                showToast(newState ? '自动压缩将提取记忆碎片 🧩' : '自动压缩仅做滚动总结');
+            });
+        }
+
         // ═══ Return Home: Memory Toggle + Sync Mode ═══
         const rhMemoryToggle = document.getElementById(`${P}_rh_memory_toggle`);
         const rhMemoryOn = localStorage.getItem('gf_phone_rh_memory') === 'true';
@@ -992,6 +1189,34 @@ export function openSettingsApp() {
                 showToast(`回家同步方式: ${label}`);
             });
         });
+
+        // ═══ World Book Blacklist ═══
+        {
+            const charInfo = getPhoneCharInfo();
+            const charLabel = document.getElementById(`${P}_wb_bl_char_label`);
+            if (charLabel && charInfo?.name) charLabel.textContent = charInfo.name;
+
+            let currentScope = 'global';
+            const tabs = document.querySelectorAll(`#${P}_wb_bl_tabs .phone-wb-bl-tab`);
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentScope = tab.dataset.scope;
+                    renderWbBlacklist(P, currentScope);
+                });
+            });
+
+            // Initial render when expanded
+            const blSection = document.querySelector(`.phone-settings-section:has(#${P}_wb_bl_list)`);
+            if (blSection) {
+                blSection.addEventListener('toggle', () => {
+                    if (blSection.open) {
+                        renderWbBlacklist(P, currentScope);
+                    }
+                });
+            }
+        }
 
         // ═══ Console: Enable Toggle ═══
         const consoleToggle = document.getElementById(`${P}_console_enable_toggle`);

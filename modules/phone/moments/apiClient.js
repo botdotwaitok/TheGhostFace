@@ -193,6 +193,7 @@ export async function registerUser() {
 
 export async function addFriend(friendId) {
     const settings = getSettings();
+    if (!settings.userId) throw new Error('请先登录');
     return apiRequest('POST', '/api/users/friends', {
         userId: settings.userId,
         friendId,
@@ -201,14 +202,14 @@ export async function addFriend(friendId) {
 
 export async function removeFriend(friendId) {
     const settings = getSettings();
-    return apiRequest('DELETE', '/api/users/friends', {
-        userId: settings.userId,
-        friendId,
-    });
+    if (!settings.userId) throw new Error('请先登录');
+    // Use URL params instead of body for DELETE (better proxy/CDN compatibility)
+    return apiRequest('DELETE', `/api/users/friends/${encodeURIComponent(settings.userId)}/${encodeURIComponent(friendId)}`);
 }
 
 export async function listFriends() {
     const settings = getSettings();
+    if (!settings.userId) throw new Error('请先登录');
     return apiRequest('GET', `/api/users/${settings.userId}/friends`);
 }
 
@@ -457,49 +458,4 @@ export async function walletAdd(amount, reason = 'moments') {
 export async function bindDiscordByCode(code) {
     const settings = getSettings();
     return apiRequest('PUT', `/api/users/${settings.userId}/discord`, { code });
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Shop Reviews API（服务器端评价存储）
-// ═══════════════════════════════════════════════════════════════════════
-
-/**
- * Fetch all reviews for a shop item from the remote server.
- * Returns an empty array if backend is not configured or request fails.
- */
-export async function getShopReviews(itemId) {
-    const settings = getSettings();
-    if (!settings.backendUrl || !settings.secretToken) return [];
-    try {
-        const result = await apiRequest('GET', `/api/shop/reviews/${encodeURIComponent(itemId)}`);
-        return result.reviews || [];
-    } catch (e) {
-        console.warn('[Shop] Failed to fetch remote reviews:', e);
-        return [];
-    }
-}
-
-/**
- * Post a new review for a shop item to the remote server.
- */
-export async function postShopReview(itemId, review) {
-    const settings = getSettings();
-    return apiRequest('POST', `/api/shop/reviews/${encodeURIComponent(itemId)}`, {
-        ...review,
-        userId: settings.userId || 'anonymous',
-    });
-}
-
-/**
- * Delete a review from the remote server by its server-side ID.
- * Silently no-ops if backend is not configured.
- */
-export async function deleteShopReview(itemId, reviewId) {
-    const settings = getSettings();
-    if (!settings.backendUrl || !settings.secretToken) return;
-    try {
-        await apiRequest('DELETE', `/api/shop/reviews/${encodeURIComponent(itemId)}/${encodeURIComponent(reviewId)}`);
-    } catch (e) {
-        console.warn('[Shop] Failed to delete remote review:', e);
-    }
 }

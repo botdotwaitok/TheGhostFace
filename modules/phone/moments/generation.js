@@ -3,10 +3,12 @@
 
 import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
-import { callCustomOpenAI, useMomentCustomApi } from '../../api.js';
+import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
+import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { addComment, toggleLike } from './apiClient.js';
+import { getMyAuthorIds, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Pending Interactions Queue
@@ -18,57 +20,12 @@ export let pendingInteractions = [];
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-
-
-async function getBase64FromUrl(url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) return '';
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(blob);
-        });
-    } catch (e) {
-        console.warn(`${MOMENTS_LOG_PREFIX} Failed to convert image to base64: ${url}`, e);
-        return '';
-    }
-}
-
-function _showToast(msg) {
-    try {
-        const container = document.getElementById('moments_toast_container');
-        if (container) {
-            const toast = document.createElement('div');
-            toast.className = 'moments-toast moments-toast-show';
-            toast.textContent = msg;
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 2500);
-        }
-    } catch { }
-}
-
-/**
- * Returns a Set of all authorIds that belong to "me" (current user + current character).
- */
-function _getMyAuthorIds() {
-    const settings = getSettings();
-    const ids = new Set();
-    if (settings.userId) ids.add(settings.userId);
-    ids.add('guest');
-    const charId = getCharacterId(); // char_{numericId}
-    ids.add(charId);
-    return ids;
-}
-
 function _isMyPost(post) {
-    return _getMyAuthorIds().has(post.authorId);
+    return getMyAuthorIds().has(post.authorId);
 }
 
 function _isMyContent(item) {
-    return _getMyAuthorIds().has(item.authorId);
+    return getMyAuthorIds().has(item.authorId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -77,8 +34,14 @@ function _isMyContent(item) {
 
 export async function maybeGeneratePost() {
     const settings = getSettings();
-    if (!settings.enabled || getIsGeneratingPost() || !useMomentCustomApi) return;
+    if (!settings.enabled || getIsGeneratingPost()) return;
     if (Math.random() > settings.autoPostChance) return;
+
+    // ── Cooldown gate: skip if on cooldown ──
+    if (isMomentsPostOnCooldown()) {
+        logMoments(`🕐 自动发帖冷却中，跳过本次生成`);
+        return;
+    }
 
     const charInfo = getPhoneCharInfo();
     if (!charInfo) return;
@@ -119,10 +82,11 @@ export async function maybeGeneratePost() {
             ? `最近的对话:\n${chatSnippet}\n\n根据最近的对话和角色性格，发一条社交平台动态。`
             : `根据角色性格和场景，发一条日常社交平台动态。`;
 
-        const content = await callCustomOpenAI(systemPrompt, userPrompt);
+        const content = await callPhoneLLM(systemPrompt, userPrompt);
         if (content && content.trim()) {
             const { createLocalPost } = await import('./persistence.js');
             await createLocalPost(content.trim(), charInfo.name, avatarData, null, true);
+            markMomentsPostCooldown();
             logMoments(`${charInfo.name} 生成了待发布动态: ${content.trim().substring(0, 500)}...`);
         }
     } catch (e) {
@@ -145,7 +109,7 @@ export async function queueComment(post) {
     if (!charInfo) return;
 
     // ── 防重复：如果角色已评论过此帖且无新外部活动，则不再评论 ──
-    const myAuthorIds = _getMyAuthorIds();
+    const myAuthorIds = getMyAuthorIds();
     if (post.comments && post.comments.length > 0) {
         const myCommentTimes = post.comments
             .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
@@ -197,7 +161,7 @@ export async function queueReply(post, comment) {
     if (_isMyContent(comment)) return;
 
     // ── 防重复：如果已回复过此条评论，不再回复 ──
-    const myAuthorIds = _getMyAuthorIds();
+    const myAuthorIds = getMyAuthorIds();
     if (post.comments) {
         const alreadyReplied = post.comments.some(c =>
             myAuthorIds.has(c.authorId) && c.replyToId === comment.id
@@ -237,10 +201,7 @@ export async function queueReply(post, comment) {
 export async function processPendingInteractions() {
     const settings = getSettings();
     if (!settings.enabled || pendingInteractions.length === 0 || getIsGeneratingComment()) return;
-    if (!useMomentCustomApi) {
-        pendingInteractions = [];
-        return;
-    }
+
 
     const charInfo = getPhoneCharInfo();
     if (!charInfo) {
@@ -294,7 +255,7 @@ export async function processPendingInteractions() {
 
         const userPrompt = userPromptItems.join('\n\n-----------------\n\n');
 
-        const resultText = await callCustomOpenAI(systemPrompt, userPrompt);
+        const resultText = await callPhoneLLM(systemPrompt, userPrompt);
         if (!resultText) return;
 
         const cleanedText = cleanLlmJson(resultText);
@@ -321,10 +282,10 @@ export async function processPendingInteractions() {
                     if (originalItem) {
                         if (originalItem.type === 'comment') {
                             await addComment(originalItem.post.id, resp.response.trim(), charInfo.name, null, null, avatarData);
-                            _showToast(`💬 角色 ${charInfo.name} 发表了评论`);
+                            showToast(`💬 角色 ${charInfo.name} 发表了评论`);
                         } else if (originalItem.type === 'reply') {
                             await addComment(originalItem.post.id, resp.response.trim(), charInfo.name, originalItem.comment.id, originalItem.comment.authorName, avatarData);
-                            _showToast(`💬 角色 ${charInfo.name} 回复了评论`);
+                            showToast(`💬 角色 ${charInfo.name} 回复了评论`);
                         }
                     }
                 }

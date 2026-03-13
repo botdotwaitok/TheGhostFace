@@ -192,7 +192,7 @@ function _parseLinesFromResponse(raw) {
     if (lines.length === 0) {
         lines = cleaned.split('\n')
             .map(line => line.replace(/^[\d\-\.\)]+\s*/, '').replace(/^["'"「]|["'"」]$/g, '').trim())
-            .filter(line => line.length >= 5 && line.length <= 80);
+            .filter(line => line.length >= 5 && line.length <= 200);
     }
 
     // Quality filter: remove SillyTavern tags and dirty data
@@ -521,83 +521,7 @@ ${charContext}
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════
-// Unified Content Check & Refill
-// ═══════════════════════════════════════════════════════════════════════
 
-/**
- * 检查所有内容存量，不足时后台补充。
- * 可在树主界面打开时调用，整个过程静默执行。
- *
- * @param {Object} [options]
- * @param {boolean} [options.forceCareLines=false] - 强制重新生成台词
- * @param {boolean} [options.forceAll=false] - 强制生成所有内容（首次初始化用）
- * @param {Function} [options.onProgress] - 进度回调 ({ step, totalSteps, stepName })
- * @returns {Promise<{ careLines: boolean, quiz: boolean, tod: boolean }>} 各项是否触发了补充
- */
-export async function checkAndRefillContent({ forceCareLines = false, forceAll = false, onProgress } = {}) {
-    const results = { careLines: false, quiz: false, tod: false };
-    const totalSteps = 3;
-
-    const data = loadTreeData();
-    const stageId = data.treeState.stage;
-
-    // ── Step 1: Care Lines ──
-    if (typeof onProgress === 'function') {
-        onProgress({ step: 0, totalSteps, stepName: '正在生成照顾台词…' });
-    }
-    const careLinesRemaining = getRemainingCareLines();
-    const careLinesStageMatch = data.dialogueCache.currentStage === stageId;
-    const needCareLines = forceCareLines || careLinesRemaining === 0 || !careLinesStageMatch;
-    if (needCareLines) {
-        console.log(`${LOG} 台词补充: remaining=${careLinesRemaining}, stageMatch=${careLinesStageMatch}, force=${forceCareLines}`);
-        try {
-            await generateCareLines(stageId);
-            results.careLines = true;
-        } catch (e) {
-            console.warn(`${LOG} 台词补充失败:`, e.message);
-        }
-    }
-
-    // ── Step 2: Quiz Questions ──
-    if (typeof onProgress === 'function') {
-        onProgress({ step: 1, totalSteps, stepName: '正在生成默契挑战题目…' });
-    }
-    const quizRemaining = getRemainingQuestions().quiz;
-    const needQuiz = forceAll ? (quizRemaining === 0) : (quizRemaining < QUIZ_LOW_THRESHOLD);
-    if (needQuiz) {
-        console.log(`${LOG} 默契题目补充: remaining=${quizRemaining}, threshold=${QUIZ_LOW_THRESHOLD}, forceAll=${forceAll}`);
-        try {
-            await generateQuizQuestions();
-            results.quiz = true;
-        } catch (e) {
-            console.warn(`${LOG} 默契题目补充失败:`, e.message);
-        }
-    }
-
-    // ── Step 3: ToD Questions ──
-    if (typeof onProgress === 'function') {
-        onProgress({ step: 2, totalSteps, stepName: '正在生成真心话题目…' });
-    }
-    const todRemaining = getRemainingQuestions().tod;
-    const needTod = forceAll ? (todRemaining === 0) : (todRemaining < TOD_LOW_THRESHOLD);
-    if (needTod) {
-        console.log(`${LOG} 真心话题目补充: remaining=${todRemaining}, threshold=${TOD_LOW_THRESHOLD}, forceAll=${forceAll}`);
-        try {
-            await generateTodQuestions();
-            results.tod = true;
-        } catch (e) {
-            console.warn(`${LOG} 真心话题目补充失败:`, e.message);
-        }
-    }
-
-    // ── Done ──
-    if (typeof onProgress === 'function') {
-        onProgress({ step: totalSteps, totalSteps, stepName: '准备完毕！' });
-    }
-
-    return results;
-}
 
 
 // ═══════════════════════════════════════════════════════════════════════

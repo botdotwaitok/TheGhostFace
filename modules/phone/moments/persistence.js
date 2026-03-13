@@ -6,6 +6,7 @@ import { getSettings, getFeedCache, setFeedCache } from './state.js';
 import { saveSettings } from './settings.js';
 import { getNotificationType, addNotification } from './notifications.js';
 import { getContext } from '../../../../../../extensions.js';
+import { getUserNameFallback } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Avatar Cache System (IndexedDB)
@@ -122,7 +123,7 @@ export function createLocalPost(content, authorName = null, authorAvatar = null,
     let finalAuthorUsername = settings.username || '';
     const myName = settings.displayName || 'Anonymous';
     const myCamoName = settings.customUserName || '';
-    const stUserName = _getUserNameFallback();
+    const stUserName = getUserNameFallback();
 
     if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
         finalAuthorId = _getLocalCharAuthorId();
@@ -300,15 +301,6 @@ export async function deleteComment(postId, commentId) {
 // ═══════════════════════════════════════════════════════════════════════
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════
-
-function _getUserNameFallback() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
 
 function _getLocalCharAuthorId() {
     try {

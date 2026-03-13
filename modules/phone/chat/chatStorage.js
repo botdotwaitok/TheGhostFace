@@ -104,6 +104,7 @@ export function saveChatHistory(messages) {
  */
 export function clearChatHistory() {
     saveChatHistory([]);
+    saveChatSummary('');  // 同时清空滚动总结，避免残留旧上下文
 }
 
 /**
@@ -385,32 +386,38 @@ export async function maybeAutoSummarize() {
 
         console.log(`${CHAT_LOG_PREFIX} 将总结 ${messagesToSummarize.length} 条消息，保留最近 ${KEEP_RECENT} 条`);
 
-        // ─── Step 1: Memory fragments → World Book ───
+        // ─── Step 1: Memory fragments → World Book (optional, controlled by settings) ───
         const charInfo = getCharacterInfo();
         const charName = charInfo?.name || '角色';
         const userName = getUserName();
 
-        // Convert phone messages to the format generateSummary() expects:
-        // { parsedContent, parsedDate, is_user, name }
-        const summarizerMessages = messagesToSummarize.map(msg => ({
-            parsedContent: msg.content || '',
-            parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
-            is_user: msg.role === 'user',
-            is_system: false,
-            name: msg.role === 'user' ? userName : charName,
-        }));
+        const doMemoryInAutoSummarize = localStorage.getItem('gf_phone_auto_summarize_memory') !== 'false';
+        if (doMemoryInAutoSummarize) {
 
-        try {
-            const fragments = await generateSummary(summarizerMessages);
-            if (fragments && Array.isArray(fragments) && fragments.length > 0) {
-                await saveToWorldBook(fragments, null, null, isContentSimilar, false);
-                console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
-            } else {
-                console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
+            // Convert phone messages to the format generateSummary() expects:
+            // { parsedContent, parsedDate, is_user, name }
+            const summarizerMessages = messagesToSummarize.map(msg => ({
+                parsedContent: msg.content || '',
+                parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
+                is_user: msg.role === 'user',
+                is_system: false,
+                name: msg.role === 'user' ? userName : charName,
+            }));
+
+            try {
+                const fragments = await generateSummary(summarizerMessages);
+                if (fragments && Array.isArray(fragments) && fragments.length > 0) {
+                    await saveToWorldBook(fragments, null, null, isContentSimilar);
+                    console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
+                } else {
+                    console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
+                }
+            } catch (e) {
+                console.error(`${CHAT_LOG_PREFIX} ❌ 记忆碎片提取失败:`, e);
+                // Continue — rolling summary is independent
             }
-        } catch (e) {
-            console.error(`${CHAT_LOG_PREFIX} ❌ 记忆碎片提取失败:`, e);
-            // Continue — rolling summary is independent
+        } else {
+            console.log(`${CHAT_LOG_PREFIX} ℹ️ 记忆碎片提取已关闭（设置 → 聊天 → 自动压缩）`);
         }
 
         // ─── Step 2: Rolling summary via LLM ───

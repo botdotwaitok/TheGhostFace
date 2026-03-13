@@ -2,6 +2,7 @@
 // Manages opening/closing the phone, registering apps, and rendering the home screen.
 
 import { phonePanelTemplate } from './phoneShell.js';
+import { escapeHtml } from './utils/helpers.js';
 import { openMomentsPanel } from './moments/momentsUI.js';
 import { showToast } from './moments/momentsUI.js';
 import { getUnreadNotifications, getFeedCache } from './moments/moments.js';
@@ -14,6 +15,7 @@ import { openShopApp } from './shop/shopApp.js';
 import { openTarotApp } from './tarot/tarotApp.js';
 import { openTreeApp } from './tree/treeApp.js';
 import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
+import { openCalendarApp } from './calendar/calendarApp.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -88,6 +90,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link8.rel = 'stylesheet';
         link8.href = `${baseDir}/console/console.css`;
         document.head.appendChild(link8);
+    }
+    // Calendar CSS
+    if (!document.getElementById('gf-calendar-styles')) {
+        const link9 = document.createElement('link');
+        link9.id = 'gf-calendar-styles';
+        link9.rel = 'stylesheet';
+        link9.href = `${baseDir}/calendar/calendar.css`;
+        document.head.appendChild(link9);
     }
 })();
 
@@ -250,6 +260,16 @@ export function initPhone() {
         color: '#2d936c',
         glow: 'rgba(45, 147, 108, 0.4)',
         onOpen: () => openTreeApp(),
+    });
+
+    // ── 日历 (Calendar) ──
+    registerApp({
+        id: 'calendar',
+        name: '日历',
+        icon: 'fa-solid fa-calendar-days',
+        color: '#ff6b6b',
+        glow: 'rgba(255, 107, 107, 0.4)',
+        onOpen: () => openCalendarApp(),
     });
 
     // ── Console (调试) — always visible, but requires enable in Settings to function ──
@@ -476,10 +496,7 @@ export function renderPhoneFloatingIcon(show = true) {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// escapeHtml is now imported from './utils/helpers.js'
 
 function showPhoneToast(msg) {
     // Try to use toastr if available, otherwise console

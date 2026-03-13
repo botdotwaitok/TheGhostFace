@@ -1,0 +1,15 @@
+{
+  "year": 2026,
+  "updatedAt": "2026-03-12T21:57:00.000Z",
+  "holidays": [
+    { "date": "2026-02-17", "name": "春节", "emoji": "🧨", "category": "lunar" },
+    { "date": "2026-02-16", "name": "除夕", "emoji": "🧧", "category": "lunar" },
+    { "date": "2026-03-03", "name": "元宵节", "emoji": "🏮", "category": "lunar" },
+    { "date": "2026-04-05", "name": "清明节", "emoji": "🌿", "category": "solar_term" },
+    { "date": "2026-05-31", "name": "端午节", "emoji": "🐉", "category": "lunar" },
+    { "date": "2026-08-19", "name": "七夕", "emoji": "🎋", "category": "lunar" },
+    { "date": "2026-09-23", "name": "中秋节", "emoji": "🥮", "category": "lunar" },
+    { "date": "2026-10-14", "name": "重阳节", "emoji": "🌺", "category": "lunar" },
+    { "date": "2026-01-26", "name": "腊八节", "emoji": "🥣", "category": "lunar" }
+  ]
+}

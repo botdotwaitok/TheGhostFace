@@ -90,9 +90,32 @@ router.post('/friends', (req, res) => {
     }
 });
 
-// ─── DELETE /api/users/friends ──────────────────────────────────────
-// Remove a friend (bidirectional).
-// Body: { userId, friendId }
+// ─── DELETE /api/users/friends/:userId/:friendId ────────────────────
+// Remove a friend (bidirectional) — URL params version (preferred).
+router.delete('/friends/:userId/:friendId', (req, res) => {
+    try {
+        const { userId, friendId } = req.params;
+        if (!userId || !friendId) {
+            return res.status(400).json({ error: 'userId and friendId are required' });
+        }
+
+        const db = getDb();
+        const del = db.prepare('DELETE FROM friends WHERE userId = ? AND friendId = ?');
+        const removeBoth = db.transaction(() => {
+            del.run(userId, friendId);
+            del.run(friendId, userId);
+        });
+        removeBoth();
+
+        res.json({ ok: true, message: 'Friend removed' });
+    } catch (err) {
+        console.error('[Users] remove friend error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── DELETE /api/users/friends (legacy, body-based) ─────────────────
+// Kept for backward compatibility. Prefer the URL params version above.
 router.delete('/friends', (req, res) => {
     try {
         const { userId, friendId } = req.body;

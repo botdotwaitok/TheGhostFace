@@ -1,5 +1,6 @@
 // ui/phone/shop/shopApp.js — The Amazon-style shop application
 import { openAppInViewport } from '../phoneController.js';
+import { escapeHtml } from '../utils/helpers.js';
 import { showToast } from '../moments/momentsUI.js';
 import { getWalletBalance, walletDeduct } from '../moments/apiClient.js';
 import { callPhoneLLM } from '../../api.js';
@@ -796,8 +797,4 @@ function renderActiveEffectsSection() {
     `;
 }
 
-// Helper
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// escapeHtml is now imported from '../utils/helpers.js'

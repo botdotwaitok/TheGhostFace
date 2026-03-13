@@ -3,8 +3,7 @@
 // 非自定义 API 模式下，通过世界书条目注入日记指令，
 // 并从角色的聊天输出中解析 (日记: xxx) 格式的内容。
 
-import { useMomentCustomApi } from '../../api.js';
-import { getContext } from '../../../../../../extensions.js';
+import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 
 const DIARY_LOG_PREFIX = '[日记本]';
 
@@ -12,28 +11,7 @@ const DIARY_LOG_PREFIX = '[日记本]';
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-function _getCharacterInfo() {
-    try {
-        const context = getContext();
-        const charId = context.characterId;
-        const charData = (context.characters ?? [])[charId];
-        if (!charData) return null;
-        return {
-            name: charData.name || context.name2 || 'Character',
-        };
-    } catch {
-        return null;
-    }
-}
-
-function _getUserName() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
+// _getCharacterInfo / _getUserName → use centralized getPhoneCharInfo / getPhoneUserName from phoneContext.js
 
 // ═══════════════════════════════════════════════════════════════════════
 // World Book Injection — 把日记上下文写入世界书条目
@@ -65,15 +43,15 @@ export async function updateDiaryWorldInfo(recentEntries = []) {
             return;
         }
 
-        const charInfo = _getCharacterInfo();
-        const userName = _getUserName();
+        const charInfo = getPhoneCharInfo();
+        const userName = getPhoneUserName();
         const charName = charInfo?.name || '角色';
 
         // 格式化最近日记为文本
         const diaryText = recentEntries.slice(0, 2).map(entry => {
             const segs = entry.segments.map(s => `  ${s.name}: ${s.content.substring(0, 200)}`).join('\n');
-            const hasBothSegments = entry.segments.some(s => s.author === 'char');
-            const statusTag = hasBothSegments ? '[双方都已写]' : '[等待你的回应]';
+            const hasCharSegment = entry.segments.some(s => s.author === 'char');
+            const statusTag = hasCharSegment ? '[双方都已写]' : '[等待你的回应]';
             return `[${entry.date}] ${entry.mood} ${entry.moodText} ${statusTag}\n${segs}`;
         }).join('\n---\n');
 
@@ -120,7 +98,7 @@ ${instructionBlock}
                 constant: true,
                 position: 4,
                 depth: 1,
-                order: 997,
+                order: 998,
                 disable: false,
                 excludeRecursion: true,
                 preventRecursion: true,
@@ -148,18 +126,15 @@ ${instructionBlock}
 
 /**
  * 返回注入到主 LLM 的指令协议文本。
- * 仅在非自定义 API 模式下才会附加"必须使用格式"的强制语句。
+ * 始终返回强制格式指令，因为 API 路由已由 callPhoneLLM 内部处理。
  */
 export function getDiarySystemPrompt() {
-    const basePrompt = `[DIARY PROTOCOL]
+    return `[DIARY PROTOCOL]
 Couple's diary entries are in World Info. To write a diary entry, use:
 - Write diary: (日记: your diary text)
-- ONLY use this format AT THE END of your regular reply.`;
+- ONLY use this format AT THE END of your regular reply.
 
-    if (!useMomentCustomApi) {
-        return basePrompt + `\n\n【IMPORTANT】如果日记中有标记"[等待你的回应]"的条目，你必须在正常回复之后用 (日记: ...) 格式写你的日记段落。`;
-    }
-    return basePrompt;
+【IMPORTANT】如果日记中有标记"[等待你的回应]"的条目，你必须在正常回复之后用 (日记: ...) 格式写你的日记段落。`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -174,16 +149,16 @@ Couple's diary entries are in World Info. To write a diary entry, use:
 export function parseDiaryFromChatOutput(content) {
     if (!content) return null;
 
-    const diaryMatches = Array.from(content.matchAll(/\((?:日记|Diary):\s*(.+?)\)/gi));
-    if (diaryMatches.length > 0) {
-        // 取最后一个匹配（最新的）
-        const lastMatch = diaryMatches[diaryMatches.length - 1];
-        if (lastMatch && lastMatch[1]) {
-            const text = lastMatch[1].trim();
-            if (text) {
-                console.log(`${DIARY_LOG_PREFIX} 从主 LLM 输出中解析到日记内容: ${text.substring(0, 50)}...`);
-                return { diaryContent: text };
-            }
+    // 指令要求 (日记: ...) 放在回复末尾
+    // 使用贪婪匹配 [\s\S]+ 从 tag 开头一直捕获到字符串末尾的最后一个 )
+    // 这样即使日记内容中包含 ) 字符也不会提前截断
+    const diaryRegex = /\((?:日记|Diary):\s*([\s\S]+)\)\s*$/i;
+    const diaryMatch = content.match(diaryRegex);
+    if (diaryMatch && diaryMatch[1]) {
+        const text = diaryMatch[1].trim();
+        if (text) {
+            console.log(`${DIARY_LOG_PREFIX} 从主 LLM 输出中解析到日记内容: ${text.substring(0, 50)}...`);
+            return { diaryContent: text };
         }
     }
     return null;

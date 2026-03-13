@@ -1,30 +1,25 @@
 // utils.js
-import { getContext, extension_settings, } from '../../../../extensions.js';
-import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
-import { eventSource, event_types } from '../../../../../script.js';
-import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents } from '../../../../utils.js';
+import { getContext, extension_settings } from '../../../../extensions.js';
+import { saveSettingsDebounced, this_chid, characters } from '../../../../../script.js';
+import { getCharaFilename } from '../../../../utils.js';
 
 
 
-// 🆕 定义常量（避免依赖其他模块）
+// 定义常量（避免依赖其他模块）
 const MODULE_NAME = 'the_ghost_face';
 const PANEL_ID = `${MODULE_NAME}_control_panel`;
 const MAX_LOG_ENTRIES = 100;
 
-// 🔧 系统初始化状态（全局管理）
+// 系统初始化状态（全局管理）
 let systemInitialized = false;
 
-// 🆕 设置系统初始化状态的函数
+// 设置系统初始化状态的函数
 export function setSystemInitialized(status) {
     systemInitialized = status;
     console.log(`🔧 [鬼面] 系统初始化状态: ${status}`);
 }
 
-// 🆕 检查系统是否初始化的函数
-export function isSystemInitialized() {
-    return systemInitialized;
-}
+
 
 // 日志级别
 export const LOG_LEVEL = {
@@ -45,47 +40,36 @@ export function escapeHtml(unsafe) {
         .replace(/'/g, "&#039;");
 }
 
-// 🔧 改进的日志记录函数
+// 改进的日志记录函数
 export function logToUI(level, message, details = null) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString();
-
-    // 🎯 始终输出到控制台（带格式）
     const consoleMessage = `[鬼面][${timeStr}] ${message}`;
-    switch (level) {
-        case LOG_LEVEL.DEBUG:
-            console.debug(consoleMessage, details);
-            break;
-        case LOG_LEVEL.INFO:
-            console.info(consoleMessage, details);
-            break;
-        case LOG_LEVEL.WARN:
-            console.warn(consoleMessage, details);
-            break;
-        case LOG_LEVEL.ERROR:
-            console.error(consoleMessage, details);
-            break;
-        case 'SUCCESS':
-            console.info(`✅ ${consoleMessage}`, details);
-            break;
-        default:
-            console.log(consoleMessage, details);
-    }
+    const args = details != null ? [consoleMessage, details] : [consoleMessage];
 
-    // 🎯 检查系统是否初始化
-    if (!systemInitialized) {
-        console.log(`[鬼面][初始化期间] ${level}: ${message}`, details);
-        return;
-    }
-
-    // 🎯 查找日志容器
-    const content = document.getElementById(`${PANEL_ID}_log_content`);
+    // 系统未初始化或面板容器不存在时，只输出到控制台
+    const content = systemInitialized ? document.getElementById(`${PANEL_ID}_log_content`) : null;
     if (!content) {
-        console.log(`[鬼面][容器不存在] ${level}: ${message}`, details);
+        switch (level) {
+            case LOG_LEVEL.DEBUG: console.debug(...args); break;
+            case LOG_LEVEL.WARN: console.warn(...args); break;
+            case LOG_LEVEL.ERROR: console.error(...args); break;
+            default: console.log(...args);
+        }
         return;
     }
 
-    // 🧹 限制日志条目数量
+    // 同时输出到控制台和面板
+    switch (level) {
+        case LOG_LEVEL.DEBUG: console.debug(...args); break;
+        case LOG_LEVEL.INFO: console.info(...args); break;
+        case LOG_LEVEL.WARN: console.warn(...args); break;
+        case LOG_LEVEL.ERROR: console.error(...args); break;
+        case 'SUCCESS': console.info(`✅ ${consoleMessage}`, ...(details != null ? [details] : [])); break;
+        default: console.log(...args);
+    }
+
+    // 限制日志条目数量
     const logs = content.querySelectorAll('.log-line');
     if (logs.length >= MAX_LOG_ENTRIES) {
         for (let i = 0; i < 10 && logs[i]; i++) {
@@ -93,7 +77,7 @@ export function logToUI(level, message, details = null) {
         }
     }
 
-    // 🎨 日志级别 → CSS 类
+    // 日志级别 → CSS 类
     let levelClass = 'log-info';
     switch (level) {
         case LOG_LEVEL.DEBUG: levelClass = 'log-debug'; break;
@@ -103,7 +87,7 @@ export function logToUI(level, message, details = null) {
         case 'SUCCESS': levelClass = 'log-success'; break;
     }
 
-    // 📝 简单纯文本行
+    // 简单纯文本行
     const line = document.createElement('div');
     line.className = `log-line ${levelClass}`;
     const detailStr = details ? ` — ${typeof details === 'string' ? details : JSON.stringify(details)}` : '';
@@ -113,7 +97,7 @@ export function logToUI(level, message, details = null) {
     content.scrollTop = content.scrollHeight;
 }
 
-// 🆕 logger对象
+// logger对象
 export const logger = {
     debug: (msg, details) => logToUI(LOG_LEVEL.DEBUG, msg, details),
     info: (msg, details) => logToUI(LOG_LEVEL.INFO, msg, details),
@@ -122,7 +106,7 @@ export const logger = {
     success: (msg, details) => logToUI('SUCCESS', msg, details)
 };
 
-// 🆕 获取最新的 character ID (数字索引)
+// 获取最新的 character ID (数字索引)
 export function getCurrentChid() {
     try {
         const ctx = typeof getContext === 'function' ? getContext() : null;
@@ -131,7 +115,7 @@ export function getCurrentChid() {
     return typeof this_chid !== 'undefined' ? this_chid : null;
 }
 
-// 🆕 获取当前角色的稳定文件名标识符（不随列表顺序变化）
+// 获取当前角色的稳定文件名标识符（不随列表顺序变化）
 export function getCharacterFileName() {
     try {
         const currentChid = getCurrentChid();
@@ -151,7 +135,18 @@ export function getCharacterFileName() {
     return null;
 }
 
-// 🔧 一次性迁移：将旧的数字索引 customWbMap 迁移为文件名格式
+// 获取当前聊天窗口的唯一 ID（用于 per-chat 世界书绑定）
+export function getCurrentChatId() {
+    try {
+        const ctx = typeof getContext === 'function' ? getContext() : null;
+        if (ctx && typeof ctx.getCurrentChatId === 'function') {
+            return ctx.getCurrentChatId() ?? null;
+        }
+    } catch (e) { }
+    return null;
+}
+
+// 将旧的数字索引 customWbMap 迁移为文件名格式
 export function migrateCustomWbMap() {
     try {
         const map = extension_settings?.the_ghost_face?.customWbMap;
@@ -208,19 +203,25 @@ export function migrateCustomWbMap() {
     }
 }
 
-//查找绑定世界书（使用稳定的文件名标识符）
-export async function findActiveWorldBook(opts = {}) {
+//查找绑定世界书（优先 per-chat，fallback per-character）
+export async function findActiveWorldBook() {
     try {
-        // 🔒 检查是否有自定义指定的角色世界书（key = 角色文件名，value = 世界书名）
-        const charFileName = getCharacterFileName();
-        if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
-            const customWbName = extension_settings.the_ghost_face.customWbMap[charFileName];
-            console.log(`🔒 使用为角色 "${charFileName}" 指定的绑定世界书: ${customWbName}`);
+        // 🥇 优先：per-chat 绑定（同角色不同聊天可绑不同世界书）
+        const chatId = getCurrentChatId();
+        if (chatId && extension_settings?.the_ghost_face?.customWbMap?.[chatId]) {
+            const customWbName = extension_settings.the_ghost_face.customWbMap[chatId];
+            console.log(`🔒 使用为聊天 "${chatId}" 绑定的世界书: ${customWbName}`);
             return customWbName;
         }
 
-        // ⚠️ 不再 fallback 到 worldSelect.selectedOptions — 那是编辑器当前选中的，
-        // 跟当前角色无关，会导致切角色后"泄漏"上一个角色的世界书
+        // 🥈 Fallback: per-character 绑定（兼容旧数据）
+        const charFileName = getCharacterFileName();
+        if (charFileName && extension_settings?.the_ghost_face?.customWbMap?.[charFileName]) {
+            const customWbName = extension_settings.the_ghost_face.customWbMap[charFileName];
+            console.log(`🔒 使用角色 "${charFileName}" 的旧绑定世界书(fallback): ${customWbName}`);
+            return customWbName;
+        }
+
         return null;
     } catch (e) {
         console.warn('findActiveWorldBook error:', e);

@@ -6,8 +6,32 @@
 
 import { getContext } from '../../../../../extensions.js';
 import { getAllActiveWorldBookNames, getAllActiveEntries } from '../worldbookManager.js';
+import { isBookBlocked, isEntryBlocked } from './settings/wbBlacklist.js';
 
 const CONTEXT_LOG_PREFIX = '[PhoneContext]';
+
+// ═══════════════════════════════════════════════════════════════════════
+// Macro replacement — resolves ST macros in fetched content
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Replace common ST macro variables ({{char}}, {{user}}, {{original}}) in text.
+ * ST-sourced data (world books, character cards, user personas) may contain
+ * these macros which need resolving since phone bypasses ST's prompt pipeline.
+ * @param {string} text - Text that may contain macros
+ * @param {string} [charName] - Character name to substitute (auto-detected if omitted)
+ * @param {string} [userName] - User name to substitute (auto-detected if omitted)
+ * @returns {string} Text with macros replaced
+ */
+export function replaceMacros(text, charName, userName) {
+    if (!text || typeof text !== 'string') return text;
+    const cn = charName || getPhoneCharInfo()?.name || '角色';
+    const un = userName || getPhoneUserName();
+    return text
+        .replace(/\{\{char\}\}/gi, cn)
+        .replace(/\{\{user\}\}/gi, un)
+        .replace(/\{\{original\}\}/gi, cn);
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Public API
@@ -24,9 +48,12 @@ export function getPhoneCharInfo() {
         const charData = (context.characters ?? [])[charId];
         if (!charData) return null;
 
+        const name = charData.name || context.name2 || 'Character';
+        const rawDesc = charData.description || charData.data?.description || '';
+
         return {
-            name: charData.name || context.name2 || 'Character',
-            description: charData.description || charData.data?.description || '',
+            name,
+            description: rawDesc ? replaceMacros(rawDesc, name, getPhoneUserName()) : '',
             avatar: charData.avatar || '',
         };
     } catch (e) {
@@ -56,7 +83,8 @@ export function getPhoneUserName() {
 export function getPhoneUserPersona() {
     try {
         const context = getContext();
-        return context.powerUserSettings?.persona_description || '';
+        const raw = context.powerUserSettings?.persona_description || '';
+        return raw ? replaceMacros(raw) : '';
     } catch (e) {
         console.warn(`${CONTEXT_LOG_PREFIX} getPhoneUserPersona failed:`, e);
         return '';
@@ -105,9 +133,20 @@ export function getPhoneRecentChat(n = 10) {
  */
 export async function getPhoneWorldBookContext() {
     try {
-        const activeBookNames = await getAllActiveWorldBookNames();
-        if (!activeBookNames || activeBookNames.length === 0) {
+        const allActiveBooks = await getAllActiveWorldBookNames();
+        if (!allActiveBooks || allActiveBooks.length === 0) {
             console.log(`${CONTEXT_LOG_PREFIX} 未检测到任何激活的世界书`);
+            return '';
+        }
+
+        // 黑名单过滤：移除整本被屏蔽的世界书
+        const activeBookNames = allActiveBooks.filter(name => !isBookBlocked(name));
+        if (activeBookNames.length < allActiveBooks.length) {
+            const blocked = allActiveBooks.filter(name => isBookBlocked(name));
+            console.log(`${CONTEXT_LOG_PREFIX} 黑名单屏蔽了 ${blocked.length} 本世界书:`, blocked);
+        }
+        if (activeBookNames.length === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} 所有世界书均被黑名单屏蔽`);
             return '';
         }
 
@@ -127,6 +166,8 @@ export async function getPhoneWorldBookContext() {
             // Skip GhostFace internal tracking/summary entries
             const comment = (entry.comment || '').trim();
             if (comment.startsWith('鬼面总结-') || comment === '鬼面楼层追踪记录') return false;
+            // 黑名单过滤：移除被屏蔽的条目
+            if (isEntryBlocked(entry.sourceWorldBook, comment)) return false;
             return true;
         });
 
@@ -142,8 +183,10 @@ export async function getPhoneWorldBookContext() {
         });
 
         const result = contextParts.join('\n\n');
-        console.log(`${CONTEXT_LOG_PREFIX} 世界书上下文已组装: ${validEntries.length} 条条目, ${result.length} 字符`);
-        return result;
+        // Replace macros in the assembled world book context
+        const finalResult = replaceMacros(result);
+        console.log(`${CONTEXT_LOG_PREFIX} 世界书上下文已组装: ${validEntries.length} 条条目, ${finalResult.length} 字符`);
+        return finalResult;
     } catch (e) {
         console.warn(`${CONTEXT_LOG_PREFIX} getPhoneWorldBookContext failed:`, e);
         return '';

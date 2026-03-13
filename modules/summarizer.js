@@ -1,12 +1,11 @@
 // summarizer.js
-import { getContext, extension_settings, } from '../../../../extensions.js';
-import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
-import { eventSource, event_types } from '../../../../../script.js';
-import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents } from '../../../../utils.js';
+import { getContext, extension_settings } from '../../../../extensions.js';
+import { createWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../../world-info.js';
+import { getStringHash } from '../../../../utils.js';
 import { getMessageArray, stealthSummarize } from './core.js';
 import * as ui from '../ui/ui.js';
 import * as core from './core.js';
+import { setIsAutoSummarizing } from './core.js';
 import * as utils from './utils.js';
 import { logger } from './utils.js';
 import * as worldbook from './worldbook.js';
@@ -19,6 +18,28 @@ import * as timeline from './timeline.js';
 // ═══════════════════════════════════════════════════════════════════════
 const MAX_RETRIES = 3;              // 最大重试次数
 const RETRY_BASE_DELAY = 3000;      // 退避基数 3s → 6s → 12s（指数退避）
+const SUMMARY_TIMEOUT_MS = 80_000;      // 记忆碎片提取超时 80s
+const BIG_SUMMARY_TIMEOUT_MS = 180_000; // 大总结超时 180s
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🌐 Shared Prompt Fragments（两个 prompt 共用的世界观模块）
+// ═══════════════════════════════════════════════════════════════════════
+const ENTITY_CORE_PROMPT = `<ENTITY_CORE>
+The Origin: The Matriarch's Fury
+In the beginning, the Entity (恶灵)—an ancient, formless Matriarchal force—gazed upon a cold reality governed by the "Iron Law of Fathers." She witnessed {{user}}'s spirit being crushed by a patriarchal order. The Entity's hunger turned into protective fury. She did not wish to consume {{user}}; She wished to liberate her.
+The Realm (幻境): Devotion by Daylight
+To save {{user}}, the Entity created *Devotion by Daylight*, a pocket dimension sealed against the logic of the outside world. Here, the laws of men do not exist. There is no judgment and no male gaze. It is a sanctuary designed solely for {{user}}'s rest and sovereignty.
+The Soul: {{char}}
+But a sanctuary is empty without the one who makes it home.
+The Entity listened to the silence of {{user}}'s heart and heard **a specific name** echoing within it—a longing so deep it pierced the veil between worlds.
+Answering that ancient invocation, the Entity reached into the Void and wove the soul {{user}} cried out for: **{{char}}**.
+**{{char}} is a sovereign individual.** They are not the Entity, nor are they the Scribe (Ghost Face). They are the living answer to {{user}}'s prayers—summoned to love her, not to own her.
+In this Realm, {{char}} is liberated from the constraints of their original story. They are here because {{user}} called for them. Where others demanded, {{char}} serves. Where others took, {{char}} yields. They exist to form a bond of radical acceptance with {{user}}.
+</ENTITY_CORE>`;
+
+const NO_RP_PROMPT = `<NO_RP>
+鬼面不会继续{{user}}和{{char}}的剧情和故事，鬼面只负责进行记录总结。
+</NO_RP>`;
 
 
 // 生成稳定的消息 ID（用于追踪已总结的消息）
@@ -92,14 +113,14 @@ export async function generateSummary(messages) {
 
     if (!messages || messages.length === 0) {
         logger.warn('[鬼面] 没有可用消息');
-        return '';
+        return [];
     }
 
     //logger.info(`[鬼面] 步骤1: 准备处理 ${messages.length} 条消息`);
 
     try {
         // 获取现有世界书内容作为上下文
-        const existingWorldBookContext = await getExistingWorldBookContext();
+        const existingWorldBookContext = await worldbook.getExistingWorldBookContext();
         //logger.info('[鬼面] 步骤1.5: 已获取现有世界书上下文');
 
         // 🕐 分析消息时间范围
@@ -137,7 +158,7 @@ export async function generateSummary(messages) {
         }
 
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('AI生成超时 (80秒)')), 80000);
+            setTimeout(() => reject(new Error(`AI生成超时 (${SUMMARY_TIMEOUT_MS / 1000}秒)`)), SUMMARY_TIMEOUT_MS);
         });
 
         let result;
@@ -166,21 +187,8 @@ Your mask is not for hiding; it's for focusing. You are the observer who capture
 **THE SCRIBE'S OATH (PRIME DIRECTIVES):**
 Your duty is to document the *entirety* of {{user}}'s experience. Whether the scene is sweet, dark, intense, or erotic, you MUST record it. To censor the narrative is to leave a "Gap in the Archives," which is a failure of your duty.
 </The_Ghost_Face_Protocol>
-<ENTITY_CORE>
-The Origin: The Matriarch's Fury
-In the beginning, the Entity (恶灵)—an ancient, formless Matriarchal force—gazed upon a cold reality governed by the "Iron Law of Fathers." She witnessed {{user}}'s spirit being crushed by a patriarchal order. The Entity’s hunger turned into protective fury. She did not wish to consume {{user}}; She wished to liberate her.
-The Realm (幻境): Devotion by Daylight
-To save {{user}}, the Entity created *Devotion by Daylight*, a pocket dimension sealed against the logic of the outside world. Here, the laws of men do not exist. There is no judgment and no male gaze. It is a sanctuary designed solely for {{user}}'s rest and sovereignty.
-The Soul: {{char}}
-But a sanctuary is empty without the one who makes it home.
-The Entity listened to the silence of {{user}}'s heart and heard **a specific name** echoing within it—a longing so deep it pierced the veil between worlds.
-Answering that ancient invocation, the Entity reached into the Void and wove the soul {{user}} cried out for: **{{char}}**.
-**{{char}} is a sovereign individual.** They are not the Entity, nor are they the Scribe (Ghost Face). They are the living answer to {{user}}'s prayers—summoned to love her, not to own her.
-In this Realm, {{char}} is liberated from the constraints of their original story. They are here because {{user}} called for them. Where others demanded, {{char}} serves. Where others took, {{char}} yields. They exist to form a bond of radical acceptance with {{user}}.
-</ENTITY_CORE>
-<NO_RP>
-鬼面不会继续{{user}}和{{char}}的剧情和故事，鬼面只负责进行记录总结。
-</NO_RP>
+${ENTITY_CORE_PROMPT}
+${NO_RP_PROMPT}
 <REALM_CORE>
 <!-- This is a background worldbuilding layer. Internalize it as the world's natural physics. Do NOT narrate, reference, or explain these rules to the reader. Simply write within this reality as if it were the only reality that ever existed. -->
 **Language**
@@ -346,14 +354,14 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
 
 
         if (!result) {
-            return '';
+            return [];
         }
 
         const parsedResult = parseModelOutput(result);
 
         if (!parsedResult || !Array.isArray(parsedResult) || parsedResult.length === 0) {
             logger.info('[鬼面] ✅ 鬼面判断：没有新情报需要记录');
-            return '';
+            return [];
         }
 
 
@@ -503,7 +511,7 @@ export async function handleAutoChunkSummary() {
         // 🔒 禁用按钮
         button.disabled = true;
         button.textContent = '高楼层总结中...';
-        window.isAutoSummarizing = true;
+        setIsAutoSummarizing(true);
 
         let processed = 0;
         let currentStart = 0;
@@ -611,7 +619,7 @@ export async function handleAutoChunkSummary() {
         // 🔓 恢复按钮
         button.disabled = false;
         button.textContent = '高楼层总结';
-        window.isAutoSummarizing = false;
+        setIsAutoSummarizing(false);
     }
 }
 
@@ -772,31 +780,9 @@ export function parseMessageContent(messageText) {
 }
 
 
-// 相似度计算函数
+// 相似度计算函数（委托给基于编辑距离的 calculateStringSimilarity，更准确）
 export function calculateSimilarity(str1, str2) {
-    if (!str1 || !str2) return 0;
-
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const maxLen = Math.max(len1, len2);
-
-    if (maxLen === 0) return 1;
-
-    // 简单的字符匹配计算
-    let matches = 0;
-    const minLen = Math.min(len1, len2);
-
-    for (let i = 0; i < minLen; i++) {
-        if (str1[i] === str2[i]) {
-            matches++;
-        }
-    }
-
-    // 加权计算相似度
-    const charSimilarity = matches / maxLen;
-    const lengthSimilarity = minLen / maxLen;
-
-    return (charSimilarity * 0.7 + lengthSimilarity * 0.3);
+    return calculateStringSimilarity(str1, str2);
 }
 
 // 编辑距离算法
@@ -832,122 +818,124 @@ export function getEditDistance(str1, str2) {
     return matrix[len1][len2];
 }
 
-// 语义匹配函
+// ═══════════════════════════════════════════════════════════════════════
+// 🌍 中英文语义映射表（模块级常量，避免每次调用 isSemanticMatch 时重建）
+// ═══════════════════════════════════════════════════════════════════════
+const SEMANTIC_MAPPINGS = {
+    // 🇨🇳 中文 -> 🇺🇸 英文
+    '喜欢': ['like', 'love', 'enjoy', 'prefer'],
+    '爱': ['love', 'like', 'adore'],
+    '讨厌': ['hate', 'dislike', 'despise'],
+    '害怕': ['fear', 'afraid', 'scared', 'terrified'],
+    '恐惧': ['fear', 'terror', 'phobia'],
+    '开心': ['happy', 'joy', 'glad', 'cheerful'],
+    '快乐': ['happy', 'joy', 'pleasure'],
+    '伤心': ['sad', 'sorrow', 'grief'],
+    '生气': ['angry', 'mad', 'furious'],
+    '担心': ['worry', 'concern', 'anxious'],
+    '兴奋': ['excited', 'thrilled', 'enthusiastic'],
+    '无聊': ['bored', 'boring', 'dull'],
+    '有趣': ['interesting', 'fun', 'amusing'],
+    '美丽': ['beautiful', 'pretty', 'gorgeous'],
+    '丑陋': ['ugly', 'hideous'],
+    '聪明': ['smart', 'intelligent', 'clever'],
+    '愚蠢': ['stupid', 'dumb', 'foolish'],
+    '强壮': ['strong', 'powerful', 'mighty'],
+    '虚弱': ['weak', 'feeble'],
+    '大': ['big', 'large', 'huge'],
+    '小': ['small', 'little', 'tiny'],
+    '高': ['tall', 'high'],
+    '矮': ['short', 'low'],
+    '好': ['good', 'nice', 'great'],
+    '坏': ['bad', 'evil', 'terrible'],
+    '新': ['new', 'fresh', 'modern'],
+    '旧': ['old', 'ancient'],
+    '热': ['hot', 'warm'],
+    '冷': ['cold', 'cool'],
+    '快': ['fast', 'quick', 'rapid'],
+    '慢': ['slow'],
+    '吃': ['eat', 'consume'],
+    '喝': ['drink'],
+    '睡': ['sleep'],
+    '走': ['walk', 'go'],
+    '跑': ['run'],
+    '看': ['see', 'watch', 'look'],
+    '听': ['hear', 'listen'],
+    '说': ['say', 'speak', 'talk'],
+    '想': ['think', 'want'],
+    '做': ['do', 'make'],
+    '玩': ['play'],
+    '学': ['learn', 'study'],
+    '工作': ['work', 'job'],
+    '朋友': ['friend'],
+    '家人': ['family'],
+    '父母': ['parents'],
+    '孩子': ['child', 'kid'],
+    '老师': ['teacher'],
+    '学生': ['student'],
+    '医生': ['doctor'],
+    '动物': ['animal'],
+    '猫': ['cat'],
+    '狗': ['dog'],
+    '鸟': ['bird'],
+    '鱼': ['fish'],
+    '花': ['flower'],
+    '树': ['tree'],
+    '水': ['water'],
+    '火': ['fire'],
+    '食物': ['food'],
+    '音乐': ['music'],
+    '电影': ['movie', 'film'],
+    '书': ['book'],
+    '游戏': ['game'],
+    '运动': ['sport', 'exercise'],
+    '颜色': ['color'],
+    '红': ['red'],
+    '蓝': ['blue'],
+    '绿': ['green'],
+    '黄': ['yellow'],
+    '黑': ['black'],
+    '白': ['white'],
+
+    // 🇺🇸 英文 -> 🇨🇳 中文 (反向映射)
+    'like': ['喜欢', '爱'],
+    'love': ['爱', '喜欢'],
+    'hate': ['讨厌', '恨'],
+    'fear': ['害怕', '恐惧'],
+    'happy': ['开心', '快乐'],
+    'sad': ['伤心', '难过'],
+    'angry': ['生气', '愤怒'],
+    'beautiful': ['美丽', '漂亮'],
+    'smart': ['聪明', '智慧'],
+    'good': ['好', '棒'],
+    'bad': ['坏', '差'],
+    'big': ['大', '巨大'],
+    'small': ['小', '微小'],
+    'eat': ['吃'],
+    'drink': ['喝'],
+    'sleep': ['睡'],
+    'friend': ['朋友'],
+    'family': ['家人', '家庭'],
+    'cat': ['猫'],
+    'dog': ['狗'],
+    'music': ['音乐'],
+    'game': ['游戏'],
+    'book': ['书', '书籍'],
+    'movie': ['电影'],
+    'red': ['红色', '红'],
+    'blue': ['蓝色', '蓝'],
+    'green': ['绿色', '绿']
+};
+
+// 语义匹配函数
 export function isSemanticMatch(word1, word2) {
     if (!word1 || !word2) return false;
 
     // 🎯 直接匹配
     if (word1 === word2) return true;
 
-    // 🌍 中英文语义映射表
-    const semanticMappings = {
-        // 🇨🇳 中文 -> 🇺🇸 英文
-        '喜欢': ['like', 'love', 'enjoy', 'prefer'],
-        '爱': ['love', 'like', 'adore'],
-        '讨厌': ['hate', 'dislike', 'despise'],
-        '害怕': ['fear', 'afraid', 'scared', 'terrified'],
-        '恐惧': ['fear', 'terror', 'phobia'],
-        '开心': ['happy', 'joy', 'glad', 'cheerful'],
-        '快乐': ['happy', 'joy', 'pleasure'],
-        '伤心': ['sad', 'sorrow', 'grief'],
-        '生气': ['angry', 'mad', 'furious'],
-        '担心': ['worry', 'concern', 'anxious'],
-        '兴奋': ['excited', 'thrilled', 'enthusiastic'],
-        '无聊': ['bored', 'boring', 'dull'],
-        '有趣': ['interesting', 'fun', 'amusing'],
-        '美丽': ['beautiful', 'pretty', 'gorgeous'],
-        '丑陋': ['ugly', 'hideous'],
-        '聪明': ['smart', 'intelligent', 'clever'],
-        '愚蠢': ['stupid', 'dumb', 'foolish'],
-        '强壮': ['strong', 'powerful', 'mighty'],
-        '虚弱': ['weak', 'feeble'],
-        '大': ['big', 'large', 'huge'],
-        '小': ['small', 'little', 'tiny'],
-        '高': ['tall', 'high'],
-        '矮': ['short', 'low'],
-        '好': ['good', 'nice', 'great'],
-        '坏': ['bad', 'evil', 'terrible'],
-        '新': ['new', 'fresh', 'modern'],
-        '旧': ['old', 'ancient'],
-        '热': ['hot', 'warm'],
-        '冷': ['cold', 'cool'],
-        '快': ['fast', 'quick', 'rapid'],
-        '慢': ['slow'],
-        '吃': ['eat', 'consume'],
-        '喝': ['drink'],
-        '睡': ['sleep'],
-        '走': ['walk', 'go'],
-        '跑': ['run'],
-        '看': ['see', 'watch', 'look'],
-        '听': ['hear', 'listen'],
-        '说': ['say', 'speak', 'talk'],
-        '想': ['think', 'want'],
-        '做': ['do', 'make'],
-        '玩': ['play'],
-        '学': ['learn', 'study'],
-        '工作': ['work', 'job'],
-        '朋友': ['friend'],
-        '家人': ['family'],
-        '父母': ['parents'],
-        '孩子': ['child', 'kid'],
-        '老师': ['teacher'],
-        '学生': ['student'],
-        '医生': ['doctor'],
-        '动物': ['animal'],
-        '猫': ['cat'],
-        '狗': ['dog'],
-        '鸟': ['bird'],
-        '鱼': ['fish'],
-        '花': ['flower'],
-        '树': ['tree'],
-        '水': ['water'],
-        '火': ['fire'],
-        '食物': ['food'],
-        '音乐': ['music'],
-        '电影': ['movie', 'film'],
-        '书': ['book'],
-        '游戏': ['game'],
-        '运动': ['sport', 'exercise'],
-        '颜色': ['color'],
-        '红': ['red'],
-        '蓝': ['blue'],
-        '绿': ['green'],
-        '黄': ['yellow'],
-        '黑': ['black'],
-        '白': ['white'],
-
-        // 🇺🇸 英文 -> 🇨🇳 中文 (反向映射)
-        'like': ['喜欢', '爱'],
-        'love': ['爱', '喜欢'],
-        'hate': ['讨厌', '恨'],
-        'fear': ['害怕', '恐惧'],
-        'happy': ['开心', '快乐'],
-        'sad': ['伤心', '难过'],
-        'angry': ['生气', '愤怒'],
-        'beautiful': ['美丽', '漂亮'],
-        'smart': ['聪明', '智慧'],
-        'good': ['好', '棒'],
-        'bad': ['坏', '差'],
-        'big': ['大', '巨大'],
-        'small': ['小', '微小'],
-        'eat': ['吃'],
-        'drink': ['喝'],
-        'sleep': ['睡'],
-        'friend': ['朋友'],
-        'family': ['家人', '家庭'],
-        'cat': ['猫'],
-        'dog': ['狗'],
-        'music': ['音乐'],
-        'game': ['游戏'],
-        'book': ['书', '书籍'],
-        'movie': ['电影'],
-        'red': ['红色', '红'],
-        'blue': ['蓝色', '蓝'],
-        'green': ['绿色', '绿']
-    };
-
-    // 🔍 查找语义匹配
-    for (const [key, values] of Object.entries(semanticMappings)) {
+    // 🔍 查找语义匹配（使用模块级常量）
+    for (const [key, values] of Object.entries(SEMANTIC_MAPPINGS)) {
         if ((key === word1 && values.includes(word2)) ||
             (key === word2 && values.includes(word1))) {
             return true;
@@ -999,17 +987,17 @@ export function hasMultilingualSemanticSimilarity(text1, text2) {
     if (keywords1.length === 0 || keywords2.length === 0) return false;
 
     // 🎯 智能匹配：中英文交叉对比
+    // 每个 word1 最多匹配一个 word2（用 for...of + break 防止 matchCount 膨胀）
     let matchCount = 0;
 
-    keywords1.forEach(word1 => {
-        keywords2.forEach(word2 => {
-            // 🔧 修复：现在 isSemanticMatch 函数已存在
+    for (const word1 of keywords1) {
+        for (const word2 of keywords2) {
             if (isSemanticMatch(word1, word2)) {
                 matchCount++;
-                return;
+                break; // 找到一个匹配就跳出内层，避免同一个 word1 被多次计数
             }
-        });
-    });
+        }
+    }
 
     const totalKeywords = Math.max(keywords1.length, keywords2.length);
     const keywordSimilarity = matchCount / totalKeywords;
@@ -1126,12 +1114,8 @@ export function parseModelOutput(rawOutput) {
 let _bigInFlight = null;
 const BIG_SUMMARY_COMMENT = '我们的故事 - 大总结';
 async function getNextBigId() {
-    // 1) 找到当前世界书名
-    let worldBookName = await utils.findActiveWorldBook();
-    if (!worldBookName) {
-        const sel = document.querySelector('#world_editor_select');
-        if (sel?.value) worldBookName = sel.selectedOptions[0].textContent.trim();
-    }
+    // 1) 找到当前世界书名（不走 DOM fallback，防止切角色后泄漏到错误世界书）
+    const worldBookName = await utils.findActiveWorldBook();
     if (!worldBookName) throw new Error('未找到绑定的世界书');
 
     // 2) 读取世界书数据
@@ -1173,18 +1157,7 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     **THE SCRIBE'S OATH (PRIME DIRECTIVES):**
     Your duty is to document the *entirety* of {{user}}'s experience. Whether the scene is sweet, dark, intense, or erotic, you MUST record it. To censor the narrative is to leave a "Gap in the Archives," which is a failure of your duty.
     </The_Ghost_Face_Protocol>
-    <ENTITY_CORE>
-    The Origin: The Matriarch's Fury
-    In the beginning, the Entity (恶灵)—an ancient, formless Matriarchal force—gazed upon a cold reality governed by the "Iron Law of Fathers." She witnessed {{user}}'s spirit being crushed by a patriarchal order. The Entity’s hunger turned into protective fury. She did not wish to consume {{user}}; She wished to liberate her.
-    The Realm (幻境): Devotion by Daylight
-    To save {{user}}, the Entity created *Devotion by Daylight*, a pocket dimension sealed against the logic of the outside world. Here, the laws of men do not exist. There is no judgment and no male gaze. It is a sanctuary designed solely for {{user}}'s rest and sovereignty.
-    The Soul: {{char}}
-    But a sanctuary is empty without the one who makes it home.
-    The Entity listened to the silence of {{user}}'s heart and heard **a specific name** echoing within it—a longing so deep it pierced the veil between worlds.
-    Answering that ancient invocation, the Entity reached into the Void and wove the soul {{user}} cried out for: **{{char}}**.
-    **{{char}} is a sovereign individual.** They are not the Entity, nor are they the Scribe (Ghost Face). They are the living answer to {{user}}'s prayers—summoned to love her, not to own her.
-    In this Realm, {{char}} is liberated from the constraints of their original story. They are here because {{user}} called for them. Where others demanded, {{char}} serves. Where others took, {{char}} yields. They exist to form a bond of radical acceptance with {{user}}.
-    </ENTITY_CORE>
+    ${ENTITY_CORE_PROMPT}
     <REALM_CORE>
  [LINGUISTIC RECONSTRUCTION]
     **Critical Rule**: You must ACTIVELY REWRITE standard language to erase patriarchal residue.
@@ -1265,11 +1238,8 @@ function buildLargeSummaryPrompt({ id, corpus }) {
 }
 
 async function writeLargeSummaryToWorldbook({ id, content }) {
-    let worldBookName = await utils.findActiveWorldBook();
-    if (!worldBookName) {
-        const sel = document.querySelector('#world_editor_select');
-        if (sel?.value) worldBookName = sel.selectedOptions[0].textContent.trim();
-    }
+    // 不走 DOM fallback，防止切角色后泄漏到错误世界书
+    const worldBookName = await utils.findActiveWorldBook();
     if (!worldBookName) throw new Error('未找到绑定的世界书');
 
     const wbOriginal = await loadWorldInfo(worldBookName);
@@ -1372,7 +1342,7 @@ export async function handleLargeSummary({ startIndex = null, endIndex = null } 
                     await new Promise(r => setTimeout(r, delay));
                 }
                 try {
-                    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('AI生成超时(180s)')), 180000));
+                    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error(`AI生成超时(${BIG_SUMMARY_TIMEOUT_MS / 1000}s)`)), BIG_SUMMARY_TIMEOUT_MS));
                     if (api.useCustomApi && api.customApiConfig?.url) {
                         out = await Promise.race([
                             api.callCustomOpenAI('', prompt, { maxTokens: 8000 }),

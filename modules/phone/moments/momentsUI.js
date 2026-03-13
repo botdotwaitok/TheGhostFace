@@ -4,6 +4,8 @@
 import { momentsPanelTemplate } from './momentsPanel.js';
 import * as moments from './moments.js';
 import { renderPhoneFloatingIcon, openPhone } from '../phoneController.js';
+import { escapeHtml } from '../utils/helpers.js';
+import { showToast } from './momentsHelpers.js';
 
 // Load moments-specific CSS
 (function loadMomentsStyles() {
@@ -191,70 +193,7 @@ function updateFloatingUnreadBadge() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Friends UI
-// ═══════════════════════════════════════════════════════════════════════
-
-export async function loadFriendsUI(prefix = 'moments') {
-    const listEl = document.getElementById(`${prefix}_friends_list`);
-    if (!listEl) return;
-
-    try {
-        const result = await moments.listFriends();
-        if (!result.ok || result.friends.length === 0) {
-            listEl.innerHTML = '<div class="moments-empty-state">暂无好友</div>';
-            return;
-        }
-
-        listEl.innerHTML = result.friends.map(f => `
-            <div class="moments-friend-item" data-friend-id="${f.id}">
-                <div class="moments-friend-avatar">
-                    ${f.avatarUrl ? `<img src="${f.avatarUrl}" />` : '<i class="fa-solid fa-user"></i>'}
-                </div>
-                <div class="moments-friend-info">
-                    <div class="moments-friend-name">${escapeHtml(f.displayName)}</div>
-                    <div class="moments-friend-id">${f.id.substring(0, 8)}...</div>
-                </div>
-                <button class="moments-friend-remove moments-small-btn" data-remove-id="${f.id}" title="删除好友">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>
-        `).join('');
-
-        // Bind remove buttons
-        listEl.querySelectorAll('.moments-friend-remove').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const fid = btn.dataset.removeId;
-                if (confirm(`确定删除好友?`)) {
-                    try {
-                        await moments.removeFriend(fid);
-                        showToast('好友已删除');
-                        loadFriendsUI(prefix);
-                    } catch (e) {
-                        showToast('删除失败: ' + e.message);
-                    }
-                }
-            });
-        });
-    } catch (e) {
-        listEl.innerHTML = `<div class="moments-empty-state">加载失败: ${e.message}</div>`;
-    }
-}
-
-export async function addFriendFromUI(prefix = 'moments') {
-    const input = document.getElementById(`${prefix}_add_friend_id`);
-    const friendId = input?.value?.trim();
-    if (!friendId) return showToast('请输入好友ID');
-
-    try {
-        await moments.addFriend(friendId);
-        input.value = '';
-        showToast('好友已添加 🎉');
-        loadFriendsUI(prefix);
-    } catch (e) {
-        showToast('添加失败: ' + e.message);
-    }
-}
+// Friends UI has been moved to phone/friends/friendsUI.js
 
 // ═══════════════════════════════════════════════════════════════════════
 // Feed Rendering
@@ -1360,7 +1299,7 @@ export function bindSlider(sliderId, valId) {
 
 function formatTime(isoStr) {
     try {
-        const d = new Date(isoStr + 'Z'); // SQLite stores UTC without Z
+        const d = new Date(isoStr.endsWith('Z') ? isoStr : isoStr + 'Z'); // SQLite stores UTC without Z
         const now = new Date();
         const diffMs = now - d;
         const diffMin = Math.floor(diffMs / 60000);
@@ -1380,39 +1319,10 @@ function formatTime(isoStr) {
     }
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-}
+// escapeHtml is now imported from '../utils/helpers.js'
 
-export function showToast(msg) {
-    // Create a simple toast notification
-    let container = document.getElementById('moments_toast_container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'moments_toast_container';
-        container.className = 'moments-toast-container';
-        // Append inside the phone UI so the toast is visible within the phone viewport
-        const phoneParent = document.getElementById('phone_overlay')
-            || document.getElementById('moments_panel_overlay')
-            || document.body;
-        phoneParent.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = 'moments-toast';
-    toast.textContent = msg;
-    container.appendChild(toast);
-
-    requestAnimationFrame(() => toast.classList.add('moments-toast-show'));
-
-    setTimeout(() => {
-        toast.classList.remove('moments-toast-show');
-        toast.classList.add('moments-toast-hide');
-        setTimeout(() => toast.remove(), 300);
-    }, 2500);
-}
+// showToast is now imported from ./momentsHelpers.js
+export { showToast };
 
 export function updateAvatarPreview(url, prefix = 'moments') {
     const composeImg = document.getElementById(`${prefix}_compose_avatar_img`);

@@ -1,19 +1,16 @@
 // core.js
-import { getContext, extension_settings, } from '../../../../extensions.js';
-import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
-import { eventSource, event_types } from '../../../../../script.js';
-import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents } from '../../../../utils.js';
+import { getContext, extension_settings } from '../../../../extensions.js';
+import { saveChatDebounced, chat, characters, eventSource, event_types } from '../../../../../script.js';
+import { createWorldInfoEntry } from '../../../../world-info.js';
 
 import * as ui from '../ui/ui.js';
 import * as utils from './utils.js';
 import * as summarizer from './summarizer.js';
-import { getMaxSummarizedFloorFromWorldBook, GHOST_TRACKING_COMMENT } from './worldbook.js';
+import { getMaxSummarizedFloorFromWorldBook, GHOST_TRACKING_COMMENT, saveToWorldBook } from './worldbook.js';
 import * as timeline from './timeline.js';
 
-
-
-let systemInitialized = false;
+// 从 utils 获取 logger 的便捷引用（避免依赖 window.logger）
+const { logger } = utils;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Progress Bar Helpers
@@ -326,8 +323,8 @@ export async function checkAutoTrigger() {
 // 自动触发相关变量
 export let lastTokenCount = 0;
 export let autoTriggerEnabled = false;
-export const AUTO_TRIGGER_THRESHOLD = 500;
 export let isAutoSummarizing = false;
+export function setIsAutoSummarizing(v) { isAutoSummarizing = !!v; }
 
 export let userTokenThreshold = 100000; // Default 100000 tokens
 export let userInterval = 10;           // Default 10 messages (0 = disabled)
@@ -397,7 +394,7 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
         const activeBook = await utils.findActiveWorldBook();
         updateProgress(15, '第1步: 收集消息...');
 
-        const messages = await getGhostContextMessages(isInitial, startIndex, endIndex);
+        const messages = await summarizer.getGhostContextMessages(isInitial, startIndex, endIndex);
 
         if (!messages || messages.length === 0) {
             updateProgress(100, '⚠️ 没有找到可总结的消息');
@@ -411,7 +408,7 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
 
         updateProgress(30, `第2步: 记录中 (${messages.length}条消息)...`);
 
-        const summaryContent = await generateSummary(messages);
+        const summaryContent = await summarizer.generateSummary(messages);
 
         if (!summaryContent || !Array.isArray(summaryContent) || summaryContent.length === 0) {
             updateProgress(100, '没有新信息需要记录');
@@ -424,7 +421,7 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
         }
 
         updateProgress(60, '第3步: 保存到世界书...');
-        const updateResult = await saveToWorldBook(summaryContent, startIndex, endIndex, isContentSimilar, isAutoTriggered);
+        const updateResult = await saveToWorldBook(summaryContent, startIndex, endIndex, summarizer.isContentSimilar);
 
         // 第4步：根据用户设置决定是否隐藏
         if (startIndex !== null && endIndex !== null) {
@@ -593,27 +590,6 @@ export async function getCurrentMessageCount() {
     }
 }
 
-// 🆕 添加一个同步版本的快速计数（不需要await）
-export function getMessageCountSync() {
-    try {
-        // 尝试从全局变量
-        if (typeof window !== 'undefined' && window.chat && Array.isArray(window.chat)) {
-            return window.chat.length;
-        }
-
-        if (typeof chat !== 'undefined' && Array.isArray(chat)) {
-            return chat.length;
-        }
-
-        // 尝试从DOM
-        const messageElements = document.querySelectorAll('.mes');
-        return messageElements.length;
-
-    } catch (error) {
-        console.warn('📊 [getMessageCountSync] 同步获取失败:', error);
-        return 0;
-    }
-}
 
 // 🆕 添加一个带缓存的版本（避免频繁查询）
 let messageCountCache = null;
@@ -636,16 +612,17 @@ export async function getCachedMessageCount() {
     return count;
 }
 
-// 🆕 Count tokens from prompt data (ported from pig.js's countTokensFromData)
+// 工具函数：去除文本中的 base64 数据（避免影响 token 计数）
+function stripBase64(text) {
+    if (typeof text !== 'string') return text;
+    return text.replace(/data:[a-zA-Z0-9\-\.\/]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
+}
+
+// Count tokens from prompt data (ported from pig.js's countTokensFromData)
 // This is called by the chat_completion_prompt_ready event handler
 export function countTokensFromPromptData(rawData) {
     try {
         let fullPrompt = "";
-
-        const stripBase64 = (text) => {
-            if (typeof text !== 'string') return text;
-            return text.replace(/data:[a-zA-Z0-9\-\.\/]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
-        };
 
         if (rawData && Array.isArray(rawData.chat)) {
             fullPrompt = rawData.chat.map(m => (typeof m === 'string') ? stripBase64(m) : stripBase64(m.content || "")).join("\n");
@@ -670,7 +647,7 @@ export function countTokensFromPromptData(rawData) {
         // Fallback: rough estimation
         return Math.floor(fullPrompt.length / 2.7);
     } catch (e) {
-        console.error("❌ [countTokensFromPromptData] Error:", e);
+        console.error("\u274c [countTokensFromPromptData] Error:", e);
         return 0;
     }
 }
@@ -689,11 +666,6 @@ export async function getTokenCount(contextData) {
         const messages = getMessageArray(contextData);
         //logger.info(`🎯 [getTokenCount] prompt缓存为0，走估算路径，消息数=${messages?.length || 0}`);
         let fullPrompt = "";
-
-        const stripBase64 = (text) => {
-            if (typeof text !== 'string') return text;
-            return text.replace(/data:[a-zA-Z0-9\-\.\/]+;base64,[A-Za-z0-9+/=\s]+/gi, "");
-        };
 
         if (messages && messages.length > 0) {
             // Match pig.js: prefer content field, then mes, then string form
@@ -797,13 +769,13 @@ export async function initializeGhostFace() {
             // 基础初始化
 
             try {
-                await createGhostControlPanel();
+                await ui.createGhostControlPanel();
             } catch (panelErr) {
                 console.error('❌ [鬼面] 控制面板创建失败:', panelErr);
                 // 不要因为面板创建失败就中断整个初始化
             }
             setupMessageListener();
-            setupWorldBookListener();
+            ui.setupWorldBookListener();
 
             if (typeof utils !== 'undefined' && utils.setSystemInitialized) {
                 utils.setSystemInitialized(true);
@@ -817,10 +789,10 @@ export async function initializeGhostFace() {
 
             setTimeout(() => {
                 try {
-                    setupPanelEvents();
-                    loadUserSettings();
-                    updatePanelWithCurrentData();
-                    updateMessageCount();
+                    ui.setupPanelEvents();
+                    ui.loadUserSettings();
+                    ui.updatePanelWithCurrentData();
+                    ui.updateMessageCount();
                 } catch (uiErr) {
                     console.error('❌ [鬼面] 面板事件/设置加载失败:', uiErr);
                 }
@@ -1351,30 +1323,10 @@ async function autoSelectWorldBook(targetWorldBook, worldSelect) {
 
 // 世界书初始化 - 在系统启动时调用
 export async function smartWorldBookInit() {
-
-    // 等待ST完全加载
-    let retryCount = 0;
-    const maxRetries = 10;
-
-    while (retryCount < maxRetries) {
-        // 检查基础条件
-        const currentChid = utils.getCurrentChid();
-        if (currentChid !== undefined && currentChid !== null &&
-            typeof characters !== 'undefined' && characters[currentChid]) {
-
-
-            const success = await autoManageWorldBook();
-
-            if (success) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        retryCount++;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+    // initializeGhostFace 已经通过 waitForSTReady 确认 ST 就绪，直接管理即可
+    const currentChid = utils.getCurrentChid();
+    if (currentChid == null || !characters?.[currentChid]) {
+        return false;
     }
-
-    return false;
+    return await autoManageWorldBook();
 }

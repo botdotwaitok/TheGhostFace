@@ -1,10 +1,6 @@
 // api.js
-import { getContext, extension_settings, } from '../../../../extensions.js';
-import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
-import { eventSource, event_types } from '../../../../../script.js';
-import * as ui from '../ui/ui.js';
-import * as utils from './utils.js';
+import { getContext, extension_settings } from '../../../../extensions.js';
+import { saveSettingsDebounced } from '../../../../../script.js';
 
 
 // 定义模块名称常量
@@ -13,8 +9,7 @@ const MODULE_NAME = 'the_ghost_face';
 export let customApiConfig = {
     url: '',
     apiKey: '',
-    model: '',
-    enabled: false  // 是否启用自定义API
+    model: ''
 };
 export let useCustomApi = true; // 当前是否使用自定义API（默认启用外部API）
 export let useMomentCustomApi = true; // 朋友圈独立API
@@ -358,7 +353,7 @@ export function loadCustomApiSettings() {
 }
 
 export function clearCustomApiSettings() {
-    customApiConfig = { url: '', apiKey: '', model: '', enabled: false };
+    customApiConfig = { url: '', apiKey: '', model: '' };
     useCustomApi = false;
     useMomentCustomApi = false;
 
@@ -418,7 +413,7 @@ export async function loadApiModels() {
     if (!urlInput || !modelSelect) return;
 
     const apiUrl = urlInput.value.trim();
-    const apiKey = keyInput.value.trim();
+    const apiKey = keyInput?.value?.trim() || '';
 
     if (!apiUrl) {
         toastr.warning('请先输入API基础URL');
@@ -443,7 +438,7 @@ export async function loadApiModels() {
         else if (!modelsUrl.endsWith('models')) modelsUrl += 'v1/models';
     }
 
-    statusElement.innerHTML = '<span style="color: #61afef;">正在加载模型...</span>';
+    if (statusElement) statusElement.innerHTML = '<span style="color: #61afef;">正在加载模型...</span>';
 
     try {
         const headers = { 'Content-Type': 'application/json' };

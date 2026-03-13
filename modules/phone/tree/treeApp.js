@@ -5,9 +5,9 @@
 import { openAppInViewport } from '../phoneController.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import {
-    GROWTH_STAGES, CARE_ACTIONS, DAILY_CARE_MAX, AI_DAILY_CARE_COUNT,
+    GROWTH_STAGES, CARE_ACTIONS,
     getCurrentSeason, getTreeImagePath, getTreeImageFallback,
-    getStageByGrowth, getGrowthProgress, checkStageUp,
+    getStageByGrowth, getGrowthProgress,
     STAGE_SEASON_DESCRIPTIONS, SEASONS,
     TREE_TYPES, getTreeType, getRandomTreeType,
     FRUIT_CONFIG, getFruitImagePath,
@@ -23,6 +23,7 @@ import {
     getRemainingQuestions,
     getCollection, getStoryFragments,
     initTreeDataFromServer,
+    hasPendingSync, flushSyncNow,
 } from './treeStorage.js';
 import {
     QUIZ_LOW_THRESHOLD, TOD_LOW_THRESHOLD,
@@ -32,7 +33,7 @@ import {
     generateMilestoneMessage,
     generateContentStepByStep,
 } from './treeLLM.js';
-import { updateTreeWorldInfo, disableTreeWorldInfo } from './treeWorldInfo.js';
+import { updateTreeWorldInfo } from './treeWorldInfo.js';
 import { startKeepAlive, stopKeepAlive, isKeepAliveActive } from '../keepAlive.js';
 
 const TREE_LOG = '[树树]';
@@ -54,6 +55,9 @@ let _refillInProgress = false;
 export async function openTreeApp() {
     // If localStorage is empty, try to restore from server (cross-device)
     await initTreeDataFromServer();
+
+    // Register safety nets for sync (idempotent — only binds once)
+    _registerSyncSafetyNets();
 
     // Daily reset check
     const { isNewDay, data } = checkDailyReset();
@@ -644,9 +648,8 @@ function performAiCare(state, charName) {
     const actionIdx = Math.floor(Math.random() * CARE_ACTIONS.length);
     const action = CARE_ACTIONS[actionIdx];
 
-    // Apply growth
-    const result = addGrowth(action.growthValue);
-    updateTreeState({ aiCaredToday: true });
+    // Apply growth + mark AI-cared in a single atomic write
+    const result = addGrowth(action.growthValue, { aiCaredToday: true });
 
     // Try to get a cached care line
     const careLine = popCareLine();
@@ -1456,11 +1459,10 @@ function showGalleryPage() {
         const isGallery = document.querySelector('.tree-gallery');
         if (isGallery) {
             e.preventDefault();
-            window.removeEventListener('phone-app-back', backHandler);
             showTreeMainPage();
         }
     };
-    window.addEventListener('phone-app-back', backHandler);
+    window.addEventListener('phone-app-back', backHandler, { once: true });
 
     openAppInViewport('图鉴', html, null);
 }
@@ -1488,4 +1490,104 @@ function _triggerWorldBookUpdate() {
     updateTreeWorldInfo(state, season, stage, charName, userName).catch(e => {
         console.warn(`${TREE_LOG} World Book 更新失败:`, e);
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Cloud Sync Guard
+// ═══════════════════════════════════════════════════════════════════════
+
+let _syncSafetyNetsRegistered = false;
+
+/**
+ * Register browser-level safety nets for cloud sync.
+ * Called once from openTreeApp(). Idempotent.
+ */
+function _registerSyncSafetyNets() {
+    if (_syncSafetyNetsRegistered) return;
+    _syncSafetyNetsRegistered = true;
+
+    // ── Back-button sync guard ──
+    // Intercept the back event when leaving tree app with pending data
+    window.addEventListener('phone-app-back', (e) => {
+        // Only intercept if we're on the tree main page (not sub-pages like gallery/games)
+        const isTreeMainPage = document.querySelector('.tree-care-grid');
+        if (!isTreeMainPage) return;  // Let sub-pages handle their own back
+        if (!hasPendingSync()) return; // Nothing pending, let it close normally
+
+        // Block the default viewport close
+        e.preventDefault();
+
+        // Show sync guard, then close viewport after sync is done
+        _showSyncGuardAndLeave(() => {
+            const viewport = document.getElementById('phone_app_viewport');
+            if (viewport) viewport.classList.remove('app-active');
+        });
+    });
+
+    // ── visibilitychange: flush when user switches tabs / minimises ──
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && hasPendingSync()) {
+            console.log(`${TREE_LOG} 页面切到后台，立即同步数据`);
+            flushSyncNow();
+        }
+    });
+
+    // ── beforeunload: last-resort flush when tab/window closes ──
+    window.addEventListener('beforeunload', () => {
+        if (hasPendingSync()) {
+            console.log(`${TREE_LOG} 页面即将关闭，立即同步数据`);
+            flushSyncNow();
+        }
+    });
+
+    console.log(`${TREE_LOG} 云端同步安全网已注册 (back-guard + visibilitychange + beforeunload)`);
+}
+
+/**
+ * Show a sync guard overlay when the user tries to leave tree app
+ * with pending unsaved data. Blocks navigation until sync completes.
+ * @param {Function} onDone - called after sync finishes (or is skipped)
+ */
+async function _showSyncGuardAndLeave(onDone) {
+    if (!hasPendingSync()) {
+        // Nothing pending — leave immediately
+        if (typeof onDone === 'function') onDone();
+        return;
+    }
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'tree-sync-guard-overlay';
+    overlay.innerHTML = `
+        <div class="tree-sync-guard-card">
+            <i class="fa-solid fa-cloud-arrow-up tree-sync-guard-icon"></i>
+            <div class="tree-sync-guard-text">正在保存到云端…</div>
+            <div class="tree-sync-guard-sub">请稍等，确保你的数据不会丢失</div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    console.log(`${TREE_LOG} 同步守卫：有待上传数据，正在立即同步…`);
+
+    const success = await flushSyncNow();
+
+    // Update overlay to show result briefly
+    const card = overlay.querySelector('.tree-sync-guard-card');
+    if (card) {
+        if (success) {
+            card.innerHTML = `
+                <i class="fa-solid fa-circle-check tree-sync-guard-icon tree-sync-guard-success"></i>
+                <div class="tree-sync-guard-text">已保存 ✓</div>`;
+        } else {
+            card.innerHTML = `
+                <i class="fa-solid fa-circle-exclamation tree-sync-guard-icon tree-sync-guard-fail"></i>
+                <div class="tree-sync-guard-text">保存失败，数据仅在本地</div>
+                <div class="tree-sync-guard-sub">下次打开树树时会重试</div>`;
+        }
+    }
+
+    // Brief pause so user sees the result
+    await new Promise(r => setTimeout(r, success ? 500 : 1500));
+    overlay.remove();
+
+    if (typeof onDone === 'function') onDone();
 }

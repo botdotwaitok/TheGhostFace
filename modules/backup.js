@@ -1,5 +1,6 @@
 // backup.js — 总结后角色卡+聊天记录自动备份模块
 // 功能：本地下载 PNG/JSON/JSONL + 通过 GhostFace Moments 服务器发送邮件
+// 全局依赖：toastr 由 SillyTavern 宿主环境挂载到 window 上
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { this_chid, characters, getRequestHeaders, saveSettingsDebounced } from '../../../../../script.js';
 import { getSettings } from './phone/moments/state.js';
@@ -45,11 +46,43 @@ const SMTP_PRESETS = {
 
 /** 根据已保存的 host 反推 provider key，找不到返回 'custom' */
 function detectProvider(host) {
-    if (!host) return 'qq';
+    if (!host) return 'qq'; // 默认与 backupConfig.smtp 初始值一致
     for (const [key, preset] of Object.entries(SMTP_PRESETS)) {
         if (preset.host === host) return key;
     }
     return 'custom';
+}
+
+// ── 辅助函数 ─────────────────────────────────────────────────────────
+
+/** 邮件发送 fetch 超时（ms），与服务端 socketTimeout 保持一致 */
+const EMAIL_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * 将 ArrayBuffer 转为 base64 字符串（分块编码，防止大文件 OOM）
+ * @param {ArrayBuffer} buffer
+ * @returns {string}
+ */
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const CHUNK = 0x8000; // 32 KB 一块
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+
+/**
+ * 根据 backupConfig.backupFormat 返回当前启用的导出格式列表
+ * @returns {string[]}  例如 ['png', 'json']
+ */
+function getActiveFormats() {
+    const fmt = backupConfig.backupFormat;
+    const formats = [];
+    if (fmt === 'png' || fmt === 'both') formats.push('png');
+    if (fmt === 'json' || fmt === 'both') formats.push('json');
+    return formats;
 }
 
 // ── 配置 ────────────────────────────────────────────────────────────
@@ -76,14 +109,23 @@ export let backupConfig = {
 
 export function saveBackupSettings() {
     try {
-        // localStorage 快速缓存
+        // localStorage 快速缓存（排除 SMTP 凭据——同源下其他扩展可读取 localStorage）
         try {
-            localStorage.setItem(STORAGE_KEY_BACKUP, JSON.stringify(backupConfig));
+            const safeConfig = {
+                ...backupConfig,
+                smtp: {
+                    host: backupConfig.smtp.host,
+                    port: backupConfig.smtp.port,
+                    secure: backupConfig.smtp.secure,
+                    // 注意：user / pass / to 不存 localStorage，仅存 extension_settings
+                },
+            };
+            localStorage.setItem(STORAGE_KEY_BACKUP, JSON.stringify(safeConfig));
         } catch (e) {
             console.warn('📦 localStorage 保存备份设置失败:', e?.message || e);
         }
 
-        // SillyTavern 扩展设置（跨环境持久化）
+        // SillyTavern 扩展设置（跨环境持久化，含完整 SMTP 凭据）
         if (typeof extension_settings !== 'undefined') {
             extension_settings[MODULE_NAME] = extension_settings[MODULE_NAME] || {};
             extension_settings[MODULE_NAME].backupConfig = { ...backupConfig, smtp: { ...backupConfig.smtp } };
@@ -100,26 +142,34 @@ export function saveBackupSettings() {
 
 export function loadBackupSettings() {
     try {
-        let loaded = false;
-
-        // 1) 优先从 localStorage 读取
+        // 1) 从 localStorage 读取非敏感配置
         try {
             const saved = localStorage.getItem(STORAGE_KEY_BACKUP);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                backupConfig = { ...backupConfig, ...parsed, smtp: { ...backupConfig.smtp, ...(parsed.smtp || {}) } };
-                loaded = true;
+                // 不覆盖 smtp 凭据字段（localStorage 中不含 user/pass/to）
+                const { smtp: parsedSmtp, ...rest } = parsed;
+                Object.assign(backupConfig, rest);
+                if (parsedSmtp) {
+                    // 只取非敏感的 SMTP 字段
+                    if (parsedSmtp.host) backupConfig.smtp.host = parsedSmtp.host;
+                    if (parsedSmtp.port) backupConfig.smtp.port = parsedSmtp.port;
+                    if (parsedSmtp.secure !== undefined) backupConfig.smtp.secure = parsedSmtp.secure;
+                }
             }
         } catch (e) {
             console.warn('📦 读取 localStorage 备份设置失败:', e?.message || e);
         }
 
-        // 2) 回退到扩展设置
-        if (!loaded && typeof extension_settings !== 'undefined') {
+        // 2) 从 extension_settings 读取完整配置（含 SMTP 凭据）
+        if (typeof extension_settings !== 'undefined') {
             const ext = extension_settings[MODULE_NAME] || {};
             if (ext.backupConfig) {
-                backupConfig = { ...backupConfig, ...ext.backupConfig, smtp: { ...backupConfig.smtp, ...(ext.backupConfig?.smtp || {}) } };
-                loaded = true;
+                const { smtp: extSmtp, ...extRest } = ext.backupConfig;
+                Object.assign(backupConfig, extRest);
+                if (extSmtp) {
+                    Object.assign(backupConfig.smtp, extSmtp);
+                }
             }
         }
 
@@ -236,13 +286,7 @@ function triggerDownload(blob, filename) {
 // ── 本地下载 ────────────────────────────────────────────────────────
 
 async function downloadBackupLocal() {
-    const formats = [];
-    if (backupConfig.backupFormat === 'png' || backupConfig.backupFormat === 'both') {
-        formats.push('png');
-    }
-    if (backupConfig.backupFormat === 'json' || backupConfig.backupFormat === 'both') {
-        formats.push('json');
-    }
+    const formats = getActiveFormats();
 
     // 角色卡下载
     for (const format of formats) {
@@ -278,19 +322,12 @@ async function sendBackupEmail() {
 
     // 收集附件
     const attachments = [];
-    const formats = [];
-    if (backupConfig.backupFormat === 'png' || backupConfig.backupFormat === 'both') formats.push('png');
-    if (backupConfig.backupFormat === 'json' || backupConfig.backupFormat === 'both') formats.push('json');
+    const formats = getActiveFormats();
 
     for (const format of formats) {
         try {
             const { blob, filename } = await exportCharacterCard(format);
-            // 转为 base64 以便通过 JSON 传输
-            const arrayBuffer = await blob.arrayBuffer();
-            const base64 = btoa(
-                new Uint8Array(arrayBuffer)
-                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
-            );
+            const base64 = arrayBufferToBase64(await blob.arrayBuffer());
             attachments.push({
                 filename,
                 content: base64,
@@ -305,11 +342,7 @@ async function sendBackupEmail() {
     // 聊天记录附件
     try {
         const { blob, filename } = await exportChatHistory();
-        const arrayBuffer = await blob.arrayBuffer();
-        const base64 = btoa(
-            new Uint8Array(arrayBuffer)
-                .reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
+        const base64 = arrayBufferToBase64(await blob.arrayBuffer());
         attachments.push({
             filename,
             content: base64,
@@ -331,9 +364,13 @@ async function sendBackupEmail() {
     try {
         // 通过 GhostFace Moments 服务器发送邮件
         const { url, headers } = getMomentsEmailEndpoint();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), EMAIL_FETCH_TIMEOUT_MS);
+
         const response = await fetch(url, {
             method: 'POST',
             headers,
+            signal: controller.signal,
             body: JSON.stringify({
                 smtp: {
                     host: smtp.host,
@@ -348,6 +385,7 @@ async function sendBackupEmail() {
                 attachments,
             }),
         });
+        clearTimeout(timer);
 
         if (!response.ok) {
             const errText = await response.text();
@@ -357,8 +395,9 @@ async function sendBackupEmail() {
         logger.info('📧 备份邮件发送成功');
         toastr.success('📧 备份邮件已发送！');
     } catch (error) {
+        const msg = error.name === 'AbortError' ? '邮件发送超时（30秒）' : error.message;
         logger.error('📧 邮件发送失败:', error);
-        toastr.error('📧 邮件发送失败: ' + error.message);
+        toastr.error('📧 邮件发送失败: ' + msg);
     }
 }
 
@@ -590,9 +629,13 @@ export function setupBackupEvents() {
 
             try {
                 const { url, headers } = getMomentsEmailEndpoint();
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), EMAIL_FETCH_TIMEOUT_MS);
+
                 const response = await fetch(url, {
                     method: 'POST',
                     headers,
+                    signal: controller.signal,
                     body: JSON.stringify({
                         smtp: backupConfig.smtp,
                         to: backupConfig.smtp.to,
@@ -601,6 +644,7 @@ export function setupBackupEvents() {
                         attachments: [],
                     }),
                 });
+                clearTimeout(timer);
 
                 if (!response.ok) {
                     const errText = await response.text();
@@ -609,7 +653,8 @@ export function setupBackupEvents() {
 
                 toastr.success('📧 测试邮件发送成功！请检查收件箱');
             } catch (error) {
-                toastr.error('📧 测试邮件失败: ' + error.message);
+                const msg = error.name === 'AbortError' ? '发送超时（30秒）' : error.message;
+                toastr.error('📧 测试邮件失败: ' + msg);
             } finally {
                 testBtn.disabled = false;
                 testBtn.textContent = '发送测试邮件';

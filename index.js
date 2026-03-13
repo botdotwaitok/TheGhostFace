@@ -1,10 +1,7 @@
 // 机器人
 
-import { getContext, extension_settings, } from '../../../extensions.js';
-import { chat_metadata, getMaxContextSize, generateRaw, streamingProcessor, main_api, system_message_types, saveSettingsDebounced, getRequestHeaders, saveChatDebounced, chat, this_chid, characters, reloadCurrentChat, } from '../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, importWorldInfo, loadWorldInfo, saveWorldInfo, world_info } from '../../../world-info.js';
-import { eventSource, event_types } from '../../../../script.js';
-import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents } from '../../../utils.js';
+import { getContext } from '../../../extensions.js';
+import { eventSource, event_types, chat_metadata } from '../../../../script.js';
 import { createGhostFaceDrawer } from './ui/topbar.js';
 import * as ui from './ui/ui.js';
 import * as core from './modules/core.js';
@@ -16,7 +13,6 @@ import * as gf_chat from './modules/chat.js';
 import * as moments from './modules/phone/moments/moments.js';
 import * as diary from './modules/phone/diary/diaryApp.js';
 import { isDiaryEnabled, getDiaryMode } from './modules/phone/diary/diaryApp.js';
-import { getDiarySystemPrompt, updateDiaryWorldInfo } from './modules/phone/diary/diaryWorldInfo.js';
 import * as worldbookManager from './modules/worldbookManager.js';
 
 
@@ -42,20 +38,9 @@ function setupGlobalExports() {
         window.MAX_LOG_ENTRIES = ui.MAX_LOG_ENTRIES;
 
 
-        // 状态变量
-        window.systemInitialized = ui.systemInitialized;
-        window.isPanelOpen = ui.isPanelOpen;
-        window.lastTokenCount = core.lastTokenCount;
-        window.autoTriggerEnabled = core.autoTriggerEnabled;
-        window.isAutoSummarizing = core.isAutoSummarizing;
-        window.userTokenThreshold = core.userTokenThreshold;
-        window.userInterval = core.userInterval;
-
-
-
         // API相关
         window.customApiConfig = api.customApiConfig;
-        window.useCustomApi = api.useCustomApi;
+        Object.defineProperty(window, 'useCustomApi', { get: () => api.useCustomApi, configurable: true });
         window.setupCustomApiEvents = api.setupCustomApiEvents;
         window.loadCustomApiSettings = api.loadCustomApiSettings;
         window.saveCustomApiSettings = api.saveCustomApiSettings;
@@ -148,44 +133,9 @@ function setupGlobalExports() {
 }
 
 
-// 确保事件系统可用的函数
-function ensureEventSystem() {
-    try {
-        // 检查是否有ST的事件系统
-        if (typeof eventSource !== 'undefined' && eventSource.on) {
-            window.eventOn = eventSource.on.bind(eventSource);
-            window.eventOff = eventSource.off ? eventSource.off.bind(eventSource) : null;
-            window.eventEmit = eventSource.emit ? eventSource.emit.bind(eventSource) : null;
-            // console.log('🔧 [鬼面] ST事件系统已绑定');
-            return true;
-        }
-
-        // 检查tavern_events
-        if (typeof window.tavern_events === 'undefined') {
-            // 创建基础的事件枚举
-            window.tavern_events = {
-                MESSAGE_SENT: 'message_sent',
-                MESSAGE_RECEIVED: 'message_received',
-                GENERATION_ENDED: 'generation_ended',
-                STREAM_TOKEN_RECEIVED: 'stream_token_received',
-                MESSAGE_SWIPED: 'message_swiped',
-                MESSAGE_DELETED: 'message_deleted',
-                CHAT_CHANGED: 'chat_changed'
-            };
-            //console.log('🔧 [鬼面] 创建了基础事件枚举');
-        }
-
-        return true;
-    } catch (error) {
-        console.error('❌ [鬼面] 事件系统设置失败:', error);
-        return false;
-    }
-}
-
 // 主初始化函数
 async function initializeGhostFace() {
     if (window.ghostFaceInitialized) {
-        // console.log('🔄 [鬼面] 已初始化，跳过重复初始化');
         return;
     }
 
@@ -198,19 +148,13 @@ async function initializeGhostFace() {
             throw new Error('全局导出设置失败');
         }
 
-        // 第2步：确保事件系统
-        const eventSuccess = ensureEventSystem();
-        if (!eventSuccess) {
-            throw new Error('事件系统设置失败');
-        }
-
-        // 第3步：加载API设置
+        // 第2步：加载API设置
         if (typeof api.loadCustomApiSettings === 'function') {
             api.loadCustomApiSettings();
             console.log('🤖 [鬼面] API设置已加载');
         }
 
-        // 第4步：初始化核心系统
+        // 第3步：初始化核心系统
         let coreInitialized = false;
         if (typeof core.initializeGhostFace === 'function') {
             const initResult = await core.initializeGhostFace();
@@ -225,9 +169,7 @@ async function initializeGhostFace() {
             throw new Error('核心初始化函数不可用');
         }
 
-
-
-        // 只在核心初始化成功时标记系统（不要覆盖挂起状态）
+        // 第4步：只在核心初始化成功时标记系统（不要覆盖挂起状态）
         if (coreInitialized) {
             window.ghostFaceInitialized = true;
         }
@@ -250,14 +192,14 @@ async function initializeGhostFace() {
                         // 1. Parse Main LLM output for actions
                         let mainLLMPosted = false;
                         const context = getContext();
-                        const chat = context.chat;
-                        if (chat && chat.length > 0) {
-                            const lastMsg = chat[chat.length - 1];
+                        const chatMessages = context.chat;
+                        if (chatMessages && chatMessages.length > 0) {
+                            const lastMsg = chatMessages[chatMessages.length - 1];
                             if (!lastMsg.is_user) {
                                 mainLLMPosted = await moments.handleMainChatOutput(lastMsg.mes);
                                 // Parse diary entries from main LLM output (auto mode only)
                                 if (isDiaryEnabled() && getDiaryMode() === 'auto') {
-                                    diary.handleDiaryChatOutput(lastMsg.mes);
+                                    diary.handleDiaryChatOutput(lastMsg.mes, chatMessages.length - 1);
                                 }
                             }
                         }
@@ -284,21 +226,22 @@ async function initializeGhostFace() {
                     }
                 });
 
-                // Inject system instructions
-                const prompt = moments.getMomentsSystemPrompt();
-                if (prompt && typeof extension_prompts !== 'undefined') {
-                    extension_prompts.push(prompt);
-                    console.log('📱 [鬼面] 已注入朋友圈系统指令');
-                }
-
-                // Inject diary system prompt (auto mode only)
-                if (isDiaryEnabled() && getDiaryMode() === 'auto') {
-                    const diaryPrompt = getDiarySystemPrompt();
-                    if (diaryPrompt && typeof extension_prompts !== 'undefined') {
-                        extension_prompts.push(diaryPrompt);
-                        console.log('📔 [鬼面] 已注入日记本系统指令');
+                // Layer 3: Listen for message edits to re-attempt diary capture
+                eventSource.on(event_types.MESSAGE_EDITED, (messageIndex) => {
+                    try {
+                        if (isDiaryEnabled() && getDiaryMode() === 'auto') {
+                            const ctx = getContext();
+                            const msg = ctx.chat?.[messageIndex];
+                            if (msg && !msg.is_user) {
+                                diary.handleDiaryChatOutput(msg.mes, messageIndex);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[鬼面] 消息编辑日记捕获出错:', e);
                     }
-                }
+                });
+
+
             }
         } catch (momentsErr) {
             console.warn('📱 [鬼面] 朋友圈模块初始化跳过:', momentsErr);
@@ -330,29 +273,7 @@ try {
 }
 
 async function ensureProperStartup() {
-    //console.log('🎯 [鬼面] 确保正确启动...');
-
-    // 等待ST完全加载
-    let retryCount = 0;
-    const maxRetries = 10;
-
-    while (retryCount < maxRetries) {
-        try {
-            // 检查ST核心是否可用
-            if (typeof getContext === 'function') {
-                //console.log('✅ [鬼面] ST核心已就绪，开始初始化');
-                await initializeGhostFace();
-                return;
-            }
-        } catch (error) {
-            //console.log(`🔄 [鬼面] ST未就绪，重试 ${retryCount + 1}/${maxRetries}`);
-        }
-
-        retryCount++;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    //console.error('❌ [鬼面] ST加载超时，强制尝试初始化');
+    // getContext 是 ESM 静态导入，此处一定可用，直接初始化
     await initializeGhostFace();
 }
 

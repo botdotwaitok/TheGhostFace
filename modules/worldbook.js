@@ -1,14 +1,13 @@
 // worldbook.js
-import { getContext, extension_settings } from '../../../../extensions.js';
-import { characters } from '../../../../../script.js';
-import { createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, loadWorldInfo, saveWorldInfo, world_info } from '../../../../world-info.js';
-import { eventSource } from '../../../../../script.js';
-import { getCharaFilename } from '../../../../utils.js';
+import { createWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../../world-info.js';
 
 
 import * as core from './core.js';
 import * as utils from './utils.js';
+import { logger } from './utils.js';
 
+export const GHOST_SUMMARY_PREFIX = "鬼面总结-";
+export const GHOST_TRACKING_COMMENT = "鬼面楼层追踪记录";
 
 
 //获取现有世界书内容作为上下文（防止AI重复生成）
@@ -29,7 +28,6 @@ export async function getExistingWorldBookContext() {
             return '档案库为空，这是第一次记录。';
         }
 
-        const currentChatIdentifier = await core.getCurrentChatIdentifier();
         let contextParts = [];
         let fragmentTitles = []; // 🆕 收集记忆碎片标题
 
@@ -205,7 +203,7 @@ export async function manageGhostSummaryEntries(worldBookName, currentChatIdenti
 
 
 // 更新世界书函数 — 为每个记忆碎片创建独立条目
-export async function saveToWorldBook(summaryEntries, startIndex = null, endIndex = null, isContentSimilar = null, isAutoTriggered = false) {
+export async function saveToWorldBook(summaryEntries, startIndex = null, endIndex = null, isContentSimilar = null) {
     console.log('[鬼面] === 鬼面开始往世界书里写字 (fragment mode) ===');
 
     try {
@@ -293,18 +291,15 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
             if (l1 === l2) return true;
             // 包含关系
             if (l1.length > 1 && l2.length > 1 && (l1.includes(l2) || l2.includes(l1))) return true;
-            // 编辑距离相似度 > 60%
-            if (typeof isContentSimilar === 'function') {
-                const maxLen = Math.max(l1.length, l2.length);
-                if (maxLen === 0) return false;
-                let matches = 0;
-                const minLen = Math.min(l1.length, l2.length);
-                for (let c = 0; c < minLen; c++) {
-                    if (l1[c] === l2[c]) matches++;
-                }
-                return (matches / maxLen) > 0.6;
+            // 字符级相似度 > 60%
+            const maxLen = Math.max(l1.length, l2.length);
+            if (maxLen === 0) return false;
+            let matches = 0;
+            const minLen = Math.min(l1.length, l2.length);
+            for (let c = 0; c < minLen; c++) {
+                if (l1[c] === l2[c]) matches++;
             }
-            return false;
+            return (matches / maxLen) > 0.6;
         };
 
         // 🧠 为每个记忆碎片创建或更新 WI 条目
@@ -535,7 +530,4 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         return -1;
     }
 }
-
-export const GHOST_SUMMARY_PREFIX = "鬼面总结-";
-export const GHOST_TRACKING_COMMENT = "鬼面楼层追踪记录";
 

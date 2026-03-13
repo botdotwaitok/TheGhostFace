@@ -6,80 +6,10 @@ import { getSettings, getFeedCache } from './state.js';
 import { addComment } from './apiClient.js';
 import { createLocalPost } from './persistence.js';
 import { useMomentCustomApi } from '../../api.js';
+import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { getContext } from '../../../../../../extensions.js';
-
-// ═══════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════
-
-function _getCharacterInfo() {
-    try {
-        const context = getContext();
-        const charId = context.characterId;
-        const charData = (context.characters ?? [])[charId];
-        if (!charData) return null;
-
-        return {
-            name: charData.name || context.name2 || 'Character',
-            description: charData.description || charData.data?.description || '',
-            personality: charData.personality || charData.data?.personality || '',
-            scenario: charData.scenario || charData.data?.scenario || '',
-            avatar: charData.avatar || '',
-        };
-    } catch (e) {
-        console.warn(`${MOMENTS_LOG_PREFIX} getCharacterInfo failed:`, e);
-        return null;
-    }
-}
-
-function _getUserName() {
-    try {
-        const context = getContext();
-        return context.name1 || 'User';
-    } catch {
-        return 'User';
-    }
-}
-
-function _getMyAuthorIds() {
-    const settings = getSettings();
-    const ids = new Set();
-    if (settings.userId) ids.add(settings.userId);
-    ids.add('guest');
-    const charId = getCharacterId();
-    ids.add(charId);
-    return ids;
-}
-
-async function _getBase64FromUrl(url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) return '';
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(blob);
-        });
-    } catch (e) {
-        console.warn(`${MOMENTS_LOG_PREFIX} Failed to convert image to base64: ${url}`, e);
-        return '';
-    }
-}
-
-export function showToast(msg) {
-    try {
-        const container = document.getElementById('moments_toast_container');
-        if (container) {
-            const toast = document.createElement('div');
-            toast.className = 'moments-toast moments-toast-show';
-            toast.textContent = msg;
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 2500);
-        }
-    } catch { }
-}
+import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getBase64FromUrl, showToast } from './momentsHelpers.js';
+// (Helpers moved to momentsHelpers.js)
 
 // ═══════════════════════════════════════════════════════════════════════
 // Mutual Sync (Main LLM Integration)
@@ -111,9 +41,9 @@ export async function updateMomentsWorldInfo() {
 
         // Format recent feed
         const recentPosts = feedCache.slice(0, 5);
-        const charInfo = _getCharacterInfo();
+        const charInfo = getCharacterInfo();
         const myCharName = charInfo ? charInfo.name : null;
-        const myAuthorIds = _getMyAuthorIds();
+        const myAuthorIds = getMyAuthorIds();
 
         const feedText = recentPosts.map(p => {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -147,7 +77,7 @@ export async function updateMomentsWorldInfo() {
             return text;
         }).join('\n\n');
 
-        const userName = _getUserName();
+        const userName = getUserNameFallback();
         let baseText = `
         <gf_moments>
         【社交网络系统】
@@ -241,21 +171,31 @@ export async function handleMainChatOutput(content) {
 
     let posted = false;
     const feedCache = getFeedCache();
+
+    // ── Cooldown gate: skip new posts if on cooldown ──
+    const postCooldownActive = isMomentsPostOnCooldown();
+
     // Regex for (朋友圈: ...)
     const postMatches = Array.from(content.matchAll(/\((?:朋友圈|Moments):\s*(.+?)\)/gi));
     for (const postMatch of postMatches) {
         if (postMatch && postMatch[1]) {
             const text = postMatch[1].trim();
             if (text) {
-                const charInfo = _getCharacterInfo();
+                // Block if on cooldown
+                if (postCooldownActive) {
+                    console.log(`${MOMENTS_LOG_PREFIX} 🕐 朋友圈发帖冷却中，跳过: ${text.substring(0, 50)}...`);
+                    continue;
+                }
+                const charInfo = getCharacterInfo();
                 let avatarData = charInfo?.avatar;
                 if (avatarData && !avatarData.startsWith('http') && !avatarData.startsWith('data:') && !avatarData.startsWith('/')) {
-                    const base64 = await _getBase64FromUrl(`characters/${avatarData}`);
+                    const base64 = await getBase64FromUrl(`characters/${avatarData}`);
                     if (base64) avatarData = base64;
                 }
                 await createLocalPost(text, charInfo?.name, avatarData, null, true);
                 logMoments(`📝 ${charInfo.name} 的朋友圈草稿等你审核: ${text}`);
                 showToast && showToast(`已生成待发布草稿`);
+                markMomentsPostCooldown();
                 posted = true;
             }
         }
@@ -297,10 +237,10 @@ export async function handleMainChatOutput(content) {
                 }
 
                 if (targetPost) {
-                    const charInfo = _getCharacterInfo();
+                    const charInfo = getCharacterInfo();
 
                     if (charInfo && charInfo.name && targetPost.comments) {
-                        const myAuthorIds = _getMyAuthorIds();
+                        const myAuthorIds = getMyAuthorIds();
                         let isDuplicate = false;
                         if (targetComment) {
                             isDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && c.replyToId === targetComment.id);

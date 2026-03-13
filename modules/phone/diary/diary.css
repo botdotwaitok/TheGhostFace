@@ -36,7 +36,7 @@
     z-index: 0;
 }
 
-.diary-scroll-content > * {
+.diary-scroll-content>* {
     position: relative;
     z-index: 1;
 }
@@ -497,12 +497,15 @@
 .diary-theme-preview-default {
     background: linear-gradient(135deg, #fef9f3, #fdf2f8, #faf5ff);
 }
+
 .diary-theme-preview-sakura {
     background: linear-gradient(135deg, #fff5f7, #ffe4ec, #ffd6e7);
 }
+
 .diary-theme-preview-lavender {
     background: linear-gradient(135deg, #f5f0ff, #ede0ff, #e8d8ff);
 }
+
 .diary-theme-preview-forest {
     background: linear-gradient(135deg, #f0f7f0, #e0f0e4, #d4ead8);
 }
@@ -930,9 +933,17 @@
 
 /* ─── Card Highlight Animation (from calendar click) ─── */
 @keyframes diary-card-glow {
-    0% { box-shadow: 0 0 0 0 rgba(248, 164, 184, 0.5); }
-    50% { box-shadow: 0 0 0 6px rgba(248, 164, 184, 0.2); }
-    100% { box-shadow: 0 0 0 0 rgba(248, 164, 184, 0); }
+    0% {
+        box-shadow: 0 0 0 0 rgba(248, 164, 184, 0.5);
+    }
+
+    50% {
+        box-shadow: 0 0 0 6px rgba(248, 164, 184, 0.2);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(248, 164, 184, 0);
+    }
 }
 
 .diary-card-highlight {
@@ -941,6 +952,7 @@
 
 /* ─── Print Media Query ─── */
 @media print {
+
     /* Force color printing for backgrounds/gradients */
     * {
         -webkit-print-color-adjust: exact !important;
@@ -963,20 +975,24 @@
     .diary-detail-overlay.detail-active * {
         visibility: visible;
     }
+
     .diary-detail-overlay.detail-active {
         position: absolute;
         inset: 0;
         z-index: 9999;
         /* Don't override background — let the theme-specific background from diaryThemes.css show through */
     }
+
     /* Hide the entire detail header bar (close button + print button) */
     .diary-detail-header {
         display: none !important;
     }
+
     /* Adjust detail body padding without the header */
     .diary-detail-overlay.detail-active .diary-detail-body {
         padding-top: 24px;
     }
+
     /* Keep the inner card styling but remove backdrop blur (not printable) */
     .diary-detail-page {
         backdrop-filter: none !important;
@@ -991,6 +1007,7 @@
     .diary-page:not(:has(.diary-detail-overlay.detail-active)) * {
         visibility: visible;
     }
+
     /* Hide interactive UI elements */
     .diary-header,
     .diary-compose-overlay,
@@ -1001,6 +1018,7 @@
     .diary-card-actions {
         display: none !important;
     }
+
     .diary-entry-card {
         break-inside: avoid;
         box-shadow: none;
@@ -1079,6 +1097,42 @@
 }
 
 .diary-compose-submit:active {
+    transform: scale(0.95);
+}
+
+/* Header Actions Container (groups submit + AI button) */
+.diary-compose-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* AI Proactive Diary Write Button */
+.diary-compose-ai-btn {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #e4dbff, #c6a4ff);
+    border: none;
+    border-radius: 20px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: transform 0.1s ease, opacity 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.diary-compose-ai-btn i {
+    font-size: 11px;
+}
+
+.diary-compose-ai-btn:hover {
+    opacity: 0.9;
+}
+
+.diary-compose-ai-btn:active {
     transform: scale(0.95);
 }
 
@@ -1171,6 +1225,100 @@
     border-color: #f8a4b8;
     background: rgba(248, 164, 184, 0.12);
     box-shadow: 0 4px 12px rgba(248, 164, 184, 0.2);
+}
+
+/* ─── Mood Emoji Input (replaces mood grid) ─── */
+.diary-compose-mood-input-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.diary-compose-mood-emoji-input {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    border: 2px solid rgba(248, 164, 184, 0.3);
+    background: rgba(255, 255, 255, 0.7);
+    font-size: 28px;
+    text-align: center;
+    outline: none;
+    cursor: text;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.diary-compose-mood-emoji-input:focus {
+    border-color: #f8a4b8;
+    box-shadow: 0 4px 12px rgba(248, 164, 184, 0.2);
+}
+
+.diary-compose-mood-hint {
+    font-family: 'Caveat', cursive;
+    font-size: 14px;
+    color: #c4b0a0;
+    font-weight: 500;
+}
+
+/* ─── Diary Edit Mode ─── */
+.diary-edit-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 14px 16px;
+    border: 1.5px solid rgba(248, 164, 184, 0.3);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    font-family: var(--diary-font-main, 'Noto Serif SC', serif);
+    font-size: var(--diary-font-size, 14px);
+    line-height: var(--diary-line-height, 1.9);
+    color: #4a3728;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+}
+
+.diary-segment-char .diary-edit-textarea {
+    font-family: var(--diary-char-font, 'Caveat', cursive);
+    font-size: var(--diary-char-font-size, 17px);
+    color: var(--diary-char-text-color, #4a627a);
+}
+
+.diary-edit-textarea:focus {
+    border-color: #f8a4b8;
+    box-shadow: 0 0 0 3px rgba(248, 164, 184, 0.1);
+}
+
+.diary-edit-save-bar {
+    display: flex;
+    justify-content: center;
+    padding-top: 20px;
+    margin-top: 12px;
+    border-top: 1px dashed rgba(200, 160, 140, 0.2);
+}
+
+.diary-edit-save-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 28px;
+    border: none;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #f8a4b8, #d4728a);
+    color: #fff;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s ease, opacity 0.15s ease;
+    box-shadow: 0 4px 12px rgba(212, 114, 138, 0.25);
+}
+
+.diary-edit-save-btn:hover {
+    opacity: 0.9;
+}
+
+.diary-edit-save-btn:active {
+    transform: scale(0.95);
 }
 
 /* Text Area */
@@ -2158,6 +2306,21 @@
     background: rgba(248, 164, 184, 0.08);
 }
 
+.phone-dark-mode .diary-compose-mood-emoji-input {
+    background: rgba(44, 44, 46, 0.6);
+    border-color: rgba(248, 164, 184, 0.2);
+}
+
+.phone-dark-mode .diary-compose-mood-hint {
+    color: #5a5048;
+}
+
+.phone-dark-mode .diary-edit-textarea {
+    background: rgba(44, 44, 46, 0.75);
+    color: #e0d0c0;
+    border-color: rgba(248, 164, 184, 0.2);
+}
+
 .phone-dark-mode .diary-compose-textarea {
     background: rgba(44, 44, 46, 0.75);
     color: #e0d0c0;
@@ -2273,12 +2436,15 @@
 .phone-dark-mode .diary-theme-preview-default {
     background: linear-gradient(135deg, #1a1412, #1c1520, #18151e);
 }
+
 .phone-dark-mode .diary-theme-preview-sakura {
     background: linear-gradient(135deg, #1f1218, #251520, #201320);
 }
+
 .phone-dark-mode .diary-theme-preview-lavender {
     background: linear-gradient(135deg, #151020, #1a1528, #161224);
 }
+
 .phone-dark-mode .diary-theme-preview-forest {
     background: linear-gradient(135deg, #0f1a14, #121e16, #101c14);
 }
@@ -2580,9 +2746,17 @@
 
 /* Card highlight when jumping from calendar */
 @keyframes diary-card-pop {
-    0%   { box-shadow: 0 0 0 0 rgba(212, 114, 138, 0.5); }
-    50%  { box-shadow: 0 0 0 6px rgba(212, 114, 138, 0.2); }
-    100% { box-shadow: 0 0 0 0 rgba(212, 114, 138, 0); }
+    0% {
+        box-shadow: 0 0 0 0 rgba(212, 114, 138, 0.5);
+    }
+
+    50% {
+        box-shadow: 0 0 0 6px rgba(212, 114, 138, 0.2);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(212, 114, 138, 0);
+    }
 }
 
 .diary-card-highlight {

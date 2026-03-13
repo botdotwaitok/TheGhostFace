@@ -59,7 +59,15 @@ export function loadSettings() {
             }
         }
 
-        const settings = { ...defaultSettings, ...charSettings, ...globalSettings };
+        // Merge: defaults → global (auth/identity) → char-specific (probabilities etc.)
+        // Strip global keys from charSettings to prevent stale legacy values from
+        // overriding the authoritative globalSettings (e.g. authToken, userId).
+        const globalKeys = new Set(['backendUrl', 'secretToken', 'authToken', 'username', 'userId', 'displayName', 'avatarUrl', 'notifications', 'customUserName']);
+        const charOnly = {};
+        for (const [k, v] of Object.entries(charSettings)) {
+            if (!globalKeys.has(k)) charOnly[k] = v;
+        }
+        const settings = { ...defaultSettings, ...globalSettings, ...charOnly };
         setSettings(settings);
 
         // Generate userId if missing (legacy fallback)

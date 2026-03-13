@@ -340,9 +340,42 @@ function buildBubbleRow(role, content, thought, msgIndex, reactions) {
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
+ * Parse XML-style media tags (<图片>, <视频>, <音乐>, <新闻>) in HTML-escaped text.
+ * Renders them as styled media cards, matching the moments module's rendering.
+ * Must be called on ALREADY escHtml'd text (since the tags become &lt;图片&gt;).
+ * @param {string} escapedText - HTML-escaped text
+ * @returns {string} Text with media tags replaced by styled cards
+ */
+function parseChatMediaTags(escapedText) {
+    if (!escapedText) return escapedText;
+
+    const MEDIA_TYPES = {
+        '图片': { icon: 'fa-image', label: '图片' },
+        '视频': { icon: 'fa-video', label: '视频' },
+        '音乐': { icon: 'fa-music', label: '音乐' },
+        '新闻': { icon: 'fa-newspaper', label: '新闻' },
+    };
+
+    let result = escapedText;
+    for (const [tag, props] of Object.entries(MEDIA_TYPES)) {
+        const regex = new RegExp(`&lt;${tag}&gt;([\\s\\S]*?)&lt;\\/${tag}&gt;`, 'gi');
+        result = result.replace(regex, (_, content) => `
+            <div class="chat-special-card">
+                <div class="chat-special-icon image"><i class="fa-solid ${props.icon}"></i></div>
+                <div class="chat-special-content">
+                    ${content}
+                    <div class="chat-special-label">${props.label}</div>
+                </div>
+            </div>`);
+    }
+    return result;
+}
+
+/**
  * Parse text for special message patterns and render as styled cards.
  * Supports both full-match (entire message is a token) and embedded tokens
  * within mixed text (e.g. "给你~ [礼物:小玩具球]").
+ * Also handles XML-style media tags (<图片>, <视频>, etc.).
  * Falls back to plain text bubble.
  */
 function parseSpecialMessages(text) {
@@ -425,44 +458,50 @@ function parseSpecialMessages(text) {
         if (fullMatch) return pattern.render(fullMatch);
     }
 
-    // ── Scan for embedded special tokens within mixed text ──
-    // Try each pattern individually to find the first embedded token
-    let firstMatch = null;
-    let matchedPattern = null;
-
+    // ── Scan for ALL embedded special tokens within mixed text ──
+    // Collect all matches with their positions, then build output in order
+    const allMatches = [];
     for (const pattern of SPECIAL_PATTERNS) {
-        const m = text.match(pattern.regex);
-        if (m && (firstMatch === null || m.index < firstMatch.index)) {
-            firstMatch = m;
-            matchedPattern = pattern;
+        const globalRe = new RegExp(pattern.regex.source, 'g');
+        let m;
+        while ((m = globalRe.exec(text)) !== null) {
+            allMatches.push({ match: m, pattern, start: m.index, end: m.index + m[0].length });
         }
     }
 
-    if (firstMatch && matchedPattern) {
-        const htmlParts = [];
-        const tokenStart = firstMatch.index;
-        const tokenEnd = tokenStart + firstMatch[0].length;
-
-        // Text before the token → plain bubble
-        const before = text.slice(0, tokenStart).trim();
-        if (before) {
-            htmlParts.push(`<div class="chat-bubble">${escHtml(before)}</div>`);
+    if (allMatches.length > 0) {
+        // Sort by position and remove overlapping matches (keep earliest)
+        allMatches.sort((a, b) => a.start - b.start);
+        const filtered = [allMatches[0]];
+        for (let i = 1; i < allMatches.length; i++) {
+            if (allMatches[i].start >= filtered[filtered.length - 1].end) {
+                filtered.push(allMatches[i]);
+            }
         }
 
-        // Render the matched token as its special card
-        htmlParts.push(matchedPattern.render(firstMatch));
-
-        // Text after the token → plain bubble
-        const after = text.slice(tokenEnd).trim();
+        const htmlParts = [];
+        let cursor = 0;
+        for (const { match, pattern, start, end } of filtered) {
+            // Text before this token → plain bubble (with media tag rendering)
+            const before = text.slice(cursor, start).trim();
+            if (before) {
+                htmlParts.push(`<div class="chat-bubble">${parseChatMediaTags(escHtml(before))}</div>`);
+            }
+            // Render the matched token as its special card
+            htmlParts.push(pattern.render(match));
+            cursor = end;
+        }
+        // Text after the last token → plain bubble (with media tag rendering)
+        const after = text.slice(cursor).trim();
         if (after) {
-            htmlParts.push(`<div class="chat-bubble">${escHtml(after)}</div>`);
+            htmlParts.push(`<div class="chat-bubble">${parseChatMediaTags(escHtml(after))}</div>`);
         }
 
         return htmlParts.join('');
     }
 
-    // ── No special tokens found → plain text bubble ──
-    return `<div class="chat-bubble">${escHtml(text)}</div>`;
+    // ── No bracket-style tokens found → plain text with media tag rendering ──
+    return `<div class="chat-bubble">${parseChatMediaTags(escHtml(text))}</div>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1123,6 +1162,7 @@ async function rerollLastMessage() {
     updateButtonStates();
     showTypingIndicator(true);
 
+    const messagesArea = document.getElementById('chat_messages_area');
     try {
         const systemPrompt = await buildChatSystemPrompt();
         const userPrompt = buildChatUserPrompt(lastUserMessages, history.slice(0, -lastUserMessages.length));
@@ -1963,7 +2003,7 @@ async function handleReturnHome() {
     const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
     const memoryLabel = doMemoryFragments ? '✅ 提取记忆碎片' : '❌ 不提取记忆碎片';
 
-    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n📄 同步方式: ${modeLabel}\n🧩 ${memoryLabel}\n\n（可在 设置 → 回家模式 中修改）`)) {
+    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n📄 同步方式: ${modeLabel}\n🧩 ${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
         return;
     }
 
@@ -1999,7 +2039,7 @@ async function handleReturnHome() {
 
                 const fragments = await generateSummary(summarizerMessages);
                 if (fragments && Array.isArray(fragments) && fragments.length > 0) {
-                    await saveToWorldBook(fragments, null, null, isContentSimilar, false);
+                    await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
                     if (statusEl) statusEl.textContent = `🧩 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;
                 } else {

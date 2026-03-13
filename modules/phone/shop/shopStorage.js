@@ -1,5 +1,5 @@
 // ui/phone/shop/shopStorage.js — Manages local inventory and active effects for purchased shop items
-import { getShopReviews, postShopReview, deleteShopReview } from '../moments/apiClient.js';
+import { getShopReviews, postShopReview, deleteShopReview } from './shopApi.js';
 
 /**
  * Data Structure stored in localStorage under 'gf_shop_state'
