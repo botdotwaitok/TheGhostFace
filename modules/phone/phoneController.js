@@ -5,7 +5,7 @@ import { phonePanelTemplate } from './phoneShell.js';
 import { escapeHtml } from './utils/helpers.js';
 import { openMomentsPanel } from './moments/momentsUI.js';
 import { showToast } from './moments/momentsUI.js';
-import { getUnreadNotifications, getFeedCache } from './moments/moments.js';
+import { getUnreadNotifications, getFeedCache, getSettings } from './moments/moments.js';
 import { openSettingsApp, applySavedAppearance } from './settings/settingsApp.js';
 import { openFriendsApp } from './friends/friendsApp.js';
 import { openDiaryApp } from './diary/diaryApp.js';
@@ -358,11 +358,18 @@ export function openAppInViewport(title, htmlContent, afterMount, actionsHtml = 
     }
 }
 
+/** Check whether user is fully authenticated (logged in + Discord bound) */
+function isPhoneUnlocked() {
+    const s = getSettings();
+    return !!(s.authToken && s.discordBound !== false);
+}
+
 function renderApps() {
     const grid = document.getElementById('phone_app_grid');
     if (!grid) return;
 
-    grid.innerHTML = registeredApps.map(app => renderAppIcon(app)).join('');
+    const unlocked = isPhoneUnlocked();
+    grid.innerHTML = registeredApps.map(app => renderAppIcon(app, unlocked)).join('');
 
     // Bind click events
     document.querySelectorAll('.phone-app-item[data-app-id]').forEach(el => {
@@ -376,6 +383,18 @@ function renderApps() {
                 return;
             }
 
+            // Auth guard: only Settings is accessible without login + Discord binding
+            if (appId !== 'settings' && !isPhoneUnlocked()) {
+                const s = getSettings();
+                if (!s.authToken) {
+                    showPhoneToast('请先登录后再使用');
+                } else {
+                    showPhoneToast('请先绑定 Discord 账号');
+                }
+                openSettingsApp();
+                return;
+            }
+
             if (typeof app.onOpen === 'function') {
                 app.onOpen();
             }
@@ -383,20 +402,26 @@ function renderApps() {
     });
 }
 
-function renderAppIcon(app) {
+function renderAppIcon(app, unlocked = true) {
     const badgeHtml = (app.badge && app.badge > 0)
         ? `<span class="phone-app-badge">${app.badge > 99 ? '99+' : app.badge}</span>`
         : '';
 
+    const isLocked = !unlocked && app.id !== 'settings';
     const comingSoonClass = app.comingSoon ? 'coming-soon' : '';
+    const lockedClass = isLocked ? 'phone-app-locked' : '';
     const glowStyle = app.glow ? `--app-glow: ${app.glow};` : '';
+    const lockOverlay = isLocked
+        ? `<div class="phone-app-lock-overlay"><i class="fa-solid fa-lock"></i></div>`
+        : '';
 
     return `
-        <div class="phone-app-item" data-app-id="${app.id}">
+        <div class="phone-app-item ${lockedClass}" data-app-id="${app.id}">
             <div class="phone-app-icon ${comingSoonClass}"
                  style="background: ${app.color}; ${glowStyle}">
                 <i class="${app.icon}"></i>
                 ${badgeHtml}
+                ${lockOverlay}
             </div>
             <span class="phone-app-name">${escapeHtml(app.name)}</span>
         </div>

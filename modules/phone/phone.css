@@ -306,7 +306,27 @@
     z-index: 3;
 }
 
+/* ─── Auth Lock overlay (not logged in / Discord unbound) ─── */
+.phone-app-item.phone-app-locked .phone-app-icon {
+    opacity: 0.4;
+    filter: grayscale(0.6) saturate(0.3);
+}
 
+.phone-app-lock-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+}
+
+.phone-app-lock-overlay i {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.85);
+    transform: scale(1) !important;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+}
 
 /* ─── App Viewport (where opened apps render) ─── */
 .phone-app-viewport {
