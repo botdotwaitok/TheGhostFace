@@ -51,4 +51,30 @@ export class ElevenlabsTtsProvider {
 
         return response.arrayBuffer();
     }
+
+    /**
+     * 获取 ElevenLabs 可用声音列表
+     * Ported from Whispers tts.js fetchElevenLabsVoices
+     * @param {Object} settings - { apiKey }
+     * @returns {Promise<Array<{ id: string, name: string, language: string }>>}
+     */
+    async fetchVoices(settings) {
+        const apiKey = settings.apiKey || '';
+        if (!apiKey) throw new Error('ElevenLabs API Key is required to fetch voices');
+
+        const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': apiKey },
+        });
+
+        if (!response.ok) {
+            throw new Error(`ElevenLabs API error (${response.status})`);
+        }
+
+        const data = await response.json();
+        return (data.voices || []).map(v => ({
+            id: v.voice_id,
+            name: `${v.name} (${v.labels?.accent || v.labels?.gender || ''})`,
+            language: v.labels?.language || '',
+        }));
+    }
 }

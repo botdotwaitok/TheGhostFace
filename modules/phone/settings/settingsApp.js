@@ -1036,12 +1036,29 @@ export function openSettingsApp() {
                     <div class="phone-settings-row">
                         <label>本地端点</label>
                         <input id="${P}_tts_gsvi_endpoint" type="text" class="phone-settings-input"
-                               placeholder="http://localhost:8000" />
+                               placeholder="http://localhost:9881" />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>API 格式</label>
+                        <select id="${P}_tts_gsvi_format" class="phone-settings-input" style="height:36px;">
+                            <option value="auto">自动检测 (按端口)</option>
+                            <option value="adapter">Adapter (9881 风格)</option>
+                            <option value="gsvi">GSVI Inference (8000 风格)</option>
+                        </select>
+                    </div>
+                    <div style="padding: 0 16px 8px; font-size: 11px; color: #8e8e93; line-height: 1.4;">
+                        如果自动检测不对，请手动选择。换了非默认端口（如8001）请手动选。
                     </div>
                     <div class="phone-settings-row">
                         <label>角色名 (Voice ID)</label>
-                        <input id="${P}_tts_gsvi_voice" type="text" class="phone-settings-input"
-                               placeholder="模型名称" />
+                        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:0;">
+                            <select id="${P}_tts_gsvi_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
+                                <option value="">点击右侧按钮获取模型列表</option>
+                            </select>
+                            <button id="${P}_tts_gsvi_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取模型列表">
+                                <i class="fa-solid fa-rotate"></i> 获取
+                            </button>
+                        </div>
                     </div>
                     <div class="phone-settings-row">
                         <label>语速</label>
@@ -1061,8 +1078,14 @@ export function openSettingsApp() {
                     </div>
                     <div class="phone-settings-row">
                         <label>Voice ID</label>
-                        <input id="${P}_tts_11labs_voice" type="text" class="phone-settings-input"
-                               placeholder="pNInz6obpgDQGcFmaJgB" />
+                        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:0;">
+                            <select id="${P}_tts_11labs_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
+                                <option value="">点击右侧按钮获取声音列表</option>
+                            </select>
+                            <button id="${P}_tts_11labs_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取声音列表">
+                                <i class="fa-solid fa-rotate"></i> 获取
+                            </button>
+                        </div>
                     </div>
                     <div class="phone-settings-row">
                         <label>模型</label>
@@ -1092,8 +1115,14 @@ export function openSettingsApp() {
                     </div>
                     <div class="phone-settings-row">
                         <label>Voice ID</label>
-                        <input id="${P}_tts_minimax_voice" type="text" class="phone-settings-input"
-                               placeholder="female-shaonv" />
+                        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:0;">
+                            <select id="${P}_tts_minimax_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
+                                <option value="">点击右侧按钮获取声音列表</option>
+                            </select>
+                            <button id="${P}_tts_minimax_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取声音列表">
+                                <i class="fa-solid fa-rotate"></i> 获取
+                            </button>
+                        </div>
                     </div>
                     <div class="phone-settings-row">
                         <label>模型</label>
@@ -1605,6 +1634,7 @@ export function openSettingsApp() {
             const mmS = ttsEngine.getProviderSettings('MiniMax');
 
             const gsviEndpointInput = document.getElementById(`${P}_tts_gsvi_endpoint`);
+            const gsviFormatSelect = document.getElementById(`${P}_tts_gsvi_format`);
             const gsviVoiceInput = document.getElementById(`${P}_tts_gsvi_voice`);
             const gsviSpeedSlider = document.getElementById(`${P}_tts_gsvi_speed`);
             const gsviSpeedVal = document.getElementById(`${P}_tts_gsvi_speed_val`);
@@ -1621,17 +1651,109 @@ export function openSettingsApp() {
             const proxyInput = document.getElementById(`${P}_tts_proxy_server`);
 
             // Fill existing fields
-            if (gsviEndpointInput) gsviEndpointInput.value = gsviS.endpoint || 'http://localhost:8000';
-            if (gsviVoiceInput) gsviVoiceInput.value = gsviS.voiceId || '';
+            if (gsviEndpointInput) gsviEndpointInput.value = gsviS.endpoint || 'http://localhost:9881';
+            if (gsviFormatSelect) gsviFormatSelect.value = gsviS.apiFormat || 'auto';
             if (elevKeyInput) elevKeyInput.value = elevS.apiKey || '';
-            if (elevVoiceInput) elevVoiceInput.value = elevS.voiceId || '';
             if (mmKeyInput) mmKeyInput.value = mmS.apiKey || '';
-            if (mmVoiceInput) mmVoiceInput.value = mmS.voiceId || '';
             if (proxyInput) proxyInput.value = elevS.proxyServer || mmS.proxyServer || 'http://74.208.78.209:3421';
 
             // Fill new model + speed fields
             if (elevModelSelect) elevModelSelect.value = elevS.model || 'eleven_multilingual_v2';
             if (mmModelSelect) mmModelSelect.value = mmS.model || 'speech-02-hd';
+
+            // ── Voice Select helpers ──
+
+            /**
+             * 填充声音下拉框
+             * @param {HTMLSelectElement} selectEl
+             * @param {Array<{id:string, name:string}>} voices
+             * @param {string} savedId
+             */
+            function _populateVoiceSelect(selectEl, voices, savedId) {
+                if (!selectEl) return;
+                selectEl.innerHTML = '';
+                if (voices.length === 0) {
+                    selectEl.innerHTML = '<option value="">无可用声音</option>';
+                    return;
+                }
+                voices.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.id;
+                    opt.textContent = v.name || v.id;
+                    selectEl.appendChild(opt);
+                });
+                if (savedId) selectEl.value = savedId;
+                // If savedId not in list, keep first option selected
+            }
+
+            /**
+             * 处理 fetch 按钮点击
+             */
+            async function _handleFetchVoices(providerName, selectEl, savedId, fetchBtn) {
+                if (!selectEl) return;
+                const origHtml = fetchBtn?.innerHTML;
+                try {
+                    if (fetchBtn) fetchBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+                    // For providers that need current input values as settings (e.g. API key, endpoint),
+                    // temporarily save them so fetchVoices can use them
+                    if (providerName === 'GPT-SoVITS') {
+                        ttsEngine.updateProviderSettings('GPT-SoVITS', {
+                            endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:9881',
+                            apiFormat: gsviFormatSelect?.value || 'auto',
+                        });
+                    } else if (providerName === 'ElevenLabs') {
+                        ttsEngine.updateProviderSettings('ElevenLabs', {
+                            apiKey: elevKeyInput?.value?.trim() || '',
+                        });
+                    } else if (providerName === 'MiniMax') {
+                        ttsEngine.updateProviderSettings('MiniMax', {
+                            apiKey: mmKeyInput?.value?.trim() || '',
+                        });
+                    }
+
+                    const voices = await ttsEngine.fetchVoices(providerName);
+                    _populateVoiceSelect(selectEl, voices, savedId);
+                    showToast(`已获取 ${voices.length} 个声音/模型`);
+                } catch (err) {
+                    console.error(`[Settings] fetchVoices(${providerName}) failed:`, err);
+                    showToast(`获取失败: ${err.message}`);
+                } finally {
+                    if (fetchBtn && origHtml) fetchBtn.innerHTML = origHtml;
+                }
+            }
+
+            // Restore saved voice IDs as pre-selected option (even before fetch)
+            if (gsviVoiceInput && gsviS.voiceId) {
+                gsviVoiceInput.innerHTML = `<option value="${gsviS.voiceId}">${gsviS.voiceId}</option>`;
+                gsviVoiceInput.value = gsviS.voiceId;
+            }
+            if (elevVoiceInput && elevS.voiceId) {
+                elevVoiceInput.innerHTML = `<option value="${elevS.voiceId}">${elevS.voiceId}</option>`;
+                elevVoiceInput.value = elevS.voiceId;
+            }
+            if (mmVoiceInput && mmS.voiceId) {
+                mmVoiceInput.innerHTML = `<option value="${mmS.voiceId}">${mmS.voiceId}</option>`;
+                mmVoiceInput.value = mmS.voiceId;
+            }
+
+            // Bind fetch buttons
+            const gsviFetchBtn = document.getElementById(`${P}_tts_gsvi_fetch_btn`);
+            const elevFetchBtn = document.getElementById(`${P}_tts_11labs_fetch_btn`);
+            const mmFetchBtn = document.getElementById(`${P}_tts_minimax_fetch_btn`);
+
+            if (gsviFetchBtn) {
+                gsviFetchBtn.addEventListener('click', () =>
+                    _handleFetchVoices('GPT-SoVITS', gsviVoiceInput, gsviS.voiceId, gsviFetchBtn));
+            }
+            if (elevFetchBtn) {
+                elevFetchBtn.addEventListener('click', () =>
+                    _handleFetchVoices('ElevenLabs', elevVoiceInput, elevS.voiceId, elevFetchBtn));
+            }
+            if (mmFetchBtn) {
+                mmFetchBtn.addEventListener('click', () =>
+                    _handleFetchVoices('MiniMax', mmVoiceInput, mmS.voiceId, mmFetchBtn));
+            }
 
             // Speed sliders — restore values + bind live label updates
             const _initSpeedSlider = (slider, label, savedSpeed) => {
@@ -1653,7 +1775,8 @@ export function openSettingsApp() {
 
                 // Save GPT-SoVITS settings
                 ttsEngine.updateProviderSettings('GPT-SoVITS', {
-                    endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:8000',
+                    endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:9881',
+                    apiFormat: gsviFormatSelect?.value || 'auto',
                     voiceId: gsviVoiceInput?.value?.trim() || '',
                     speed: parseFloat(gsviSpeedSlider?.value) || 1.0,
                 });

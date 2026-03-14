@@ -139,4 +139,120 @@ export class GsviTtsProvider {
 
         return response.arrayBuffer();
     }
+
+    /**
+     * 获取 GPT-SoVITS 可用模型/声音列表
+     * 自动检测 API 格式：Adapter (9881) 走 /speakers_list，GSVI (8000) 走 /models/{version}
+     * @param {Object} settings - { endpoint, apiFormat }
+     * @returns {Promise<Array<{ id: string, name: string, language: string }>>}
+     */
+    async fetchVoices(settings) {
+        const endpoint = (settings.endpoint || 'http://localhost:9881').replace(/\/$/, '');
+        const format = this._detectFormat(endpoint, settings.apiFormat);
+
+        console.debug(`${LOG_PREFIX} fetchVoices: format=${format}, endpoint=${endpoint}`);
+
+        if (format === 'adapter') {
+            return this._fetchVoicesAdapter(endpoint);
+        } else {
+            return this._fetchVoicesGSVI(endpoint);
+        }
+    }
+
+    // ─── Adapter format: GET /speakers_list or /character_list ───
+    async _fetchVoicesAdapter(endpoint) {
+        // Try /speakers first (returns named models with voice_id), then /speakers_list as fallback
+        const tryEndpoints = ['/speakers', '/speakers_list', '/character_list'];
+        for (const path of tryEndpoints) {
+            try {
+                const response = await fetch(this._resolveUrl(`${endpoint}${path}`));
+                if (!response.ok) continue;
+
+                const data = await response.json();
+
+                // Response can be: string[] like ["Alice", "Bob"]
+                // or object[] like [{ name: "Alice", ... }]
+                // or { speakers: [...] } / { characters: [...] }
+                let speakerList = [];
+                if (Array.isArray(data)) {
+                    speakerList = data;
+                } else if (data.speakers && Array.isArray(data.speakers)) {
+                    speakerList = data.speakers;
+                } else if (data.characters && Array.isArray(data.characters)) {
+                    speakerList = data.characters;
+                } else if (typeof data === 'object') {
+                    // Try keys as speaker names
+                    speakerList = Object.keys(data);
+                }
+
+                if (speakerList.length === 0) continue;
+
+                return speakerList.map(s => {
+                    if (typeof s === 'string') {
+                        return { id: s, name: s, language: 'auto' };
+                    }
+                    return { id: s.name || s.id || String(s), name: s.name || s.id || String(s), language: 'auto' };
+                });
+            } catch (err) {
+                console.warn(`⚠️ [TTS] GPT-SoVITS ${path}: ${err.message}`);
+            }
+        }
+
+        throw new Error('GPT-SoVITS Adapter: 无法获取角色列表 (尝试了 /speakers_list, /character_list, /speakers)');
+    }
+
+    // ─── GSVI Inference Plugin: GET /models/{version} ───
+    async _fetchVoicesGSVI(endpoint) {
+        const versions = ['v2', 'v3', 'v4', 'v2Pro'];
+        const allVoices = [];
+
+        for (const version of versions) {
+            try {
+                const response = await fetch(this._resolveUrl(`${endpoint}/models/${version}`));
+                if (!response.ok) {
+                    console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version} returned ${response.status}, skipping`);
+                    continue;
+                }
+
+                const data = await response.json();
+
+                // API returns { msg, models: { modelName: { folder: [emotions] } } }
+                const models = data.models || data;
+                if (typeof models !== 'object' || Object.keys(models).length === 0) {
+                    console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version}: ${data.msg || 'empty'}`);
+                    continue;
+                }
+
+                for (const [modelName, folders] of Object.entries(models)) {
+                    const emotions = [];
+                    let promptLang = '';
+                    if (folders && typeof folders === 'object') {
+                        for (const [folderName, emotionList] of Object.entries(folders)) {
+                            if (!promptLang) promptLang = folderName;
+                            if (Array.isArray(emotionList)) {
+                                emotions.push(...emotionList.filter(e => e && e.length > 0));
+                            }
+                        }
+                    }
+                    allVoices.push({
+                        id: modelName,
+                        name: `${modelName} [${version}]`,
+                        language: promptLang || 'auto',
+                        emotions,
+                        version,
+                        prompt_lang: promptLang || '',
+                    });
+                }
+            } catch (err) {
+                console.warn(`⚠️ [TTS] Failed to fetch /models/${version}: ${err.message}`);
+            }
+        }
+
+        if (allVoices.length === 0) {
+            throw new Error('GPT-SoVITS GSVI: No models found from any version (v2/v3/v4/v2Pro)');
+        }
+
+        return allVoices;
+    }
 }
+

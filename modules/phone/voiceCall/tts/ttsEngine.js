@@ -62,6 +62,30 @@ export class TtsEngine {
         return Array.from(this._providers.keys()).map(name => ({ name }));
     }
 
+    /**
+     * 获取指定 Provider 的声音/模型列表
+     * @param {string} providerName - Provider 名称
+     * @returns {Promise<Array<{ id: string, name: string, language?: string }>>}
+     */
+    async fetchVoices(providerName) {
+        const name = providerName || this._activeProviderName;
+        if (name === 'none' || !this._providers.has(name)) {
+            throw new Error(`Unknown provider: ${name}`);
+        }
+
+        const entry = this._providers.get(name);
+        if (!entry.instance) {
+            entry.instance = new entry.ProviderClass();
+        }
+
+        if (typeof entry.instance.fetchVoices !== 'function') {
+            throw new Error(`Provider "${name}" does not support fetchVoices`);
+        }
+
+        const providerSettings = this._settings.providerSettings[name] || {};
+        return entry.instance.fetchVoices(providerSettings);
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // 合成 & 播放 (with retry)
     // ═══════════════════════════════════════════════════════════════

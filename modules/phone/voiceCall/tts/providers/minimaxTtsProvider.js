@@ -46,4 +46,26 @@ export class MinimaxTtsProvider {
 
         return response.arrayBuffer();
     }
+
+    /**
+     * 获取 MiniMax 可用声音列表（硬编码系统声音）
+     * Ported from Whispers tts.js fetchMiniMaxVoices
+     * @returns {Promise<Array<{ id: string, name: string, language: string }>>}
+     */
+    async fetchVoices(_settings) {
+        return [
+            { id: 'male-qn-qingse', name: '青涩青年 (Male)', language: 'zh' },
+            { id: 'male-qn-jingying', name: '精英青年 (Male)', language: 'zh' },
+            { id: 'male-qn-badao', name: '霸道青年 (Male)', language: 'zh' },
+            { id: 'male-qn-daxuesheng', name: '大学生 (Male)', language: 'zh' },
+            { id: 'female-shaonv', name: '少女 (Female)', language: 'zh' },
+            { id: 'female-yujie', name: '御姐 (Female)', language: 'zh' },
+            { id: 'female-chengshu', name: '成熟女性 (Female)', language: 'zh' },
+            { id: 'female-tianmei', name: '甜美女 (Female)', language: 'zh' },
+            { id: 'presenter_male', name: '男主持人 (Male)', language: 'zh' },
+            { id: 'presenter_female', name: '女主持人 (Female)', language: 'zh' },
+            { id: 'audiobook_male_1', name: '有声书男1 (Male)', language: 'zh' },
+            { id: 'audiobook_female_1', name: '有声书女1 (Female)', language: 'zh' },
+        ];
+    }
 }
