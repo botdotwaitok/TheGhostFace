@@ -273,7 +273,7 @@ function renderFeed(posts) {
     if (!posts || posts.length === 0) {
         feedEl.innerHTML = `
             <div class="moments-empty-state">
-                <div class="moments-empty-icon">🥺</div>
+                <div class="moments-empty-icon"><i class="ph ph-smiley-sad"></i></div>
                 <div>还没有动态</div>
                 <div class="moments-empty-hint">现在这里啥也没有！不如去打黎明杀机！</div>
             </div>
@@ -1579,7 +1579,7 @@ export async function openProfilePage(userId, displayName = '', avatarUrl = '') 
         <div class="moments-profile-feed" id="profile_feed">
             ${userPosts.length === 0 ? `
                 <div class="moments-empty-state">
-                    <div class="moments-empty-icon">🌙</div>
+                    <div class="moments-empty-icon"><i class="ph ph-moon"></i></div>
                     <div>还没有动态</div>
                 </div>
             ` : ''}

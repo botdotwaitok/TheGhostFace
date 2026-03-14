@@ -298,7 +298,7 @@ export function handleResponseReady(e) {
             const messagesArea = document.getElementById('chat_messages_area');
             if (messagesArea && errMsg) {
                 messagesArea.insertAdjacentHTML('beforeend',
-                    `<div class="chat-retract">⚠️ 发送失败: ${escHtml(errMsg)}</div>`);
+                    `<div class="chat-retract"><i class="ph ph-warning"></i> 发送失败: ${escHtml(errMsg)}</div>`);
             }
             scrollToBottom(true);
         }
@@ -337,7 +337,7 @@ export function handleRetryEvent(e) {
     messagesArea.insertAdjacentHTML('beforeend', `
         <div class="chat-retry-notice" id="${noticeId}">
             <div class="chat-retry-text">
-                ⚠️ 生成失败: ${escHtml(errMsg)}
+                <i class="ph ph-warning"></i> 生成失败: ${escHtml(errMsg)}
             </div>
             <div class="chat-retry-countdown">
                 ⏳ <span class="chat-retry-seconds">${remaining}</span>秒后重试 (${attempt}/${maxRetries})
@@ -359,7 +359,7 @@ export function handleRetryEvent(e) {
             // Show cancelled notice
             if (messagesArea) {
                 messagesArea.insertAdjacentHTML('beforeend',
-                    `<div class="chat-retract">🚫 已取消重试</div>`);
+                    `<div class="chat-retract"><i class="ph ph-prohibit"></i> 已取消重试</div>`);
                 scrollToBottom(true);
             }
             // Reset generating state
@@ -381,7 +381,7 @@ export function handleRetryEvent(e) {
             _retryCountdownTimer = null;
             const notice = document.getElementById(noticeId);
             if (notice) {
-                notice.innerHTML = `<div class="chat-retry-text">🔄 正在重试生成... (${attempt}/${maxRetries})</div>`;
+                notice.innerHTML = `<div class="chat-retry-text"><i class="ph ph-arrows-clockwise"></i> 正在重试生成... (${attempt}/${maxRetries})</div>`;
             }
             showTypingIndicator(true);
         }
@@ -598,7 +598,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                     showTypingIndicator(false);
                     if (messagesArea) {
                         messagesArea.insertAdjacentHTML('beforeend',
-                            `<div class="chat-retract">✨ 【${escHtml(expItem.name)}】效果已消退</div>`);
+                            `<div class="chat-retract"><i class="ph ph-sparkle"></i> 【${escHtml(expItem.name)}】效果已消退</div>`);
                     }
                 }
             }
@@ -613,7 +613,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                     showTypingIndicator(false);
                     if (messagesArea) {
                         messagesArea.insertAdjacentHTML('beforeend',
-                            `<div class="chat-retract">🎭 【${escHtml(expItem.name)}】人格已恢复正常</div>`);
+                            `<div class="chat-retract"><i class="ph ph-masks-theater"></i> 【${escHtml(expItem.name)}】人格已恢复正常</div>`);
                     }
                 }
             }
@@ -627,7 +627,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                 const expItem = getShopItem(effect.itemId);
                 if (expItem && messagesArea) {
                     messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-retract">🎭 【${escHtml(expItem.name)}】已触发完毕</div>`);
+                        `<div class="chat-retract"><i class="ph ph-masks-theater"></i> 【${escHtml(expItem.name)}】已触发完毕</div>`);
                 }
             }
         } catch (e) { /* */ }
@@ -642,7 +642,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                     messagesArea.insertAdjacentHTML('beforeend',
                         getPrankEventCardHtml(effect.itemId));
                     messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-retract">🎭 【${escHtml(expItem.name)}】恶作剧已发动！</div>`);
+                        `<div class="chat-retract"><i class="ph ph-masks-theater"></i> 【${escHtml(expItem.name)}】恶作剧已发动！</div>`);
                 }
             }
         } catch (e) { /* */ }
@@ -703,7 +703,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                 } else {
                     // 没有候选目标
                     const statusEl = document.getElementById(`${robCardId}_status`);
-                    if (statusEl) statusEl.textContent = '⚠️ 找不到可以抢劫的目标';
+                    if (statusEl) statusEl.innerHTML = '<i class="ph ph-warning"></i> 找不到可以抢劫的目标';
                 }
             }
         } catch (e) { console.warn('[RobberySystem] auto-robbery error:', e); }
@@ -721,7 +721,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
         // Show error as system message
         if (messagesArea) {
             messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-retract">⚠️ 发送失败: ${escHtml(error.message)}</div>`
+                `<div class="chat-retract"><i class="ph ph-warning"></i> 发送失败: ${escHtml(error.message)}</div>`
             );
         }
         scrollToBottom(true);

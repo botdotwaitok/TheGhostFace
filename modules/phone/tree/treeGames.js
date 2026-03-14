@@ -267,12 +267,12 @@ function renderQuizResults(state, onFinish) {
     let tierLabel = '';
     if (score >= total) {
         reward = { ...GAME_REWARDS.quiz.perfect };
-        tierLabel = '💯 完美默契！';
+        tierLabel = '<i class="ph ph-trophy"></i> 完美默契！';
     } else if (score >= 4) {
         reward = { ...GAME_REWARDS.quiz.pass };
-        tierLabel = '💕 默契不错~';
+        tierLabel = '<i class="ph ph-heart"></i> 默契不错~';
     } else {
-        tierLabel = '🤔 还需要多了解对方哦';
+        tierLabel = '<i class="ph ph-question"></i> 还需要多了解对方哦';
     }
 
     const hist2 = getGameHistory();
@@ -578,7 +578,7 @@ async function _showGachaDialogueOverlay() {
     overlay.innerHTML = `
         <div class="tg-gacha-dialogue-card">
             <div class="tg-gacha-dialogue-header">
-                <span class="tg-gacha-dialogue-emoji">💌</span>
+                <span class="tg-gacha-dialogue-emoji"><i class="ph ph-envelope-simple"></i></span>
                 <span class="tg-gacha-dialogue-title">恋人密语</span>
             </div>
             <div class="tg-gacha-dialogue-content" id="tg_gacha_dialogue_content">

@@ -37,17 +37,24 @@ export const phonePanelTemplate = String.raw`
             <!-- ═══ Widgets ═══ -->
             <div class="phone-widgets">
                 <div class="phone-widget-container">
-                    <div class="phone-widget weather-widget">
-                        <div>
-                            <div class="weather-location">The Fog</div>
-                            <div class="weather-temp">33&deg;</div>
+                    <div class="phone-widget memo-widget">
+                        <div class="memo-header">
+                            <i class="fa-solid fa-list-check memo-header-icon"></i>
+                            <span class="memo-title">备忘录</span>
                         </div>
-                        <div class="weather-footer">
-                            <i class="fa-solid fa-cloud-sun weather-icon"></i>
-                            <div class="weather-desc">Partly Cloudy<br>H:34&deg; L:26&deg;</div>
+                        <div class="memo-checklist">
+                            <div class="memo-item memo-item-pending" data-memo="diary">
+                                <span class="memo-item-icon"><i class="fa-regular fa-circle"></i></span>
+                                <span class="memo-item-label"><i class="ph ph-notebook"></i> 写日记</span>
+                            </div>
+                            <div class="memo-item memo-item-pending" data-memo="tree">
+                                <span class="memo-item-icon"><i class="fa-regular fa-circle"></i></span>
+                                <span class="memo-item-label"><i class="ph ph-tree"></i> 照顾树树</span>
+                            </div>
                         </div>
+                        <div class="memo-status">今日待办</div>
                     </div>
-                    <div class="phone-widget-label">Weather</div>
+                    <div class="phone-widget-label">备忘录</div>
                 </div>
                 
                 <div class="phone-widget-container">

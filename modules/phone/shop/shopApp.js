@@ -429,7 +429,7 @@ function bindReviewEvents(item) {
         if (!text) { showToast('请输入评价内容'); return; }
         const authorName = document.getElementById('shop_review_author')?.value?.trim() || '用户';
         addReview(item.id, { author: authorName, text, rating: selectedStars, isCharacter: false });
-        showToast('评价已提交 ✅');
+        showToast('评价已提交');
         document.getElementById('shop_reviews_list').innerHTML = buildReviewsList(item.id);
         document.getElementById('shop_review_form').style.display = 'none';
         document.getElementById('shop_review_text').value = '';
@@ -536,7 +536,7 @@ ${charContext}
             document.getElementById('shop_char_review_confirm')?.addEventListener('click', () => {
                 const finalName = document.getElementById('shop_char_review_author')?.value?.trim() || charName;
                 addReview(item.id, { author: finalName, text: pendingCharReview.text, rating: pendingCharReview.rating, isCharacter: true });
-                showToast(`${finalName} 的评价已发布 ✨`);
+                showToast(`${finalName} 的评价已发布`);
                 document.getElementById('shop_reviews_list').innerHTML = buildReviewsList(item.id);
                 if (charForm) charForm.style.display = 'none';
             }, { once: true });
@@ -733,7 +733,7 @@ function handleUseItem(itemId) {
 
     let confirmMsg;
     if (item.effectType === 'prankReaction') {
-        confirmMsg = `确认使用【${item.name}】吗？\n下次聊天时将自动对角色发动恶作剧！🎭`;
+        confirmMsg = `确认使用【${item.name}】吗？\n下次聊天时将自动对角色发动恶作剧！`;
     } else if (item.effectType === 'treeBuff') {
         confirmMsg = `确认使用【${item.name}】吗？\n${item.description}`;
     } else {
@@ -749,9 +749,9 @@ function handleUseItem(itemId) {
 
     const result = activateItem(itemId);
     if (result.success) {
-        showToast(`✨ ${result.message}`);
+        showToast(`${result.message}`);
     } else {
-        showToast(`❌ ${result.message}`);
+        showToast(`${result.message}`);
     }
 
     // Re-render inventory to reflect changes

@@ -149,7 +149,7 @@ async function _finishRecording(overlay) {
             const messagesArea = document.getElementById('chat_messages_area');
             if (messagesArea) {
                 messagesArea.insertAdjacentHTML('beforeend',
-                    `<div class="chat-retract">⚠️ 语音转写失败，请手动输入</div>`);
+                    `<div class="chat-retract"><i class="ph ph-warning"></i> 语音转写失败，请手动输入</div>`);
                 scrollToBottom(true);
             }
             return;
@@ -171,7 +171,7 @@ async function _finishRecording(overlay) {
         const messagesArea = document.getElementById('chat_messages_area');
         if (messagesArea) {
             messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-retract">⚠️ 语音发送失败: ${escHtml(err.message)}</div>`);
+                `<div class="chat-retract"><i class="ph ph-warning"></i> 语音发送失败: ${escHtml(err.message)}</div>`);
             scrollToBottom(true);
         }
     }

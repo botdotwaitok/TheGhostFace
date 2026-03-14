@@ -15,6 +15,17 @@ import * as diary from './modules/phone/diary/diaryApp.js';
 import { isDiaryEnabled, getDiaryMode } from './modules/phone/diary/diaryApp.js';
 import * as worldbookManager from './modules/worldbookManager.js';
 
+// ── Phosphor Icons CSS 注入 ──
+(function injectPhosphorIcons() {
+    const extensionUrl = new URL('.', import.meta.url).href;
+    const phosphorCssUrl = `${extensionUrl}assets/phosphor/style.css`;
+    if (!document.querySelector(`link[href="${phosphorCssUrl}"]`)) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = phosphorCssUrl;
+        document.head.appendChild(link);
+    }
+})();
 
 // structuredClone polyfill — 兼容旧版 Android WebView (Chrome < 98)
 if (typeof globalThis.structuredClone !== 'function') {

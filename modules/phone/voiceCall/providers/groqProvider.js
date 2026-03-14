@@ -2,6 +2,8 @@
 // Groq Whisper STT Provider — 通过 GhostFace Server 代理
 // 用户在手机设置里直接填 API Key，不依赖 SillyTavern。
 
+import { resolveProxyUrl } from '../../utils/corsProxyFetch.js';
+
 const LOG_PREFIX = '[STT:Groq]';
 
 export class GroqSttProvider {
@@ -50,7 +52,7 @@ export class GroqSttProvider {
 
         console.debug(`${LOG_PREFIX} transcribing with model: ${model}, audio: ${(base64.length * 0.75 / 1024).toFixed(1)} KB`);
 
-        const response = await fetch(`${proxyServer}/api/stt/transcribe`, {
+        const response = await fetch(resolveProxyUrl(`${proxyServer}/api/stt/transcribe`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

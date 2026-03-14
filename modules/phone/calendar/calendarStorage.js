@@ -3,6 +3,7 @@
 
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata, saveSettingsDebounced } from '../../../../../../../script.js';
+import { resolveProxyUrl, needsProxy } from '../utils/corsProxyFetch.js';
 
 const LOG = '[日历]';
 const META_KEY_EVENTS = 'gf_calendarEvents';
@@ -375,12 +376,17 @@ export async function fetchCloudHolidays() {
         }
 
         const baseUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
-        const response = await fetch(`${baseUrl}/api/calendar/holidays`, {
+        const fullUrl = `${baseUrl}/api/calendar/holidays`;
+        const proxied = needsProxy(fullUrl);
+        const headers = { 'Content-Type': 'application/json' };
+        if (proxied) {
+            headers['X-Cloud-Bearer'] = secretToken;
+        } else {
+            headers['Authorization'] = `Bearer ${secretToken}`;
+        }
+        const response = await fetch(resolveProxyUrl(fullUrl), {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${secretToken}`,
-                'Content-Type': 'application/json',
-            },
+            headers,
         });
 
         if (!response.ok) {

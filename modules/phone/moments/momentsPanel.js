@@ -82,7 +82,7 @@ export const momentsPanelTemplate = String.raw`
             <!-- ═══ Feed ═══ -->
             <div id="moments_feed" class="moments-feed">
                 <div class="moments-empty-state">
-                    <div class="moments-empty-icon">📱</div>
+                    <div class="moments-empty-icon"><i class="ph ph-device-mobile"></i></div>
                     <div>还没有动态</div>
                     <div class="moments-empty-hint">配置后端连接并启用朋友圈开始使用</div>
                 </div>

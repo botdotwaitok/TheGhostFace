@@ -362,7 +362,7 @@ function showLoading() {
     const loading = document.createElement('div');
     loading.className = 'tarot-loading';
     loading.id = 'tarot_loading';
-    loading.textContent = '✨ Sable正在翻开牌面……';
+    loading.innerHTML = '<i class="ph ph-sparkle"></i> Sable正在翻开牌面……';
     area.appendChild(loading);
     scrollToBottom(true);
 }

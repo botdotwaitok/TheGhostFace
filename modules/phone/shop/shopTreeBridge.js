@@ -32,7 +32,7 @@ export function applyTreeBuff(itemId) {
         case 'growth': {
             const result = addGrowth(effect.amount);
             console.log(`${BRIDGE_LOG} ${item.name}: 成长值 +${effect.amount} → ${result.newGrowth}`);
-            const extra = result.stageChanged ? ' 🎉 树升级了！' : '';
+            const extra = result.stageChanged ? ' 树升级了！' : '';
             return { success: true, message: `${item.name}：成长值 +${effect.amount}${extra}` };
         }
 

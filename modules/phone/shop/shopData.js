@@ -5,6 +5,7 @@
 // enabling hot-edit of the catalog from the Admin Dashboard without any git updates.
 
 import { getSettings } from '../moments/state.js';
+import { resolveProxyUrl } from '../utils/corsProxyFetch.js';
 
 /** @type {boolean} True after loadDynamicShopData() has resolved (regardless of outcome) */
 let _shopDataLoaded = false;
@@ -26,7 +27,7 @@ export async function loadDynamicShopData() {
         // Strip /api suffix if present — shop-catalog is at the root level
         baseUrl = baseUrl.replace(/\/api$/, '');
 
-        const res = await fetch(`${baseUrl}/shop-catalog`, {
+        const res = await fetch(resolveProxyUrl(`${baseUrl}/shop-catalog`), {
             cache: 'no-store',
             signal: AbortSignal.timeout(5000),
         });

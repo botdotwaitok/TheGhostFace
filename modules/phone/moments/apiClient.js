@@ -5,6 +5,7 @@ import { MOMENTS_LOG_PREFIX, logMoments } from './constants.js';
 import { getSettings, getFeedCache, setFeedCache } from './state.js';
 import { updateSettings } from './settings.js';
 import { avatarCache, saveLocalFeed, createLocalPost, addLocalComment, sortFeedCache } from './persistence.js';
+import { resolveProxyUrl, needsProxy } from '../utils/corsProxyFetch.js';
 
 // Fields the server is allowed to push into local settings.
 // `enabled`, `backendUrl`, `secretToken` etc. are local-only and MUST NOT
@@ -37,12 +38,20 @@ export async function apiRequest(method, path, body = null) {
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
     const url = `${baseUrl}${path}`;
+    const proxied = needsProxy(url);
     const headers = {
         'Content-Type': 'application/json',
     };
 
     if (settings.secretToken) {
-        headers['Authorization'] = `Bearer ${settings.secretToken}`;
+        if (proxied) {
+            // When going through ST's CORS proxy, don't overwrite `Authorization`
+            // (ST's basicAuth needs it for `Basic` scheme). Use a custom header
+            // that the cloud server also accepts as a fallback.
+            headers['X-Cloud-Bearer'] = settings.secretToken;
+        } else {
+            headers['Authorization'] = `Bearer ${settings.secretToken}`;
+        }
     }
     if (settings.authToken) {
         headers['X-Session-Token'] = settings.authToken;
@@ -53,7 +62,7 @@ export async function apiRequest(method, path, body = null) {
         opts.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, opts);
+    const response = await fetch(resolveProxyUrl(url), opts);
     if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
         throw new Error(`API ${method} ${path} failed: ${response.status} — ${errorText} `);

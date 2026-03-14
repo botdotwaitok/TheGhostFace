@@ -584,7 +584,7 @@ function showTreeMainPage() {
             ${isMaxed ? `
             <!-- Graduation -->
             <div class="tree-graduation-section">
-                <div class="tree-graduation-title">🎉 大树已满级！</div>
+                <div class="tree-graduation-title"><i class="ph ph-confetti"></i> 大树已满级！</div>
                 <div class="tree-graduation-desc">
                     你们的${escHtml(treeTypeInfo?.name || '小树')}已经长成了参天大树！<br>
                     可以让它毕业进入图鉴，然后种一棵新树吧！
@@ -1280,7 +1280,7 @@ function handleFruitCollection() {
             fruitImg.classList.add('tree-fruit-collected');
             setTimeout(() => fruitImg.classList.remove('tree-fruit-collected'), 800);
         }
-        showGrowthToast(isNew ? `🎉 收集到新果实: ${fruitName}！` : `${fruitName} 已在图鉴中`);
+        showGrowthToast(isNew ? `收集到新果实: ${fruitName}！` : `${fruitName} 已在图鉴中`);
         console.log(`${TREE_LOG} 果实收集成功: ${treeType} (roll=${roll.toFixed(2)}, chance=${chanceConfig.chance})`);
     } else {
         // Show miss
@@ -1315,7 +1315,7 @@ function handleGraduation() {
             <div class="tree-graduation-congrats">
                 <i class="fa-solid fa-trophy"></i>
             </div>
-            <div class="tree-graduation-title">🎉 毕业典礼</div>
+            <div class="tree-graduation-title"><i class="ph ph-confetti"></i> 毕业典礼</div>
             <div class="tree-graduation-subtitle">
                 你们的 <strong>${escHtml(oldTreeName)}</strong>（${oldTypeInfo?.emoji || '🌳'} ${escHtml(oldTypeInfo?.name || '小树')}）<br>
                 已经长成参天大树，被收录进了图鉴！
@@ -1432,7 +1432,7 @@ function showGalleryPage() {
     <div class="tree-page" id="tree_page_root">
         <div class="tree-gallery">
             <div class="tree-gallery-section">
-                <div class="tree-gallery-section-title">🌳 大树图鉴</div>
+                <div class="tree-gallery-section-title"><i class="ph ph-tree"></i> 大树图鉴</div>
                 <div class="tree-gallery-grid">
                     ${archiveHtml}
                 </div>

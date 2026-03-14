@@ -525,7 +525,7 @@ function openDayDetail(dateStr) {
     }
 
     if (sections.length === 0) {
-        body.innerHTML = '<div class="cal-day-empty">这天什么都没有呢 ☁️</div>';
+        body.innerHTML = '<div class="cal-day-empty"><i class="ph ph-cloud"></i> 这天什么都没有呢</div>';
     } else {
         body.innerHTML = sections.map(sec => `
             <div class="cal-day-section">

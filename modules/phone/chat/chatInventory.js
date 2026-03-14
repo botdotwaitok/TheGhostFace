@@ -81,7 +81,7 @@ export function renderChatInventory() {
     if (itemIds.length === 0) {
         listEl.innerHTML = `
             <div class="chat-inventory-empty">
-                <div class="chat-inventory-empty-icon">📦</div>
+                <div class="chat-inventory-empty-icon"><i class="ph ph-package"></i></div>
                 <div class="chat-inventory-empty-text">背包空空如也</div>
                 <div class="chat-inventory-empty-hint">去商城逛逛吧～</div>
             </div>`;
@@ -177,13 +177,13 @@ export function handleChatUseItem(itemId) {
     if (result.success) {
         if (messagesArea) {
             messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-retract">✨ ${escHtml(result.message)}</div>`);
+                `<div class="chat-retract"><i class="ph ph-sparkle"></i> ${escHtml(result.message)}</div>`);
         }
         scrollToBottom(true);
     } else {
         if (messagesArea) {
             messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-retract">❌ ${escHtml(result.message)}</div>`);
+                `<div class="chat-retract"><i class="ph ph-x-circle"></i> ${escHtml(result.message)}</div>`);
         }
     }
 
@@ -209,9 +209,9 @@ export async function handleReturnHome() {
     const syncMode = localStorage.getItem('gf_phone_rh_sync_mode') || 'summary';
 
     const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
-    const memoryLabel = doMemoryFragments ? '✅ 提取记忆碎片' : '❌ 不提取记忆碎片';
+    const memoryLabel = doMemoryFragments ? '[ ON ] 提取记忆碎片' : '[ OFF ] 不提取记忆碎片';
 
-    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n📄 同步方式: ${modeLabel}\n🧩 ${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
+    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n同步方式: ${modeLabel}\n${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
         return;
     }
 
@@ -222,7 +222,7 @@ export async function handleReturnHome() {
     const messagesArea = document.getElementById('chat_messages_area');
     if (messagesArea) {
         messagesArea.insertAdjacentHTML('beforeend',
-            `<div class="chat-retract" id="chat_sync_status">🏠 正在处理回家流程…</div>`
+            `<div class="chat-retract" id="chat_sync_status"><i class="ph ph-house"></i> 正在处理回家流程…</div>`
         );
     }
     scrollToBottom(true);
@@ -231,7 +231,7 @@ export async function handleReturnHome() {
         // ─── Optional Step: Memory Fragment Extraction ───
         if (doMemoryFragments) {
             const statusEl = document.getElementById('chat_sync_status');
-            if (statusEl) statusEl.textContent = '🧩 正在提取记忆碎片…';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-puzzle-piece"></i> 正在提取记忆碎片…';
 
             console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
 
@@ -249,14 +249,14 @@ export async function handleReturnHome() {
                 if (fragments && Array.isArray(fragments) && fragments.length > 0) {
                     await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
-                    if (statusEl) statusEl.textContent = `🧩 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;
+                    if (statusEl) statusEl.innerHTML = `<i class="ph ph-puzzle-piece"></i> 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;
                 } else {
                     console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
-                    if (statusEl) statusEl.textContent = '🧩 无新记忆碎片。正在同步…';
+                    if (statusEl) statusEl.innerHTML = '<i class="ph ph-puzzle-piece"></i> 无新记忆碎片。正在同步…';
                 }
             } catch (memErr) {
                 console.error(`${CHAT_LOG_PREFIX} 记忆碎片提取失败:`, memErr);
-                if (statusEl) statusEl.textContent = '⚠️ 记忆碎片提取失败，继续同步…';
+                if (statusEl) statusEl.innerHTML = '<i class="ph ph-warning"></i> 记忆碎片提取失败，继续同步…';
                 // Don't abort — continue with sync
             }
         }
@@ -266,16 +266,16 @@ export async function handleReturnHome() {
 
         if (syncMode === 'raw') {
             // ── Raw transcript mode ──
-            if (statusEl) statusEl.textContent = '📄 正在将原文聊天记录同步…';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-file-text"></i> 正在将原文聊天记录同步…';
             console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript...`);
 
             await sendRawTranscriptAsUserMessage(history);
 
-            if (statusEl) statusEl.textContent = '🏠 已回家！原文聊天记录已发送，你对象正在回应～';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！原文聊天记录已发送，你对象正在回应～';
 
         } else {
             // ── AI compressed summary mode (default) ──
-            if (statusEl) statusEl.textContent = '🤖 正在生成AI压缩总结…';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-robot"></i> 正在生成AI压缩总结…';
             console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary...`);
 
             const transcript = history.map(msg => {
@@ -294,11 +294,11 @@ export async function handleReturnHome() {
 
             console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
 
-            if (statusEl) statusEl.textContent = '✅ 总结生成成功！正在发送…';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-check-circle"></i> 总结生成成功！正在发送…';
 
             await sendSummaryAsUserMessage(summary.trim());
 
-            if (statusEl) statusEl.textContent = '🏠 已回家！总结已作为消息发送，你对象正在回应～';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！总结已作为消息发送，你对象正在回应～';
         }
 
         console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);
@@ -308,7 +308,7 @@ export async function handleReturnHome() {
 
         const statusEl = document.getElementById('chat_sync_status');
         if (statusEl) {
-            statusEl.textContent = `⚠️ 同步失败: ${error.message}`;
+            statusEl.innerHTML = `<i class="ph ph-warning"></i> 同步失败: ${error.message}`;
         }
     }
 }

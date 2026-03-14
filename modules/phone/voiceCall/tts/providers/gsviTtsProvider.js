@@ -6,6 +6,8 @@
 //      https://github.com/X-T-E-R/GPT-SoVITS-Inference
 // Auto-detects which format to use based on endpoint port, or settings.apiFormat override.
 
+import { resolveProxyUrl } from '../../../utils/corsProxyFetch.js';
+
 const LOG_PREFIX = '[GsviTtsProvider]';
 
 export class GsviTtsProvider {
@@ -30,16 +32,11 @@ export class GsviTtsProvider {
 
     /**
      * 当 HTTPS 页面访问 HTTP 端点时（Mixed Content），走 ST 内置 CORS proxy。
-     * iOS Safari 严格禁止 HTTPS→HTTP，PC Edge 允许 localhost 除外。
      * @param {string} url - 原始 HTTP URL
      * @returns {string} 可能被改写为 /proxy/ 路径的 URL
      */
     _resolveUrl(url) {
-        if (window.isSecureContext && url.startsWith('http://')) {
-            // 走 SillyTavern 内置 CORS proxy: /proxy/<raw-url>
-            return `/proxy/${url}`;
-        }
-        return url;
+        return resolveProxyUrl(url);
     }
 
     /**

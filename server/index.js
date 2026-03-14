@@ -32,7 +32,7 @@ app.use(helmet());
 // ★★★ 手动 CORS 通行证（必须在 cors() 之前，确保 OPTIONS 预检放行）★★★
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-session-token');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-session-token, x-cloud-bearer');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 app.use(cors({
     origin: '*', // 允许任何酒馆客户端来访问
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token'] // 通行证名单！
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token', 'x-cloud-bearer'] // 通行证名单！
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -68,10 +68,19 @@ app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/stt/')) return next();
 
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Also accept X-Cloud-Bearer for requests proxied through SillyTavern's CORS proxy
+    // (ST's basicAuth occupies the Authorization header, so the client sends the
+    //  cloud server token via this custom header instead)
+    const cloudBearer = req.headers['x-cloud-bearer'];
+
+    let token;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7);
+    } else if (cloudBearer) {
+        token = cloudBearer;
+    } else {
         return res.status(403).json({ error: 'Forbidden: missing or invalid token' });
     }
-    const token = authHeader.slice(7);
     if (token !== SECRET_TOKEN) {
         return res.status(403).json({ error: 'Forbidden: invalid token' });
     }

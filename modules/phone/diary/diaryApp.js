@@ -278,7 +278,7 @@ export function openDiaryApp() {
     if (!isDiaryEnabled()) {
         const html = `
         <div class="diary-page" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:16px;">📔</div>
+            <div style="font-size:48px;margin-bottom:16px;"><i class="ph ph-notebook"></i></div>
             <div style="font-size:18px;font-weight:600;margin-bottom:8px;">日记本功能已关闭</div>
             <div style="font-size:14px;opacity:0.6;">请在设置中开启日记本功能</div>
         </div>`;
@@ -350,7 +350,7 @@ function buildDiaryPage(entries) {
 
             <!-- Stats -->
             <div class="diary-stats">
-                <div class="diary-stats-hearts">💕</div>
+                <div class="diary-stats-hearts"><i class="ph ph-heart"></i></div>
                 <div class="diary-stats-text">
                     <div class="diary-stats-title">一起写了 ${totalEntries} 篇日记</div>
                     <div class="diary-stats-count">${firstDate ? 'since ' + firstDate : 'start your story today'}</div>
@@ -385,7 +385,7 @@ function buildDiaryPage(entries) {
         <!-- Loading Overlay -->
         <div class="diary-loading-overlay" id="diary_loading_overlay">
             <div class="diary-loading-content">
-                <div class="diary-loading-icon">✍️</div>
+                <div class="diary-loading-icon"><i class="ph ph-pen-nib"></i></div>
                 <div class="diary-loading-text">${charName}正在写日记…</div>
                 <div class="diary-loading-dots"><span>.</span><span>.</span><span>.</span></div>
             </div>
@@ -420,7 +420,7 @@ function buildEmptyState(charName) {
             </div>
 
             <div class="diary-empty">
-                <div class="diary-empty-icon">📔</div>
+                <div class="diary-empty-icon"><i class="ph ph-notebook"></i></div>
                 <div class="diary-empty-title">还没有日记呢</div>
                 <div class="diary-empty-desc">
                     在这里和${charName}一起记录你们的故事吧…<br/>
@@ -446,7 +446,7 @@ function buildEmptyState(charName) {
         <!-- Loading Overlay -->
         <div class="diary-loading-overlay" id="diary_loading_overlay">
             <div class="diary-loading-content">
-                <div class="diary-loading-icon">✍️</div>
+                <div class="diary-loading-icon"><i class="ph ph-pen-nib"></i></div>
                 <div class="diary-loading-text">${charName}正在写ta的回应…</div>
                 <div class="diary-loading-dots"><span>.</span><span>.</span><span>.</span></div>
             </div>
@@ -545,7 +545,7 @@ function buildComposeOverlay(isContinuation = false) {
             ${continuationHint}
             <!-- Date -->
             <div class="diary-compose-date-row">
-                <span class="diary-compose-date-icon">📅</span>
+                <span class="diary-compose-date-icon"><i class="ph ph-calendar"></i></span>
                 <span class="diary-compose-date-text" id="diary_compose_date">${dateStr}</span>
             </div>
 
@@ -992,7 +992,7 @@ function buildSearchOverlay() {
         </div>
         <div class="diary-search-results" id="diary_search_results">
             <div class="diary-search-empty">
-                <div class="diary-search-empty-icon">🔍</div>
+                <div class="diary-search-empty-icon"><i class="ph ph-magnifying-glass"></i></div>
                 <div class="diary-search-empty-text">输入关键词搜索日记</div>
             </div>
         </div>
@@ -1007,7 +1007,7 @@ function performSearch(query) {
     if (!query.trim()) {
         resultsEl.innerHTML = `
             <div class="diary-search-empty">
-                <div class="diary-search-empty-icon">🔍</div>
+                <div class="diary-search-empty-icon"><i class="ph ph-magnifying-glass"></i></div>
                 <div class="diary-search-empty-text">输入关键词搜索日记</div>
             </div>
         `;
@@ -1026,7 +1026,7 @@ function performSearch(query) {
     if (matches.length === 0) {
         resultsEl.innerHTML = `
             <div class="diary-search-empty">
-                <div class="diary-search-empty-icon">📭</div>
+                <div class="diary-search-empty-icon"><i class="ph ph-envelope-open"></i></div>
                 <div class="diary-search-empty-text">没有找到相关日记</div>
             </div>
         `;

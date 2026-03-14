@@ -185,7 +185,12 @@ function bindChatEvents() {
                 e.target.closest('.chat-reaction-badge') || e.target.closest('.chat-reaction-picker')) return;
             _longPressTarget = row;
             _didLongPress = false;
-            e.preventDefault();
+            // NOTE: Do NOT call e.preventDefault() here!
+            // On mobile, preventing pointerdown kills the entire touch→click chain,
+            // which breaks delete-mode / edit-mode tap-to-select.
+            // Use CSS user-select instead to prevent text selection during long-press.
+            row.style.userSelect = 'none';
+            row.style.webkitUserSelect = 'none';
             _longPressTimer = setTimeout(() => {
                 _didLongPress = true;
                 const idx = parseInt(row.dataset.msgIndex, 10);
@@ -196,11 +201,19 @@ function bindChatEvents() {
 
         messagesArea.addEventListener('pointerup', () => {
             clearTimeout(_longPressTimer);
+            if (_longPressTarget) {
+                _longPressTarget.style.userSelect = '';
+                _longPressTarget.style.webkitUserSelect = '';
+            }
             _longPressTarget = null;
         });
 
         messagesArea.addEventListener('pointerleave', () => {
             clearTimeout(_longPressTimer);
+            if (_longPressTarget) {
+                _longPressTarget.style.userSelect = '';
+                _longPressTarget.style.webkitUserSelect = '';
+            }
             _longPressTarget = null;
         });
 
@@ -211,6 +224,10 @@ function bindChatEvents() {
 
         messagesArea.addEventListener('pointercancel', () => {
             clearTimeout(_longPressTimer);
+            if (_longPressTarget) {
+                _longPressTarget.style.userSelect = '';
+                _longPressTarget.style.webkitUserSelect = '';
+            }
             _longPressTarget = null;
         });
 

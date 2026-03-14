@@ -4,6 +4,7 @@
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { this_chid, characters, getRequestHeaders, saveSettingsDebounced } from '../../../../../script.js';
 import { getSettings } from './phone/moments/state.js';
+import { resolveProxyUrl, needsProxy } from './phone/utils/corsProxyFetch.js';
 
 // 使用全局 logger（如果可用），否则回退到 console
 const logger = {
@@ -26,12 +27,21 @@ function getMomentsEmailEndpoint() {
     }
     let baseUrl = settings.backendUrl.trim();
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+    const fullUrl = `${baseUrl}/api/backup/send-email`;
+    const proxied = needsProxy(fullUrl);
+
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    if (proxied) {
+        headers['X-Cloud-Bearer'] = settings.secretToken;
+    } else {
+        headers['Authorization'] = `Bearer ${settings.secretToken}`;
+    }
+
     return {
-        url: `${baseUrl}/api/backup/send-email`,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.secretToken}`,
-        },
+        url: resolveProxyUrl(fullUrl),
+        headers,
     };
 }
 

@@ -17,6 +17,7 @@ import { openTreeApp } from './tree/treeApp.js';
 import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
 import { openCalendarApp } from './calendar/calendarApp.js';
 import { openVcApp } from './voiceCall/vcApp.js';
+import { updateWidgets } from './widgets/homeWidgets.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -141,6 +142,7 @@ export function openPhone() {
 
     updateStatusBar();
     updateGreeting();
+    updateWidgets();
     renderApps();
     applySavedAppearance();
 
@@ -370,7 +372,7 @@ function renderApps() {
             if (!app) return;
 
             if (app.comingSoon) {
-                showPhoneToast('即将上线，敬请期待 🚀');
+                showPhoneToast('即将上线，敬请期待');
                 return;
             }
 

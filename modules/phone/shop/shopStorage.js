@@ -157,7 +157,7 @@ export function activateItem(itemId) {
     if (item.effectType === 'prankReaction') {
         return {
             success: true,
-            message: `【${item.name}】已激活！下次聊天时将自动发动恶作剧 🎭`,
+            message: `【${item.name}】已激活！下次聊天时将自动发动恶作剧`,
         };
     }
 

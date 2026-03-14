@@ -628,48 +628,95 @@
     white-space: nowrap;
 }
 
-/* Weather Widget */
-.weather-widget {
+/* Memo Widget (replaces Weather) */
+.memo-widget {
     background: linear-gradient(180deg, #1c263b, #2b3a53);
     color: white;
     justify-content: space-between;
+    cursor: default;
 }
 
-.weather-location {
-    font-size: 15px;
+.memo-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.memo-header-icon {
+    font-size: 13px;
+    opacity: 0.7;
+}
+
+.memo-title {
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.2px;
 }
 
-.weather-temp {
-    font-size: 42px;
-    font-weight: 200;
-    line-height: 1;
-    margin-top: 2px;
-}
-
-.weather-footer {
+.memo-checklist {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
 }
 
-.weather-icon {
-    font-size: 18px;
-    color: #ffd700;
-}
-
-.weather-desc {
-    font-size: 11px;
-    opacity: 0.9;
+.memo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
     font-weight: 500;
-    line-height: 1.2;
+    transition: opacity 0.2s ease;
+}
+
+.memo-item-icon {
+    font-size: 14px;
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.memo-item-pending .memo-item-icon {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.memo-item-done .memo-item-icon {
+    color: #34c759;
+}
+
+.memo-item-done .memo-item-label {
+    text-decoration: line-through;
+    opacity: 0.5;
+}
+
+.memo-status {
+    font-size: 11px;
+    opacity: 0.5;
+    font-weight: 500;
+}
+
+.memo-status.memo-all-done {
+    color: #34c759;
+    opacity: 0.8;
+}
+
+.memo-status.memo-partial {
+    color: #ffd60a;
+    opacity: 0.7;
 }
 
 /* Calendar Widget */
 .calendar-widget {
     background: #fff;
     color: #1c1c1e;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.calendar-widget:active {
+    transform: scale(0.95);
 }
 
 .calendar-day-name {
@@ -1606,6 +1653,15 @@
 
 .phone-dark-mode .calendar-events {
     color: #636366;
+}
+
+/* Home screen dark mode — memo widget */
+.phone-dark-mode .memo-widget {
+    background: linear-gradient(180deg, #1a1a2e, #222236);
+}
+
+.phone-dark-mode .memo-item-done .memo-item-icon {
+    color: #30d158;
 }
 
 .phone-dark-mode .phone-section-label {

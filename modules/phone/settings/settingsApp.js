@@ -276,7 +276,7 @@ function renderAccountAuth(prefix = 'phone_account') {
                     if (s.enabled && s.backendUrl) {
                         try {
                             await moments.registerUser();
-                            showToast('名称已更新 ✅');
+                            showToast('名称已更新');
                         } catch (e) {
                             showToast('名称同步失败');
                         }
@@ -311,7 +311,7 @@ function renderAccountAuth(prefix = 'phone_account') {
                     if (s.enabled && s.backendUrl) {
                         try {
                             await moments.registerUser();
-                            showToast('头像已同步更新 ✅');
+                            showToast('头像已同步更新');
                         } catch (e) {
                             showToast('头像同步失败');
                         }
@@ -910,7 +910,7 @@ export function openSettingsApp() {
                     <div class="phone-settings-mode-card" data-rh-mode="raw" id="${P}_rh_mode_raw">
                         <div class="phone-settings-mode-card-header">
                             <span class="phone-settings-mode-card-title">原文灌入</span>
-                            <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">⚠️ 高Token</span>
+                            <span class="phone-settings-mode-card-badge" style="background: rgba(255,107,157,0.15); color: #FF6B9D;">消耗更多Token</span>
                         </div>
                         <div class="phone-settings-mode-card-desc">将全部手机聊天记录原文直接作为用户消息送入酒馆本体。保留原汁原味的对话细节，但会占用大量 Token（几百条聊天可能超出上下文限制）。</div>
                     </div>
@@ -1228,7 +1228,7 @@ export function openSettingsApp() {
                         const icon = wallpaperPreview.querySelector('i');
                         if (icon) icon.remove();
                     }
-                    showToast('壁纸已更换 🖼️');
+                    showToast('壁纸已更换');
                 };
                 reader.readAsDataURL(file);
             });
@@ -1262,7 +1262,7 @@ export function openSettingsApp() {
                 darkToggle.classList.toggle('active', newState);
                 localStorage.setItem('gf_phone_dark_mode', String(newState));
                 applyDarkMode(newState);
-                showToast(newState ? '已切换为深色模式 🌙' : '已切换为浅色模式 ☀️');
+                showToast(newState ? '已切换为深色模式' : '已切换为浅色模式');
             });
         }
 
@@ -1278,7 +1278,7 @@ export function openSettingsApp() {
                 diaryToggle.setAttribute('aria-checked', String(newState));
                 diaryToggle.classList.toggle('active', newState);
                 setDiaryEnabled(newState);
-                showToast(newState ? '日记本已启用 📔' : '日记本已关闭');
+                showToast(newState ? '日记本已启用' : '日记本已关闭');
             });
         }
 
@@ -1291,7 +1291,7 @@ export function openSettingsApp() {
                 modeCards.forEach(c => c.classList.remove('mode-selected'));
                 card.classList.add('mode-selected');
                 setDiaryMode(card.dataset.diaryMode);
-                const label = card.dataset.diaryMode === 'auto' ? '自动模式 🤖' : '手动模式 ✍️';
+                const label = card.dataset.diaryMode === 'auto' ? '自动模式' : '手动模式';
                 showToast(`日记模式: ${label}`);
             });
         });
@@ -1561,7 +1561,7 @@ export function openSettingsApp() {
                     vadToggle.setAttribute('aria-checked', String(newState));
                     vadToggle.classList.toggle('active', newState);
                     sttEngine.vadEnabled = newState;
-                    showToast(newState ? '语音激活已开启 🎙️' : '语音激活已关闭');
+                    showToast(newState ? '语音激活已开启' : '语音激活已关闭');
                 });
             }
 
@@ -1681,7 +1681,7 @@ export function openSettingsApp() {
 
                 showToast(selectedProvider === 'none'
                     ? 'TTS 已关闭'
-                    : `语音合成已切换: ${selectedProvider} 🔊`
+                    : `语音合成已切换: ${selectedProvider}`
                 );
             });
         }
@@ -1699,7 +1699,7 @@ export function openSettingsApp() {
                 consoleToggle.setAttribute('aria-checked', String(newState));
                 consoleToggle.classList.toggle('active', newState);
                 setConsoleEnabled(newState);
-                showToast(newState ? 'Console 已启用 🖥️' : 'Console 已关闭');
+                showToast(newState ? 'Console 已启用' : 'Console 已关闭');
             });
         }
 
@@ -1919,7 +1919,7 @@ function _renderSttProviderSettings(P, sttEngine) {
                 ttsEngine.updateProviderSettings('MiniMax', { ...mmS, proxyServer: proxyValue });
             }
 
-            showToast('STT 设置已保存 🎙️');
+            showToast('STT 设置已保存');
         });
     }
 }

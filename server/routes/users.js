@@ -1,5 +1,6 @@
 // server/routes/users.js — User registration & friend management
 const express = require('express');
+const crypto = require('crypto');
 const { getDb } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 
@@ -292,6 +293,39 @@ router.put('/:id/discord', async (req, res) => {
             return res.status(409).json({ error: '此 Discord 账号已绑定到其他用户' });
         }
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── POST /api/users/:id/password ───────────────────────────────────
+// Change user password (used by Admin Dashboard).
+// Body: { newPassword: string }
+router.post('/:id/password', (req, res) => {
+    try {
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 4) {
+            return res.json({ status: 'error', message: '密码至少 4 位' });
+        }
+
+        const db = getDb();
+        const userId = req.params.id;
+
+        const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+        if (!user) {
+            return res.json({ status: 'error', message: 'User not found' });
+        }
+
+        // Same hashing as auth.js — pbkdf2 with random salt
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = crypto.pbkdf2Sync(newPassword, salt, 1000, 64, 'sha512').toString('hex');
+
+        db.prepare('UPDATE users SET passwordHash = ?, salt = ? WHERE id = ?')
+            .run(hash, salt, userId);
+
+        console.log(`[Users] Password updated for user ${userId}`);
+        res.json({ status: 'success', message: '密码已更新' });
+    } catch (err) {
+        console.error('[Users] change password error:', err);
+        res.json({ status: 'error', message: 'Internal server error' });
     }
 });
 

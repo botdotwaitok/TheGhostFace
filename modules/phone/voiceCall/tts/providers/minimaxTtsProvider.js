@@ -2,6 +2,8 @@
 // MiniMax TTS Provider — 通过云服务器代理解决 CORS 问题
 // 云服务器：http://74.208.78.209:3421/api/tts/generate
 
+import { resolveProxyUrl } from '../../../utils/corsProxyFetch.js';
+
 const LOG_PREFIX = '[MinimaxTtsProvider]';
 
 // 默认云服务器地址（用户可在设置中覆盖）
@@ -25,7 +27,7 @@ export class MinimaxTtsProvider {
 
         console.debug(`${LOG_PREFIX} POST ${proxyServer}/api/tts/generate`);
 
-        const response = await fetch(`${proxyServer}/api/tts/generate`, {
+        const response = await fetch(resolveProxyUrl(`${proxyServer}/api/tts/generate`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
