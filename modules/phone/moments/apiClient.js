@@ -34,6 +34,14 @@ export async function apiRequest(method, path, body = null) {
         throw new Error('Backend URL not configured');
     }
 
+    // ── Client-side Discord binding pre-check ──
+    // Block non-auth requests if user is known to be unbound.
+    const isExempt = path.startsWith('/api/auth/')
+        || /\/users\/[^/]+\/discord$/.test(path);
+    if (!isExempt && settings.authToken && settings.discordBound === false) {
+        throw new Error('请先绑定 Discord 账号后再使用（设置 → 账号 → Discord 绑定）');
+    }
+
     let baseUrl = settings.backendUrl.trim();
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
@@ -64,11 +72,32 @@ export async function apiRequest(method, path, body = null) {
 
     const response = await fetch(resolveProxyUrl(url), opts);
     if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
+        // Try to parse structured error from server
+        let errorData = null;
+        let errorText = '';
+        try {
+            errorData = await response.json();
+            errorText = errorData.error || JSON.stringify(errorData);
+        } catch {
+            errorText = await response.text().catch(() => 'Unknown error');
+        }
+
+        // Handle Discord binding required
+        if (errorData?.discordRequired) {
+            updateSettings({ discordBound: false }, true);
+            throw new Error('请先绑定 Discord 账号后再使用（设置 → 账号 → Discord 绑定）');
+        }
+        // Handle login required (session expired or missing)
+        if (errorData?.loginRequired) {
+            updateSettings({ authToken: '' }, true);
+            throw new Error('登录已过期，请重新登录');
+        }
+
         throw new Error(`API ${method} ${path} failed: ${response.status} — ${errorText} `);
     }
     return response.json();
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════
 // Auth Wrappers

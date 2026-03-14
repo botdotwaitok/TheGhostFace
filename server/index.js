@@ -89,19 +89,37 @@ app.use('/api', (req, res, next) => {
 
 // ── Discord Binding Enforcement ─────────────────────────────────────
 // Block API access for users who haven't bound their Discord account.
-// Exempt: auth routes, Discord binding route, Discord management routes.
+// Exempt: auth routes, Discord binding route, Discord management routes,
+//         and specific Bot-to-server routes (Petbot wallet, Dashboard backup).
 app.use('/api', (req, res, next) => {
-    // Skip auth routes (login/register/me)
+    // ── Always-exempt routes (no session needed) ──
     if (req.path.startsWith('/auth/')) return next();
-    // Skip Discord management routes (used by Petbot)
     if (req.path.startsWith('/discord-manage/')) return next();
-    // Skip the Discord binding endpoint itself (PUT /api/users/:id/discord)
+    if (req.path.startsWith('/backup/')) return next();
+    if (req.path.startsWith('/tts/')) return next();
+    if (req.path.startsWith('/stt/')) return next();
+    // Discord binding endpoint itself (PUT /api/users/:id/discord)
     if (/^\/users\/[^/]+\/discord$/.test(req.path) && req.method === 'PUT') return next();
 
-    // Check session token to identify the user
-    const sessionToken = req.headers['x-session-token'];
-    if (!sessionToken) return next(); // No session = server-to-server call, allow
+    // ── Bot-to-server routes (no session token, only Bearer) ──
+    // Petbot wallet operations & leaderboard
+    if (!req.headers['x-session-token']) {
+        const botAllowed = [
+            req.path === '/wallet/add' && req.method === 'POST',
+            req.path === '/wallet/deduct' && req.method === 'POST',
+            req.path === '/wallet/leaderboard' && req.method === 'GET',
+        ];
+        if (botAllowed.some(Boolean)) return next();
 
+        // Everything else requires a session token (= logged-in user)
+        return res.status(401).json({
+            error: '请先登录',
+            loginRequired: true
+        });
+    }
+
+    // ── User requests: check Discord binding ──
+    const sessionToken = req.headers['x-session-token'];
     try {
         const db = require('./db').getDb();
         const session = db.prepare(`
@@ -110,7 +128,14 @@ app.use('/api', (req, res, next) => {
             WHERE s.token = ? AND s.expiresAt > datetime('now')
         `).get(sessionToken);
 
-        if (session && (!session.discordId || session.discordId.length === 0)) {
+        if (!session) {
+            return res.status(401).json({
+                error: '会话已过期，请重新登录',
+                loginRequired: true
+            });
+        }
+
+        if (!session.discordId || session.discordId.length === 0) {
             return res.status(403).json({
                 error: '请先绑定 Discord 账号后再使用',
                 discordRequired: true
