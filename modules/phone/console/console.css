@@ -1,6 +1,18 @@
 /* modules/phone/console/console.css — Console App Styles */
 /* PowerShell aesthetic — blue background, sharp edges, larger text */
 
+/* ═══ Viewport Header Override (match black theme) ═══ */
+.phone-app-viewport:has(.console-app) .phone-app-viewport-header {
+    background: #050505;
+    border-bottom: 1px solid #1a1a1a;
+}
+.phone-app-viewport:has(.console-app) .phone-app-viewport-title {
+    color: #eeeeee;
+}
+.phone-app-viewport:has(.console-app) .phone-app-back-btn {
+    color: #ffb900;
+}
+
 .console-app {
     display: flex;
     flex-direction: row;
