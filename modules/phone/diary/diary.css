@@ -398,7 +398,7 @@
     color: #e8829a;
 }
 
-/* ─── Tool Buttons (Search / Calendar) ─── */
+/* ─── Tool Buttons (Search) ─── */
 .diary-btn-tool {
     background: rgba(74, 55, 40, 0.08);
     color: #8b7355;
@@ -568,34 +568,7 @@
     padding-left: 4px;
 }
 
-/* ─── Calendar Overlay ─── */
-.diary-calendar-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 18;
-    background: linear-gradient(170deg, #fef9f3 0%, #fdf2f8 50%, #faf5ff 100%);
-    display: flex;
-    flex-direction: column;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    pointer-events: none;
-}
-
-.diary-calendar-overlay.calendar-active {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-.diary-calendar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 20px 12px;
-    flex-shrink: 0;
-}
-
+/* ─── Shared Close Button (used by settings/detail overlays) ─── */
 .diary-calendar-close {
     width: 38px;
     height: 38px;
@@ -615,150 +588,12 @@
     background: rgba(74, 55, 40, 0.14);
 }
 
+/* ─── Shared Overlay Title (used by settings overlay) ─── */
 .diary-calendar-title {
     font-family: 'Noto Serif SC', serif;
     font-size: 17px;
     font-weight: 600;
     color: #4a3728;
-}
-
-.diary-calendar-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    padding: 8px 20px 16px;
-}
-
-.diary-calendar-nav-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(74, 55, 40, 0.06);
-    color: #8b7355;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s ease, transform 0.1s ease;
-}
-
-.diary-calendar-nav-btn:hover {
-    background: rgba(74, 55, 40, 0.12);
-}
-
-.diary-calendar-nav-btn:active {
-    transform: scale(0.9);
-}
-
-.diary-calendar-month {
-    font-family: 'Noto Serif SC', serif;
-    font-size: 16px;
-    font-weight: 600;
-    color: #4a3728;
-    min-width: 100px;
-    text-align: center;
-}
-
-.diary-calendar-weekdays {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    padding: 0 16px 8px;
-    text-align: center;
-}
-
-.diary-calendar-weekdays span {
-    font-size: 12px;
-    font-weight: 600;
-    color: #b89a8a;
-}
-
-.diary-calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
-    padding: 0 12px;
-}
-
-.diary-cal-cell {
-    height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #5a4035;
-    position: relative;
-    transition: background 0.15s ease, transform 0.1s ease;
-}
-
-.diary-cal-cell.diary-cal-empty {
-    visibility: hidden;
-}
-
-.diary-cal-cell.diary-cal-today {
-    font-weight: 700;
-    color: #d4728a;
-}
-
-.diary-cal-cell.diary-cal-has-entry {
-    background: rgba(248, 164, 184, 0.15);
-    color: #d4728a;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.diary-cal-cell.diary-cal-has-entry::after {
-    content: '';
-    position: absolute;
-    bottom: 3px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #e8829a;
-}
-
-.diary-cal-cell.diary-cal-has-entry:hover {
-    background: rgba(248, 164, 184, 0.25);
-}
-
-.diary-cal-cell.diary-cal-has-entry:active {
-    transform: scale(0.9);
-}
-
-.diary-calendar-legend {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 16px 0 24px;
-    font-size: 12px;
-    color: #b89a8a;
-}
-
-.diary-calendar-legend-dot {
-    width: 16px;
-    height: 16px;
-    border-radius: 6px;
-    background: rgba(248, 164, 184, 0.15);
-    position: relative;
-}
-
-.diary-calendar-legend-dot::after {
-    content: '';
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #e8829a;
 }
 
 /* ─── Search Overlay ─── */
@@ -931,24 +766,6 @@
     flex-wrap: wrap;
 }
 
-/* ─── Card Highlight Animation (from calendar click) ─── */
-@keyframes diary-card-glow {
-    0% {
-        box-shadow: 0 0 0 0 rgba(248, 164, 184, 0.5);
-    }
-
-    50% {
-        box-shadow: 0 0 0 6px rgba(248, 164, 184, 0.2);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(248, 164, 184, 0);
-    }
-}
-
-.diary-card-highlight {
-    animation: diary-card-glow 1.2s ease;
-}
 
 /* ─── Print Media Query ─── */
 @media print {
@@ -1012,7 +829,7 @@
     .diary-header,
     .diary-compose-overlay,
     .diary-settings-overlay,
-    .diary-calendar-overlay,
+
     .diary-search-overlay,
     .diary-loading-overlay,
     .diary-card-actions {
@@ -2542,11 +2359,7 @@
     color: var(--diary-char-text-color, #a0b8d0);
 }
 
-/* Dark mode — Calendar */
-.phone-dark-mode .diary-calendar-overlay {
-    background: linear-gradient(170deg, #1a1412 0%, #1c1520 50%, #18151e 100%);
-}
-
+/* Dark mode — Shared close button / title (used by settings/detail) */
 .phone-dark-mode .diary-calendar-close {
     background: rgba(255, 255, 255, 0.06);
     color: #a89080;
@@ -2554,40 +2367,6 @@
 
 .phone-dark-mode .diary-calendar-title {
     color: #f0e6d6;
-}
-
-.phone-dark-mode .diary-calendar-month {
-    color: #f0e6d6;
-}
-
-.phone-dark-mode .diary-calendar-nav-btn {
-    background: rgba(255, 255, 255, 0.04);
-    color: #a89080;
-}
-
-.phone-dark-mode .diary-calendar-weekdays span {
-    color: #5a5048;
-}
-
-.phone-dark-mode .diary-cal-cell {
-    color: #d4c0b5;
-}
-
-.phone-dark-mode .diary-cal-cell.diary-cal-today {
-    color: #c48094;
-}
-
-.phone-dark-mode .diary-cal-cell.diary-cal-has-entry {
-    background: rgba(248, 164, 184, 0.1);
-    color: #c48094;
-}
-
-.phone-dark-mode .diary-cal-cell.diary-cal-has-entry:hover {
-    background: rgba(248, 164, 184, 0.18);
-}
-
-.phone-dark-mode .diary-calendar-legend {
-    color: #5a5048;
 }
 
 /* Dark mode — Search */

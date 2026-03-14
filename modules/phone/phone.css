@@ -338,7 +338,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 20px 10px;
+    padding: 14px 26px 10px;
     flex-shrink: 0;
     background: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(10px);
@@ -984,6 +984,66 @@
     transform: scale(0.98);
 }
 
+/* ─── Profile Card Text ─── */
+.phone-settings-profile-card-name {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1c1c1e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.phone-settings-profile-card-placeholder .phone-settings-profile-card-name {
+    font-size: 17px;
+}
+
+.phone-settings-profile-card-sub {
+    font-size: 13px;
+    color: #8e8e93;
+    margin-top: 2px;
+}
+
+/* ─── Account Detail Page — Section Cards ─── */
+.phone-settings-account-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* ─── Logout Button ─── */
+.phone-settings-logout-btn {
+    width: 100%;
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+/* ─── Discord Binding Step Text ─── */
+.phone-settings-discord-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1c1c1e;
+    margin-bottom: 6px;
+}
+
+.phone-settings-discord-desc {
+    font-size: 13px;
+    color: #8e8e93;
+    line-height: 1.6;
+    padding: 0 12px;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Phone Friends App
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1407,6 +1467,41 @@
 
 .phone-dark-mode .phone-settings-section {
     background: rgba(44, 44, 46, 0.85);
+}
+
+.phone-dark-mode .phone-settings-profile-card {
+    background: rgba(44, 44, 46, 0.85);
+}
+
+.phone-dark-mode .phone-settings-profile-card:hover {
+    background: rgba(58, 58, 60, 0.9);
+}
+
+/* Account detail page dark mode */
+.phone-dark-mode .phone-settings-account-card {
+    background: rgba(44, 44, 46, 0.85);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.phone-dark-mode .phone-settings-profile-card-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-profile-card-sub {
+    color: #636366;
+}
+
+.phone-dark-mode .phone-settings-logout-btn {
+    background: rgba(255, 69, 58, 0.15);
+    color: #ff453a;
+}
+
+.phone-dark-mode .phone-settings-discord-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .phone-settings-discord-desc {
+    color: #636366;
 }
 
 .phone-dark-mode .phone-settings-section-header {

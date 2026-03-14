@@ -28,10 +28,20 @@ if (!SECRET_TOKEN || SECRET_TOKEN === 'CHANGE_ME_TO_A_RANDOM_SECRET') {
 
 // ── Security middleware ─────────────────────────────────────────────
 app.use(helmet());
+
+// ★★★ 手动 CORS 通行证（必须在 cors() 之前，确保 OPTIONS 预检放行）★★★
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-session-token');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
+
 app.use(cors({
     origin: '*', // 允许任何酒馆客户端来访问
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token'] // 🔑 最关键的通行证名单！
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token'] // 通行证名单！
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -52,10 +62,10 @@ app.use(limiter);
 
 // ── Bearer Token Authentication ─────────────────────────────────────
 app.use('/api', (req, res, next) => {
-    // Public endpoints (Auth)
-    if (req.path.startsWith('/auth/')) {
-        return next();
-    }
+    // Public endpoints (Auth, TTS proxy)
+    if (req.path.startsWith('/auth/')) return next();
+    if (req.path.startsWith('/tts/')) return next();
+    if (req.path.startsWith('/stt/')) return next();
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -120,9 +130,14 @@ const discordManageRouter = require('./routes/discord-manage');
 const { router: shopRouterHandler, registerPublicShopRoute } = require('./routes/shop');
 const treeRouter = require('./routes/tree');
 const calendarRouter = require('./routes/calendar');
+const ttsRouter = require('./routes/tts');
+const sttRouter = require('./routes/stt');
 // ── Public shop catalog (no auth needed for SillyTavern plugin) ─────────────
 registerPublicShopRoute(app);
 
+// ── Public TTS / STT proxy (no auth — users supply their own API keys) ───────
+app.use('/api/tts', ttsRouter);
+app.use('/api/stt', sttRouter);
 
 app.use('/api/users', usersRouter);
 app.use('/api/posts', postsRouter);

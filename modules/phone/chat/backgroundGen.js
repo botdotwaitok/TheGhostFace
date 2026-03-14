@@ -37,8 +37,9 @@ const LOG_PREFIX = '[后台生成]';
  *
  * @param {string[]} messagesToSend - User messages that were sent
  * @param {Array} historyBeforeSend - Chat history BEFORE the user messages were appended
+ * @param {string|null} [imageBase64=null] - Optional base64 data URL of an attached image
  */
-export async function startBackgroundGeneration(messagesToSend, historyBeforeSend) {
+export async function startBackgroundGeneration(messagesToSend, historyBeforeSend, imageBase64 = null) {
     _isGenerating = true;
     _error = null;
     _pendingResult = null;
@@ -48,7 +49,7 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
     let systemPrompt, userPrompt;
     try {
         systemPrompt = await buildChatSystemPrompt();
-        userPrompt = buildChatUserPrompt(messagesToSend, historyBeforeSend);
+        userPrompt = buildChatUserPrompt(messagesToSend, historyBeforeSend, undefined, !!imageBase64);
     } catch (promptErr) {
         console.error(`${LOG_PREFIX} Prompt building failed:`, promptErr);
         _error = promptErr.message || 'Prompt building failed';
@@ -56,6 +57,9 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
         _dispatchReady(false);
         return;
     }
+
+    // Prepare images array for multimodal call
+    const images = imageBase64 ? [imageBase64] : null;
 
     // ── Attempt loop (1 initial + MAX_RETRIES retries) ──
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -66,9 +70,9 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
         }
 
         try {
-            console.log(`${LOG_PREFIX} Attempt ${attempt + 1}/${MAX_RETRIES + 1}: sending ${messagesToSend.length} messages...`);
+            console.log(`${LOG_PREFIX} Attempt ${attempt + 1}/${MAX_RETRIES + 1}: sending ${messagesToSend.length} messages${imageBase64 ? ' + image' : ''}...`);
 
-            const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 4000 });
+            const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 4000, images });
 
             // ── Route moments commands (fire-and-forget, doesn't affect retry) ──
             try {

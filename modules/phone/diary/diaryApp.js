@@ -339,9 +339,6 @@ function buildDiaryPage(entries) {
                     <button class="diary-header-btn diary-btn-tool" id="diary_search_btn" title="搜索">
                         <i class="fa-solid fa-magnifying-glass"></i>
                     </button>
-                    <button class="diary-header-btn diary-btn-tool" id="diary_calendar_btn" title="日历">
-                        <i class="fa-regular fa-calendar"></i>
-                    </button>
                     <button class="diary-header-btn diary-btn-settings" id="diary_settings_btn" title="设置">
                         <i class="fa-solid fa-ellipsis"></i>
                     </button>
@@ -378,8 +375,6 @@ function buildDiaryPage(entries) {
         ${buildSettingsSheet()}
 
 
-        <!-- Calendar Overlay -->
-        ${buildCalendarOverlay(entries)}
 
         <!-- Search Overlay -->
         ${buildSearchOverlay()}
@@ -415,9 +410,6 @@ function buildEmptyState(charName) {
                     <button class="diary-header-btn diary-btn-tool" id="diary_search_btn" title="搜索">
                         <i class="fa-solid fa-magnifying-glass"></i>
                     </button>
-                    <button class="diary-header-btn diary-btn-tool" id="diary_calendar_btn" title="日历">
-                        <i class="fa-regular fa-calendar"></i>
-                    </button>
                     <button class="diary-header-btn diary-btn-settings" id="diary_settings_btn" title="设置">
                         <i class="fa-solid fa-ellipsis"></i>
                     </button>
@@ -444,8 +436,6 @@ function buildEmptyState(charName) {
         ${buildSettingsSheet()}
 
 
-        <!-- Calendar Overlay -->
-        ${buildCalendarOverlay([])}
 
         <!-- Search Overlay -->
         ${buildSearchOverlay()}
@@ -983,115 +973,7 @@ function buildSettingsSheet() {
     `;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Calendar Overlay
-// ═══════════════════════════════════════════════════════════════════════
 
-function buildCalendarOverlay(entries) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-
-    return `
-    <div class="diary-calendar-overlay" id="diary_calendar_overlay">
-        <div class="diary-calendar-header">
-            <button class="diary-calendar-close" id="diary_calendar_close">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-            <div class="diary-calendar-title">日记日历</div>
-            <div style="width:38px;"></div>
-        </div>
-        <div class="diary-calendar-nav">
-            <button class="diary-calendar-nav-btn" id="diary_cal_prev">
-                <i class="fa-solid fa-chevron-left"></i>
-            </button>
-            <span class="diary-calendar-month" id="diary_cal_month_label">${year}年${month + 1}月</span>
-            <button class="diary-calendar-nav-btn" id="diary_cal_next">
-                <i class="fa-solid fa-chevron-right"></i>
-            </button>
-        </div>
-        <div class="diary-calendar-weekdays">
-            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
-        </div>
-        <div class="diary-calendar-grid" id="diary_cal_grid">
-        </div>
-        <div class="diary-calendar-legend">
-            <span class="diary-calendar-legend-dot diary-cal-has-entry"></span>
-            <span>写了日记</span>
-        </div>
-    </div>
-    `;
-}
-
-function renderCalendarMonth(year, month, entries) {
-    const grid = document.getElementById('diary_cal_grid');
-    const label = document.getElementById('diary_cal_month_label');
-    if (!grid || !label) return;
-
-    label.textContent = `${year}年${month + 1}月`;
-
-    const diaryDates = new Set(entries.map(e => e.date));
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const todayStr = getLocalDateString();
-
-    let html = '';
-    for (let i = 0; i < firstDay; i++) {
-        html += '<div class="diary-cal-cell diary-cal-empty"></div>';
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const hasEntry = diaryDates.has(dateStr);
-        const isToday = dateStr === todayStr;
-        const classes = [
-            'diary-cal-cell',
-            hasEntry ? 'diary-cal-has-entry' : '',
-            isToday ? 'diary-cal-today' : '',
-        ].filter(Boolean).join(' ');
-        html += `<div class="${classes}" data-date="${dateStr}">${d}</div>`;
-    }
-
-    grid.innerHTML = html;
-
-    grid.querySelectorAll('.diary-cal-has-entry').forEach(cell => {
-        cell.addEventListener('click', () => {
-            const date = cell.dataset.date;
-            const overlay = document.getElementById('diary_calendar_overlay');
-            if (overlay) overlay.classList.remove('calendar-active');
-            scrollToDate(date);
-        });
-    });
-}
-
-function scrollToDate(dateStr) {
-    // Find which page contains an entry for this date and navigate there first
-    const entries = loadDiaryEntries();
-    const idx = entries.findIndex(e => e.date === dateStr);
-    if (idx !== -1) {
-        const targetPage = Math.floor(idx / DIARY_PAGE_SIZE);
-        if (targetPage !== _diaryCurrentPage) {
-            _diaryCurrentPage = targetPage;
-            renderPagedFeed(entries);
-        }
-    }
-
-    // Now scroll into view
-    requestAnimationFrame(() => {
-        const feed = document.getElementById('diary_feed');
-        if (!feed) return;
-        const cards = feed.querySelectorAll('.diary-entry-card');
-        for (const card of cards) {
-            const id = parseInt(card.dataset.entryId);
-            const entry = entries.find(e => e.id === id);
-            if (entry && entry.date === dateStr) {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.classList.add('diary-card-highlight');
-                setTimeout(() => card.classList.remove('diary-card-highlight'), 1500);
-                return;
-            }
-        }
-    });
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Search Overlay
@@ -1306,40 +1188,7 @@ function bindDiaryEvents() {
     // Print button — removed from settings, now in detail view
     // (bound dynamically in openDetail via bindDetailEvents)
 
-    // Calendar button
-    onClick('diary_calendar_btn', () => {
-        const overlay = document.getElementById('diary_calendar_overlay');
-        if (overlay) {
-            overlay.classList.add('calendar-active');
-            // Initialize with current month
-            const now = new Date();
-            overlay._calYear = now.getFullYear();
-            overlay._calMonth = now.getMonth();
-            renderCalendarMonth(overlay._calYear, overlay._calMonth, loadDiaryEntries());
-        }
-    });
 
-    // Calendar close
-    onClick('diary_calendar_close', () => {
-        const overlay = document.getElementById('diary_calendar_overlay');
-        if (overlay) overlay.classList.remove('calendar-active');
-    });
-
-    // Calendar navigation
-    onClick('diary_cal_prev', () => {
-        const overlay = document.getElementById('diary_calendar_overlay');
-        if (!overlay) return;
-        overlay._calMonth--;
-        if (overlay._calMonth < 0) { overlay._calMonth = 11; overlay._calYear--; }
-        renderCalendarMonth(overlay._calYear, overlay._calMonth, loadDiaryEntries());
-    });
-    onClick('diary_cal_next', () => {
-        const overlay = document.getElementById('diary_calendar_overlay');
-        if (!overlay) return;
-        overlay._calMonth++;
-        if (overlay._calMonth > 11) { overlay._calMonth = 0; overlay._calYear++; }
-        renderCalendarMonth(overlay._calYear, overlay._calMonth, loadDiaryEntries());
-    });
 
     // Search button
     onClick('diary_search_btn', () => {

@@ -166,6 +166,9 @@ export async function getPhoneWorldBookContext() {
             // Skip GhostFace internal tracking/summary entries
             const comment = (entry.comment || '').trim();
             if (comment.startsWith('鬼面总结-') || comment === '鬼面楼层追踪记录') return false;
+            // Skip moments feed entry — chatPromptBuilder builds its own precise version
+            const keys = Array.isArray(entry.key) ? entry.key : [];
+            if (keys.includes('m_feed')) return false;
             // 黑名单过滤：移除被屏蔽的条目
             if (isEntryBlocked(entry.sourceWorldBook, comment)) return false;
             return true;

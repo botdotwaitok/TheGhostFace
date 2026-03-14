@@ -3149,3 +3149,228 @@
     color: rgba(31, 41, 55, 0.5);
     line-height: 1.4;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Dark Mode — .phone-dark-mode
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Main Layout ── */
+.phone-dark-mode .tree-page {
+    background: #111111;
+}
+
+.phone-dark-mode .tree-status-header {
+    background: rgba(28, 28, 30, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .tree-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tree-stage-label {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .tree-season-badge {
+    background: rgba(255, 255, 255, 0.08);
+    color: #d1d1d6;
+}
+
+/* ── Progress Section ── */
+.phone-dark-mode .tree-progress-labels {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .tree-progress-bar {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Care Section ── */
+.phone-dark-mode .tree-care-header span:first-child {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tree-care-remaining {
+    color: #8e8e93;
+}
+
+.phone-dark-mode .tree-care-btn {
+    background: rgba(44, 44, 46, 0.85);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .tree-care-btn-name {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tree-care-btn-value {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .tree-care-btn-icon {
+    background: rgba(255, 255, 255, 0.06);
+    color: #d1d1d6;
+}
+
+.phone-dark-mode .tree-care-btn-used {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.phone-dark-mode .tree-care-btn-used .tree-care-btn-name,
+.phone-dark-mode .tree-care-btn-used .tree-care-btn-value {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Games Section ── */
+.phone-dark-mode .tree-games-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tree-game-btn {
+    background: rgba(44, 44, 46, 0.85);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #f2f2f7;
+}
+
+/* ── AI Care & Refill Notice ── */
+.phone-dark-mode .tree-ai-care-notice {
+    background: rgba(255, 105, 180, 0.1);
+    border-color: rgba(255, 105, 180, 0.2);
+    color: #ffb6c1;
+}
+
+.phone-dark-mode .tree-ai-care-dialogue {
+    color: #ff69b4;
+}
+
+.phone-dark-mode .tree-refill-bar {
+    background: rgba(250, 204, 21, 0.1);
+    border-color: rgba(250, 204, 21, 0.2);
+    color: #facc15;
+}
+
+.phone-dark-mode .tree-refill-btn {
+    background: rgba(250, 204, 21, 0.2);
+    border-color: rgba(250, 204, 21, 0.3);
+    color: #fef08a;
+}
+
+/* ── Stage Display (Darker Background Filter) ── */
+.phone-dark-mode .tree-stage-display {
+    /* Dim the stage background image slightly in dark mode */
+    box-shadow: inset 0 0 120px rgba(0,0,0,0.8);
+}
+
+/* ── Dialogue Bubble ── */
+.phone-dark-mode .tree-dialogue-bubble {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.3);
+    color: #e9d5ff;
+}
+
+.phone-dark-mode .tree-dialogue-bubble strong {
+    color: #c084fc;
+}
+
+/* ── Minigames (Quiz, ToD, Gacha) ── */
+.phone-dark-mode .tree-quiz-card,
+.phone-dark-mode .tg-tod-question-card,
+.phone-dark-mode .tg-tod-ai-response,
+.phone-dark-mode .tg-tod-reaction-area,
+.phone-dark-mode .tg-gacha-dialogue-card {
+    background: #1c1c1e;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .tree-quiz-question,
+.phone-dark-mode .tg-tod-question-text,
+.phone-dark-mode .tg-gacha-dialogue-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tree-quiz-option {
+    background: rgba(44, 44, 46, 0.85);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .tree-quiz-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .tg-tod-cylinder {
+    background: #1c1c1e;
+}
+
+.phone-dark-mode .tg-tod-slot {
+    background: #2c2c2e;
+}
+
+.phone-dark-mode .tg-tod-textarea {
+    background: #2c2c2e;
+    color: #f2f2f7;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.phone-dark-mode .tg-tod-textarea:focus {
+    border-color: rgba(239, 68, 68, 0.6);
+}
+
+.phone-dark-mode .tg-tod-chat-bubble.player .tg-tod-chat-bubble-text {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tg-tod-chat-bubble.ai .tg-tod-chat-bubble-text {
+    background: rgba(99, 102, 241, 0.15);
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .tg-gacha-dialogue-content {
+    color: #e0e0e0;
+}
+
+/* ── Seasonal & Minigame Header Overrides ── */
+.phone-dark-mode .phone-app-viewport:has(.tree-page.season-spring) .phone-app-viewport-header {
+    background: rgba(60, 24, 40, 0.95) !important;
+    border-bottom-color: rgba(244, 114, 182, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tree-page.season-summer) .phone-app-viewport-header {
+    background: rgba(24, 60, 36, 0.95) !important;
+    border-bottom-color: rgba(74, 222, 128, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tree-page.season-autumn) .phone-app-viewport-header {
+    background: rgba(60, 36, 20, 0.95) !important;
+    border-bottom-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tree-page.season-winter) .phone-app-viewport-header {
+    background: rgba(24, 46, 60, 0.95) !important;
+    border-bottom-color: rgba(147, 197, 253, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tg-quiz-page) .phone-app-viewport-header,
+.phone-dark-mode .phone-app-viewport:has(.tg-gacha-page) .phone-app-viewport-header {
+    background: rgba(46, 24, 60, 0.95) !important;
+    border-bottom-color: rgba(168, 85, 247, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tg-tod-page) .phone-app-viewport-header {
+    background: rgba(60, 24, 30, 0.95) !important;
+    border-bottom-color: rgba(244, 63, 94, 0.3) !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tree-page) .phone-app-viewport-title,
+.phone-dark-mode .phone-app-viewport:has(.tg-quiz-page) .phone-app-viewport-title,
+.phone-dark-mode .phone-app-viewport:has(.tg-gacha-page) .phone-app-viewport-title,
+.phone-dark-mode .phone-app-viewport:has(.tg-tod-page) .phone-app-viewport-title {
+    color: #f2f2f7 !important;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.tree-page) .phone-app-back-btn {
+    color: #4ade80 !important;
+}

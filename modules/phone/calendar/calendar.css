@@ -891,3 +891,174 @@
     color: #aaa;
     margin-bottom: 4px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Dark Mode — .phone-dark-mode
+   ═══════════════════════════════════════════════════════════════════ */
+
+.phone-dark-mode .cal-page {
+    background: linear-gradient(165deg, #1f1b24 0%, #16161a 40%, #1a1a24 100%);
+}
+
+.phone-dark-mode .cal-header-title {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .cal-header-subtitle {
+    color: #999;
+}
+
+.phone-dark-mode .cal-month-label {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .cal-month-nav-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #bbb;
+}
+
+.phone-dark-mode .cal-month-nav-btn:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.phone-dark-mode .cal-header-btn:not(.cal-btn-add) {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ccc;
+}
+
+.phone-dark-mode .cal-header-btn:not(.cal-btn-add):active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.phone-dark-mode .cal-weekdays span {
+    color: #888;
+}
+
+.phone-dark-mode .cal-cell-day {
+    color: #ddd;
+}
+
+.phone-dark-mode .cal-cell-weekend .cal-cell-day {
+    color: #777;
+}
+
+.phone-dark-mode .cal-cell:active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Let today or active ones keep their colors */
+.phone-dark-mode .cal-cell-period {
+    background: rgba(255, 107, 107, 0.2);
+}
+
+.phone-dark-mode .cal-upcoming-title {
+    color: #ccc;
+}
+
+.phone-dark-mode .cal-upcoming-item {
+    background: rgba(30, 30, 36, 0.7);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.phone-dark-mode .cal-upcoming-name {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .cal-upcoming-date {
+    color: #888;
+}
+
+.phone-dark-mode .cal-upcoming-delete,
+.phone-dark-mode .cal-day-sheet-close {
+    background: rgba(255, 255, 255, 0.08);
+    color: #bbb;
+}
+
+.phone-dark-mode .cal-day-overlay {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.phone-dark-mode .cal-day-sheet,
+.phone-dark-mode .cal-add-overlay,
+.phone-dark-mode .cal-period-overlay {
+    background: #1c1c1e;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+}
+
+.phone-dark-mode .cal-day-sheet-header {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .cal-day-sheet-date,
+.phone-dark-mode .cal-period-toggle-text {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .cal-day-item-text {
+    color: #d0d0d0;
+}
+
+.phone-dark-mode .cal-add-input,
+.phone-dark-mode .cal-period-num-input,
+.phone-dark-mode .cal-period-textarea,
+.phone-dark-mode .cal-add-date-row input[type="date"] {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .cal-add-input:focus,
+.phone-dark-mode .cal-period-num-input:focus,
+.phone-dark-mode .cal-period-textarea:focus,
+.phone-dark-mode .cal-add-date-row input[type="date"]:focus {
+    background: rgba(30,30,30,0.8);
+    color: #fff;
+    border-color: #ff6b6b;
+}
+
+.phone-dark-mode .cal-type-card {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .cal-type-label,
+.phone-dark-mode .cal-period-num-label {
+    color: #aaa;
+}
+
+.phone-dark-mode .cal-symptom-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #bbb;
+}
+
+.phone-dark-mode .cal-day-sheet-handle {
+    background: #444;
+}
+
+.phone-dark-mode .cal-prompt-preview {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.05);
+    color: #999;
+}
+
+.phone-dark-mode .cal-period-history-item {
+    background: rgba(255, 107, 107, 0.15);
+}
+
+.phone-dark-mode .cal-period-history-date {
+    color: #ff6b6b;
+}
+
+.phone-dark-mode .cal-period-history-delete {
+    background: rgba(255, 255, 255, 0.1);
+    color: #bbb;
+}
+
+.phone-dark-mode .cal-toggle {
+    background: #444;
+}
+
+.phone-dark-mode .cal-toggle.toggle-on {
+    background: #ff6b6b;
+}

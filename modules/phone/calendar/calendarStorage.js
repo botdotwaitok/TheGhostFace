@@ -7,7 +7,14 @@ import { chat_metadata, saveSettingsDebounced } from '../../../../../../../scrip
 const LOG = '[日历]';
 const META_KEY_EVENTS = 'gf_calendarEvents';
 const META_KEY_PERIOD = 'gf_calendarPeriodData';
+const META_KEY_WI_SETTINGS = 'gf_calendarWISettings';
 const MODULE_NAME = 'the_ghost_face';
+
+// Default World Info injection settings
+const DEFAULT_WI_SETTINGS = {
+    enabled: false,       // 是否启用世界书注入
+    lookAheadDays: 7,     // 未来预告天数 (3/7/14/30)
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Event Types & Defaults
@@ -151,6 +158,110 @@ export function savePeriodData(data) {
             if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
         }
     } catch { }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// WI (World Info) Injection Settings
+// ═══════════════════════════════════════════════════════════════════════
+
+export function loadWISettings() {
+    try {
+        const data = chat_metadata?.[META_KEY_WI_SETTINGS];
+        if (data && typeof data === 'object') {
+            return { ...DEFAULT_WI_SETTINGS, ...data };
+        }
+    } catch { }
+    return { ...DEFAULT_WI_SETTINGS };
+}
+
+export function saveWISettings(data) {
+    try {
+        if (chat_metadata) {
+            chat_metadata[META_KEY_WI_SETTINGS] = data;
+            saveMetadataDebounced();
+        }
+    } catch (e) {
+        console.warn(`${LOG} saveWISettings failed:`, e);
+    }
+
+    // Secondary backup
+    try {
+        if (typeof extension_settings !== 'undefined') {
+            if (!extension_settings[MODULE_NAME]) extension_settings[MODULE_NAME] = {};
+            extension_settings[MODULE_NAME].calendarWISettings = data;
+            if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
+        }
+    } catch { }
+}
+
+/**
+ * Collect upcoming events for the next N days.
+ * Aggregates: user-created events + holidays + predicted period.
+ * @param {number} days - look-ahead days
+ * @returns {Array<{date: string, emoji: string, title: string, type: string}>}
+ */
+export function getUpcomingEvents(days = 7) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const results = [];
+
+    for (let i = 0; i <= days; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() + i);
+        const dateStr = getLocalDateString(d);
+
+        // User events
+        const events = loadEvents();
+        for (const ev of events) {
+            if (dateStr >= ev.startDate && dateStr <= ev.endDate) {
+                const typeInfo = EVENT_TYPES.find(t => t.id === ev.type);
+                results.push({
+                    date: dateStr,
+                    emoji: ev.emoji || typeInfo?.emoji || '📌',
+                    title: ev.title + (ev.note ? ` · ${ev.note}` : ''),
+                    type: ev.type,
+                });
+            }
+        }
+
+        // Holidays
+        const holidays = getHolidaysForDate(dateStr);
+        for (const h of holidays) {
+            results.push({
+                date: dateStr,
+                emoji: h.emoji || '🎉',
+                title: h.name,
+                type: 'holiday',
+            });
+        }
+
+        // Predicted period
+        const pd = loadPeriodData();
+        if (pd.enabled && pd.periodStarts.length > 0) {
+            const ps = getPeriodStatusForDate(dateStr);
+            if (ps) {
+                results.push({
+                    date: dateStr,
+                    emoji: '🩸',
+                    title: `经期 Day ${ps.dayOfPeriod}`,
+                    type: 'period',
+                });
+            }
+        }
+    }
+
+    // Deduplicate (same date+title combo)
+    const seen = new Set();
+    const unique = results.filter(r => {
+        const key = `${r.date}|${r.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    // Sort by date
+    unique.sort((a, b) => a.date.localeCompare(b.date));
+    return unique;
 }
 
 /**

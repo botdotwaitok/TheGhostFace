@@ -1,6 +1,9 @@
 // ui/phone/settings/settingsApp.js — Settings app for the GF Phone
 // iPhone-style layout: top profile card → account detail page → module settings
 
+import { getSttEngine } from '../voiceCall/sttInit.js';
+import { getTtsEngine } from '../voiceCall/tts/ttsInit.js';
+
 import { openAppInViewport } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
@@ -14,6 +17,8 @@ import {
 import * as moments from '../moments/moments.js';
 import { loadTreeData, getTreeState, updateTreeState, updateTreeSettings } from '../tree/treeStorage.js';
 import { disableTreeWorldInfo, updateTreeWorldInfo } from '../tree/treeWorldInfo.js';
+import { updateCalendarWorldInfo, disableCalendarWorldInfo } from '../calendar/calendarWorldInfo.js';
+import { loadWISettings, saveWISettings } from '../calendar/calendarStorage.js';
 import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbookManager.js';
@@ -116,7 +121,7 @@ function openAccountDetailPage() {
     const html = `
     <div class="phone-settings-page">
         <!-- ═══ Server Connection (always on top) ═══ -->
-        <div class="phone-settings-section" style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-radius: 12px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+        <div class="phone-settings-section phone-settings-account-card">
             <div class="phone-settings-section-body" style="padding: 16px;">
                 <div class="phone-settings-group-title" style="margin-top: 0;">服务器连接</div>
                 <div class="phone-settings-row">
@@ -131,14 +136,14 @@ function openAccountDetailPage() {
         </div>
 
         <!-- ═══ Auth / Profile Section ═══ -->
-        <div class="phone-settings-section" style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-radius: 12px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+        <div class="phone-settings-section phone-settings-account-card">
             <div class="phone-settings-section-body" style="padding: 16px;">
                 <div id="${P}_auth_container" class="moments-auth-container"></div>
             </div>
         </div>
 
         <!-- ═══ Your ID (only when logged in) ═══ -->
-        <div id="${P}_id_section" class="phone-settings-section" style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-radius: 12px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); ${isLoggedIn ? '' : 'display: none;'}">
+        <div id="${P}_id_section" class="phone-settings-section phone-settings-account-card" ${isLoggedIn ? '' : 'style="display: none;"'}>
             <div class="phone-settings-section-body" style="padding: 16px;">
                 <div class="phone-settings-row">
                     <label>你的ID（复制给好友）</label>
@@ -151,7 +156,7 @@ function openAccountDetailPage() {
         </div>
 
         <!-- ═══ Discord Binding (only when logged in) ═══ -->
-        <div id="${P}_discord_section" class="phone-settings-section" style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-radius: 12px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); ${isLoggedIn ? '' : 'display: none;'}">
+        <div id="${P}_discord_section" class="phone-settings-section phone-settings-account-card" ${isLoggedIn ? '' : 'style="display: none;"'}>
             <div class="phone-settings-section-body" style="padding: 16px;">
                 <div class="phone-settings-group-title" style="margin-top: 0;">Discord 绑定</div>
                 <div id="${P}_discord_bind_section">
@@ -163,8 +168,8 @@ function openAccountDetailPage() {
         </div>
 
         <!-- ═══ Logout (only when logged in) ═══ -->
-        <div id="${P}_logout_section" style="${isLoggedIn ? '' : 'display: none;'}">
-            <button id="${P}_logout_btn" class="phone-settings-btn" style="width: 100%; background: rgba(255, 59, 48, 0.1); color: #ff3b30; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px;">
+        <div id="${P}_logout_section" ${isLoggedIn ? '' : 'style="display: none;"'}>
+            <button id="${P}_logout_btn" class="phone-settings-btn phone-settings-logout-btn">
                 退出登录
             </button>
         </div>
@@ -419,8 +424,8 @@ function renderDiscordBindStep(container, prefix = 'phone_account') {
             <div style="width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #5865F2, #7289DA); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;">
                 <i class="fa-brands fa-discord" style="font-size: 28px; color: #fff;"></i>
             </div>
-            <div style="font-size: 17px; font-weight: 600; color: #1c1c1e; margin-bottom: 6px;">绑定 Discord 账号</div>
-            <div style="font-size: 13px; color: #8e8e93; line-height: 1.6; padding: 0 12px;">
+            <div class="phone-settings-discord-title">绑定 Discord 账号</div>
+            <div class="phone-settings-discord-desc">
                 为了保护服务器安全，注册需要绑定 Discord 账号。<br>
                 请在 Discord 中输入 <b style="color: #5865F2;">/绑定码</b> 获取 6 位验证码。
             </div>
@@ -482,10 +487,10 @@ function buildProfileCardHtml() {
             <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;">
                 <div style="flex-shrink: 0;">${avatarHtml}</div>
                 <div style="min-width: 0;">
-                    <div style="font-size: 20px; font-weight: 600; color: #1c1c1e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <div class="phone-settings-profile-card-name">
                         ${escapeHtml(s.displayName || 'User')}
                     </div>
-                    <div style="font-size: 13px; color: #8e8e93; margin-top: 2px;">
+                    <div class="phone-settings-profile-card-sub">
                         @${escapeHtml(s.username || '')}
                     </div>
                 </div>
@@ -502,8 +507,8 @@ function buildProfileCardHtml() {
                     <i class="fa-solid fa-user" style="font-size: 24px; color: #c7c7cc;"></i>
                 </div>
                 <div>
-                    <div style="font-size: 17px; font-weight: 600; color: #1c1c1e;">登录 / 注册</div>
-                    <div style="font-size: 13px; color: #8e8e93; margin-top: 2px;">点击管理你的账号</div>
+                    <div class="phone-settings-profile-card-name">登录 / 注册</div>
+                    <div class="phone-settings-profile-card-sub">点击管理你的账号</div>
                 </div>
             </div>
             <i class="fa-solid fa-chevron-right" style="color: #c7c7cc; font-size: 14px; flex-shrink: 0;"></i>
@@ -790,6 +795,42 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ 日历设置 (Calendar Settings) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #5B9BD5, #3A7BD5);"><i class="fa-solid fa-calendar-days"></i></span>
+                <span>日历</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">世界书条目注入</span>
+                        <button id="${P}_cal_wb_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后，近期日历事件（用户事件/节日/经期预测）将注入世界书，让你对象主动感知和提起未来的事件。
+                </div>
+
+                <div id="${P}_cal_days_settings" style="display: none;">
+                    <div class="phone-settings-row">
+                        <label>预告天数</label>
+                        <select id="${P}_cal_lookahead_days" class="phone-settings-input" style="height: 36px; max-width: 120px;">
+                            <option value="3">3 天</option>
+                            <option value="7">7 天</option>
+                            <option value="14">14 天</option>
+                            <option value="30">30 天</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+        </details>
+
         <!-- ═══ 聊天 (Chat Settings — merged from 消息提醒 + 回家模式) ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
@@ -918,7 +959,176 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ 语音通话设置 (Voice Call — STT + TTS merged) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #34C759, #30D158);"><i class="fa-solid fa-phone"></i></span>
+                <span>语音通话</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
 
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span>配置语音通话的语音识别 (STT) 和语音合成 (TTS) 引擎。</span>
+                    <span style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 14px; background: rgba(52, 199, 89, 0.12); color: #34C759; font-size: 11px; font-weight: 600; white-space: nowrap;">
+                        <i class="fa-solid fa-circle-question" style="font-size: 12px;"></i> iOS 用户请看社区教程
+                    </span>
+                </div>
+
+                <!-- ─── STT 语音识别 ─── -->
+                <div class="phone-settings-group-title">语音识别 (STT)</div>
+                <div class="phone-settings-row">
+                    <label>Provider</label>
+                    <select id="${P}_stt_provider" class="phone-settings-input" style="height: 36px;">
+                        <option value="none">关闭</option>
+                    </select>
+                </div>
+                <div id="${P}_stt_browser_tip" style="display: none;"></div>
+
+                <div class="phone-settings-row">
+                    <label>识别语言</label>
+                    <select id="${P}_stt_language" class="phone-settings-input" style="height: 36px;">
+                        <option value="zh-CN">zh-CN: 中文</option>
+                        <option value="en-US">en-US: English (US)</option>
+                        <option value="ja-JP">ja-JP: 日本語</option>
+                        <option value="ko-KR">ko-KR: 한국어</option>
+                        <option value="zh-TW">zh-TW: 繁體中文</option>
+                        <option value="en-GB">en-GB: English (UK)</option>
+                        <option value="fr-FR">fr-FR: Français</option>
+                        <option value="de-DE">de-DE: Deutsch</option>
+                        <option value="es-ES">es-ES: Español</option>
+                        <option value="ru-RU">ru-RU: Русский</option>
+                        <option value="">自动检测</option>
+                    </select>
+                </div>
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">语音激活模式 (VAD)</span>
+                        <button id="${P}_stt_vad_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后，检测到说话声自动开始录音，停止说话自动识别。关闭则需手动按按钮。
+                </div>
+
+                <div id="${P}_stt_provider_settings"></div>
+
+                <!-- ─── TTS 语音合成 ─── -->
+                <div class="phone-settings-group-title">语音合成 (TTS)</div>
+                <div style="padding: 0 16px 8px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    通话时你对象的回复将被朗读。GPT-SoVITS 走本地推理，ElevenLabs / MiniMax 走云代理。
+                </div>
+                <div class="phone-settings-row">
+                    <label>Provider</label>
+                    <select id="${P}_tts_provider" class="phone-settings-input" style="height: 36px;">
+                        <option value="none">关闭</option>
+                        <option value="GPT-SoVITS">GPT-SoVITS（本地）</option>
+                        <option value="ElevenLabs">ElevenLabs</option>
+                        <option value="MiniMax">MiniMax</option>
+                    </select>
+                </div>
+
+                <!-- GPT-SoVITS 专属设置 -->
+                <div id="${P}_tts_gsvi_settings" style="display:none;">
+                    <div class="phone-settings-row">
+                        <label>本地端点</label>
+                        <input id="${P}_tts_gsvi_endpoint" type="text" class="phone-settings-input"
+                               placeholder="http://localhost:8000" />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>角色名 (Voice ID)</label>
+                        <input id="${P}_tts_gsvi_voice" type="text" class="phone-settings-input"
+                               placeholder="模型名称" />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>语速</label>
+                        <div class="phone-settings-slider-row">
+                            <input id="${P}_tts_gsvi_speed" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="phone-settings-slider" />
+                            <span id="${P}_tts_gsvi_speed_val" class="phone-settings-slider-val">1.0x</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ElevenLabs 专属设置 -->
+                <div id="${P}_tts_elevenlabs_settings" style="display:none;">
+                    <div class="phone-settings-row">
+                        <label>API Key</label>
+                        <input id="${P}_tts_11labs_key" type="password" class="phone-settings-input"
+                               placeholder="sk-..." />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>Voice ID</label>
+                        <input id="${P}_tts_11labs_voice" type="text" class="phone-settings-input"
+                               placeholder="pNInz6obpgDQGcFmaJgB" />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>模型</label>
+                        <select id="${P}_tts_11labs_model" class="phone-settings-input" style="height: 36px;">
+                            <option value="eleven_multilingual_v2">Multilingual v2 (推荐)</option>
+                            <option value="eleven_turbo_v2_5">Turbo v2.5 (快速)</option>
+                            <option value="eleven_turbo_v2">Turbo v2</option>
+                            <option value="eleven_multilingual_v1">Multilingual v1</option>
+                            <option value="eleven_monolingual_v1">English v1</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>语速</label>
+                        <div class="phone-settings-slider-row">
+                            <input id="${P}_tts_11labs_speed" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="phone-settings-slider" />
+                            <span id="${P}_tts_11labs_speed_val" class="phone-settings-slider-val">1.0x</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MiniMax 专属设置 -->
+                <div id="${P}_tts_minimax_settings" style="display:none;">
+                    <div class="phone-settings-row">
+                        <label>API Key</label>
+                        <input id="${P}_tts_minimax_key" type="password" class="phone-settings-input"
+                               placeholder="eyJ..." />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>Voice ID</label>
+                        <input id="${P}_tts_minimax_voice" type="text" class="phone-settings-input"
+                               placeholder="female-shaonv" />
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>模型</label>
+                        <select id="${P}_tts_minimax_model" class="phone-settings-input" style="height: 36px;">
+                            <option value="speech-02-hd">speech-02-hd (推荐)</option>
+                            <option value="speech-02">speech-02</option>
+                            <option value="speech-01-hd">speech-01-hd</option>
+                            <option value="speech-01">speech-01</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>语速</label>
+                        <div class="phone-settings-slider-row">
+                            <input id="${P}_tts_minimax_speed" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="phone-settings-slider" />
+                            <span id="${P}_tts_minimax_speed_val" class="phone-settings-slider-val">1.0x</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 云代理（ElevenLabs / MiniMax 共用）-->
+                <div id="${P}_tts_proxy_settings" style="display:none;">
+                    <div class="phone-settings-group-title">云服务器代理</div>
+                    <div class="phone-settings-row">
+                        <label>代理地址</label>
+                        <input id="${P}_tts_proxy_server" type="text" class="phone-settings-input"
+                               placeholder="http://74.208.78.209:3421" />
+                    </div>
+                </div>
+
+                <div class="phone-settings-actions">
+                    <button id="${P}_tts_save_btn" class="phone-settings-btn phone-settings-btn-primary">保存设置</button>
+                </div>
+
+            </div>
+        </details>
 
         <!-- ═══ 世界书黑名单 (World Book Blacklist) ═══ -->
         <details class="phone-settings-section">
@@ -1145,6 +1355,60 @@ export function openSettingsApp() {
             }
         });
 
+        // ═══ Calendar Settings ═══
+        {
+            const calWiSettings = loadWISettings();
+            const calWbToggle = document.getElementById(`${P}_cal_wb_toggle`);
+            const calDaysSettings = document.getElementById(`${P}_cal_days_settings`);
+            const calDaysSelect = document.getElementById(`${P}_cal_lookahead_days`);
+
+            // Initialize toggle state
+            if (calWbToggle) {
+                const isOn = !!calWiSettings.enabled;
+                calWbToggle.setAttribute('aria-checked', String(isOn));
+                if (isOn) calWbToggle.classList.add('active');
+                if (calDaysSettings) calDaysSettings.style.display = isOn ? '' : 'none';
+
+                calWbToggle.addEventListener('click', () => {
+                    const wasOn = calWbToggle.getAttribute('aria-checked') === 'true';
+                    const newState = !wasOn;
+                    calWbToggle.setAttribute('aria-checked', String(newState));
+                    calWbToggle.classList.toggle('active', newState);
+                    if (calDaysSettings) calDaysSettings.style.display = newState ? '' : 'none';
+
+                    const ws = loadWISettings();
+                    ws.enabled = newState;
+                    saveWISettings(ws);
+
+                    if (newState) {
+                        updateCalendarWorldInfo().catch(e => {
+                            console.warn('[Settings] 日历世界书条目更新:', e);
+                        });
+                    } else {
+                        disableCalendarWorldInfo();
+                    }
+                    showToast(newState ? '日历世界书注入已开启 📅' : '日历世界书注入已关闭');
+                });
+            }
+
+            // Initialize day selector
+            if (calDaysSelect) {
+                calDaysSelect.value = String(calWiSettings.lookAheadDays || 7);
+                calDaysSelect.addEventListener('change', () => {
+                    const ws = loadWISettings();
+                    ws.lookAheadDays = parseInt(calDaysSelect.value, 10) || 7;
+                    saveWISettings(ws);
+
+                    if (ws.enabled) {
+                        updateCalendarWorldInfo().catch(e => {
+                            console.warn('[Settings] 日历世界书条目更新:', e);
+                        });
+                    }
+                    showToast(`日历预告天数: ${ws.lookAheadDays} 天`);
+                });
+            }
+        }
+
         // ═══ Auto-Summarize: Memory Toggle ═══
         const autoSumMemToggle = document.getElementById(`${P}_auto_summarize_memory_toggle`);
         const autoSumMemOn = localStorage.getItem('gf_phone_auto_summarize_memory') !== 'false'; // default ON
@@ -1218,7 +1482,212 @@ export function openSettingsApp() {
             }
         }
 
+        // ═══ STT Settings ═══
+        {
+            const sttEngine = getSttEngine();
+            const sttSettings = sttEngine.getSettings();
+            const providerSelect = document.getElementById(`${P}_stt_provider`);
+            const langSelect = document.getElementById(`${P}_stt_language`);
+            const vadToggle = document.getElementById(`${P}_stt_vad_toggle`);
+            const providerSettingsContainer = document.getElementById(`${P}_stt_provider_settings`);
+
+            // Populate provider dropdown
+            if (providerSelect) {
+                const providers = sttEngine.getAvailableProviders();
+                providers.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.name;
+                    const provider = sttEngine._providers.get(p.name);
+                    const instance = provider?.instance || new provider.ProviderClass();
+                    opt.textContent = `${instance.description || p.name}${p.available ? '' : ' (不可用)'}`;
+                    opt.disabled = !p.available;
+                    providerSelect.appendChild(opt);
+                });
+                providerSelect.value = sttSettings.provider || 'none';
+
+                // Show tip when on insecure context (Safari / iOS blocks ALL microphone access over HTTP)
+                const tipEl = document.getElementById(`${P}_stt_browser_tip`);
+                const isInsecure = !window.isSecureContext;
+                const browserInfo = providers.find(p => p.name === 'Browser');
+                const browserUnavailable = browserInfo && !browserInfo.available;
+                if (tipEl && (isInsecure || browserUnavailable)) {
+                    tipEl.style.display = '';
+                    if (isInsecure) {
+                        tipEl.innerHTML = `
+                            <div style="margin: 0 16px 12px; padding: 10px 14px; border-radius: 10px; background: rgba(255, 59, 48, 0.1); border: 1px solid rgba(255, 59, 48, 0.25); font-size: 12px; line-height: 1.6; color: #8e8e93;">
+                                <div style="font-weight: 600; margin-bottom: 4px; color: #FF3B30;"><i class="fa-solid fa-lock" style="margin-right: 4px;"></i>需要 HTTPS 连接</div>
+                                当前通过 <b>HTTP</b> 访问，Safari 和 iOS 浏览器会阻止所有麦克风访问（包括录音和语音识别）。<br>
+                                请通过 <b>HTTPS</b> 或 <b>localhost</b> 访问酒馆，或在 PC 端使用 Edge / Chrome。
+                                <div style="display: flex; align-items: center; gap: 4px; margin-top: 6px; color: #34C759; font-weight: 600;">
+                                    <i class="fa-solid fa-book-open" style="font-size: 11px;"></i> 请去社区查看《iOS 语音通话设置指南》教程帖子
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        tipEl.innerHTML = `
+                            <div style="margin: 0 16px 12px; padding: 10px 14px; border-radius: 10px; background: rgba(255, 204, 0, 0.12); border: 1px solid rgba(255, 204, 0, 0.25); font-size: 12px; line-height: 1.6; color: #8e8e93;">
+                                <div style="font-weight: 600; margin-bottom: 4px; color: #FFa500;"><i class="fa-solid fa-triangle-exclamation" style="margin-right: 4px;"></i>浏览器语音识别不可用</div>
+                                此浏览器不支持内置语音识别，请改用 <b style="color: #34C759;">Groq Whisper (免费快速)</b> 等 API 方案。
+                                <div style="display: flex; align-items: center; gap: 4px; margin-top: 6px; color: #34C759; font-weight: 600;">
+                                    <i class="fa-solid fa-book-open" style="font-size: 11px;"></i> 请去社区查看《iOS 语音通话设置指南》教程帖子
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                providerSelect.addEventListener('change', () => {
+                    sttEngine.setProvider(providerSelect.value);
+                    _renderSttProviderSettings(P, sttEngine);
+                    showToast(`语音识别: ${providerSelect.value === 'none' ? '已关闭' : providerSelect.options[providerSelect.selectedIndex].text}`);
+                });
+            }
+
+            // Language
+            if (langSelect) {
+                langSelect.value = sttSettings.language || 'zh-CN';
+                langSelect.addEventListener('change', () => {
+                    sttEngine.language = langSelect.value;
+                });
+            }
+
+            // VAD toggle
+            if (vadToggle) {
+                vadToggle.setAttribute('aria-checked', String(sttSettings.vadEnabled));
+                if (sttSettings.vadEnabled) vadToggle.classList.add('active');
+                vadToggle.addEventListener('click', () => {
+                    const wasOn = vadToggle.getAttribute('aria-checked') === 'true';
+                    const newState = !wasOn;
+                    vadToggle.setAttribute('aria-checked', String(newState));
+                    vadToggle.classList.toggle('active', newState);
+                    sttEngine.vadEnabled = newState;
+                    showToast(newState ? '语音激活已开启 🎙️' : '语音激活已关闭');
+                });
+            }
+
+            // Render provider-specific settings
+            _renderSttProviderSettings(P, sttEngine);
+        }
+
+        // ═══ TTS Settings ═══
+        {
+            const ttsEngine = getTtsEngine();
+            const ttsSettings = ttsEngine.getSettings();
+            const ttsProviderSelect = document.getElementById(`${P}_tts_provider`);
+
+            const gsviPanel = document.getElementById(`${P}_tts_gsvi_settings`);
+            const elevPanel = document.getElementById(`${P}_tts_elevenlabs_settings`);
+            const mmPanel = document.getElementById(`${P}_tts_minimax_settings`);
+            const proxyPanel = document.getElementById(`${P}_tts_proxy_settings`);
+
+            // Helper: toggle visible sub-panels based on selected provider
+            function _updateTtsPanels(providerName) {
+                gsviPanel && (gsviPanel.style.display = providerName === 'GPT-SoVITS' ? '' : 'none');
+                elevPanel && (elevPanel.style.display = providerName === 'ElevenLabs' ? '' : 'none');
+                mmPanel && (mmPanel.style.display = providerName === 'MiniMax' ? '' : 'none');
+                // Cloud proxy shown for ElevenLabs and MiniMax
+                const needsProxy = providerName === 'ElevenLabs' || providerName === 'MiniMax';
+                proxyPanel && (proxyPanel.style.display = needsProxy ? '' : 'none');
+            }
+
+            // Populate provider select and show saved value
+            if (ttsProviderSelect) {
+                ttsProviderSelect.value = ttsSettings.provider || 'none';
+                _updateTtsPanels(ttsSettings.provider || 'none');
+                ttsProviderSelect.addEventListener('change', () => {
+                    _updateTtsPanels(ttsProviderSelect.value);
+                });
+            }
+
+            // Populate fields from saved settings
+            const gsviS = ttsEngine.getProviderSettings('GPT-SoVITS');
+            const elevS = ttsEngine.getProviderSettings('ElevenLabs');
+            const mmS = ttsEngine.getProviderSettings('MiniMax');
+
+            const gsviEndpointInput = document.getElementById(`${P}_tts_gsvi_endpoint`);
+            const gsviVoiceInput = document.getElementById(`${P}_tts_gsvi_voice`);
+            const gsviSpeedSlider = document.getElementById(`${P}_tts_gsvi_speed`);
+            const gsviSpeedVal = document.getElementById(`${P}_tts_gsvi_speed_val`);
+            const elevKeyInput = document.getElementById(`${P}_tts_11labs_key`);
+            const elevVoiceInput = document.getElementById(`${P}_tts_11labs_voice`);
+            const elevModelSelect = document.getElementById(`${P}_tts_11labs_model`);
+            const elevSpeedSlider = document.getElementById(`${P}_tts_11labs_speed`);
+            const elevSpeedVal = document.getElementById(`${P}_tts_11labs_speed_val`);
+            const mmKeyInput = document.getElementById(`${P}_tts_minimax_key`);
+            const mmVoiceInput = document.getElementById(`${P}_tts_minimax_voice`);
+            const mmModelSelect = document.getElementById(`${P}_tts_minimax_model`);
+            const mmSpeedSlider = document.getElementById(`${P}_tts_minimax_speed`);
+            const mmSpeedVal = document.getElementById(`${P}_tts_minimax_speed_val`);
+            const proxyInput = document.getElementById(`${P}_tts_proxy_server`);
+
+            // Fill existing fields
+            if (gsviEndpointInput) gsviEndpointInput.value = gsviS.endpoint || 'http://localhost:8000';
+            if (gsviVoiceInput) gsviVoiceInput.value = gsviS.voiceId || '';
+            if (elevKeyInput) elevKeyInput.value = elevS.apiKey || '';
+            if (elevVoiceInput) elevVoiceInput.value = elevS.voiceId || '';
+            if (mmKeyInput) mmKeyInput.value = mmS.apiKey || '';
+            if (mmVoiceInput) mmVoiceInput.value = mmS.voiceId || '';
+            if (proxyInput) proxyInput.value = elevS.proxyServer || mmS.proxyServer || 'http://74.208.78.209:3421';
+
+            // Fill new model + speed fields
+            if (elevModelSelect) elevModelSelect.value = elevS.model || 'eleven_multilingual_v2';
+            if (mmModelSelect) mmModelSelect.value = mmS.model || 'speech-02-hd';
+
+            // Speed sliders — restore values + bind live label updates
+            const _initSpeedSlider = (slider, label, savedSpeed) => {
+                if (!slider || !label) return;
+                const val = parseFloat(savedSpeed) || 1.0;
+                slider.value = val;
+                label.textContent = `${val.toFixed(1)}x`;
+                slider.addEventListener('input', () => {
+                    label.textContent = `${parseFloat(slider.value).toFixed(1)}x`;
+                });
+            };
+            _initSpeedSlider(gsviSpeedSlider, gsviSpeedVal, gsviS.speed);
+            _initSpeedSlider(elevSpeedSlider, elevSpeedVal, elevS.speed);
+            _initSpeedSlider(mmSpeedSlider, mmSpeedVal, mmS.speed);
+
+            // Save button
+            onClick(`${P}_tts_save_btn`, () => {
+                const selectedProvider = ttsProviderSelect?.value || 'none';
+
+                // Save GPT-SoVITS settings
+                ttsEngine.updateProviderSettings('GPT-SoVITS', {
+                    endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:8000',
+                    voiceId: gsviVoiceInput?.value?.trim() || '',
+                    speed: parseFloat(gsviSpeedSlider?.value) || 1.0,
+                });
+
+                // Save ElevenLabs settings
+                ttsEngine.updateProviderSettings('ElevenLabs', {
+                    apiKey: elevKeyInput?.value?.trim() || '',
+                    voiceId: elevVoiceInput?.value?.trim() || '',
+                    model: elevModelSelect?.value || 'eleven_multilingual_v2',
+                    speed: parseFloat(elevSpeedSlider?.value) || 1.0,
+                    proxyServer: proxyInput?.value?.trim() || 'http://74.208.78.209:3421',
+                });
+
+                // Save MiniMax settings
+                ttsEngine.updateProviderSettings('MiniMax', {
+                    apiKey: mmKeyInput?.value?.trim() || '',
+                    voiceId: mmVoiceInput?.value?.trim() || '',
+                    model: mmModelSelect?.value || 'speech-02-hd',
+                    speed: parseFloat(mmSpeedSlider?.value) || 1.0,
+                    proxyServer: proxyInput?.value?.trim() || 'http://74.208.78.209:3421',
+                });
+
+                // Switch active provider
+                ttsEngine.setProvider(selectedProvider);
+
+                showToast(selectedProvider === 'none'
+                    ? 'TTS 已关闭'
+                    : `语音合成已切换: ${selectedProvider} 🔊`
+                );
+            });
+        }
+
         // ═══ Console: Enable Toggle ═══
+
         const consoleToggle = document.getElementById(`${P}_console_enable_toggle`);
         const consoleOn = isConsoleEnabled();
         if (consoleToggle) {
@@ -1318,6 +1787,141 @@ export function openSettingsApp() {
         }
 
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// STT Provider Settings Renderer
+// ═══════════════════════════════════════════════════════════════════════
+
+function _renderSttProviderSettings(P, sttEngine) {
+    const container = document.getElementById(`${P}_stt_provider_settings`);
+    if (!container) return;
+
+    const provider = sttEngine.currentProvider;
+    if (!provider || !provider.modelOptions) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const providerName = sttEngine.currentProviderName;
+    const savedSettings = sttEngine.getProviderSettings(providerName);
+
+    // 是否需要 API Key + 代理（Groq / OpenAI 需要，Browser 不需要）
+    const needsProxy = providerName === 'Groq' || providerName === 'OpenAI';
+
+    // Build model options HTML
+    let optionsHtml = '';
+    if (Array.isArray(provider.modelOptions)) {
+        const isGrouped = provider.modelOptions.length > 0 && provider.modelOptions[0].group;
+        if (isGrouped) {
+            optionsHtml = provider.modelOptions.map(group => {
+                const opts = group.options.map(o =>
+                    `<option value="${o.value}">${o.label}</option>`
+                ).join('');
+                return `<optgroup label="${group.group}">${opts}</optgroup>`;
+            }).join('');
+        } else {
+            optionsHtml = provider.modelOptions.map(o =>
+                `<option value="${o.value}">${o.label}</option>`
+            ).join('');
+        }
+    }
+
+    let html = '';
+
+    // API Key 输入（仅 Groq / OpenAI）
+    if (needsProxy) {
+        html += `
+        <div class="phone-settings-row">
+            <label>API Key</label>
+            <input id="${P}_stt_api_key" type="password" class="phone-settings-input"
+                   placeholder="${providerName === 'Groq' ? 'gsk_...' : 'sk-...'}"
+                   value="${savedSettings.apiKey || ''}" />
+        </div>`;
+    }
+
+    // 模型选择
+    if (optionsHtml) {
+        html += `
+        <div class="phone-settings-row">
+            <label>${providerName} 模型</label>
+            <select id="${P}_stt_model" class="phone-settings-input" style="height: 36px;">
+                ${optionsHtml}
+            </select>
+        </div>`;
+    }
+
+    // 代理地址（仅 Groq / OpenAI，与 TTS 共享默认值）
+    if (needsProxy) {
+        // 从 TTS 设置中读取代理地址作为默认值（共享显示）
+        const ttsEngine = typeof getTtsEngine === 'function' ? getTtsEngine() : null;
+        const ttsProxyFallback = ttsEngine
+            ? (ttsEngine.getProviderSettings('ElevenLabs')?.proxyServer
+                || ttsEngine.getProviderSettings('MiniMax')?.proxyServer
+                || 'http://74.208.78.209:3421')
+            : 'http://74.208.78.209:3421';
+        const sttProxy = savedSettings.proxyServer || ttsProxyFallback;
+
+        html += `
+        <div class="phone-settings-group-title">云服务器代理</div>
+        <div class="phone-settings-row">
+            <label>代理地址</label>
+            <input id="${P}_stt_proxy_server" type="text" class="phone-settings-input"
+                   placeholder="http://74.208.78.209:3421"
+                   value="${sttProxy}" />
+        </div>
+        <div style="padding: 0 16px 8px; font-size: 11px; color: #8e8e93; line-height: 1.4;">
+            与 TTS 共用同一个代理服务器，修改后两边都会更新。
+        </div>
+
+        <div class="phone-settings-actions">
+            <button id="${P}_stt_save_btn" class="phone-settings-btn phone-settings-btn-primary">保存 STT 设置</button>
+        </div>`;
+    }
+
+    container.innerHTML = html;
+
+    // Restore saved model selection
+    const modelSelect = document.getElementById(`${P}_stt_model`);
+    if (modelSelect) {
+        const savedModel = savedSettings.model || provider.defaultSettings?.model;
+        if (savedModel) modelSelect.value = savedModel;
+
+        // 如果不需要代理（Browser），model 变化直接保存
+        if (!needsProxy) {
+            modelSelect.addEventListener('change', () => {
+                sttEngine.updateProviderSettings(providerName, { model: modelSelect.value });
+            });
+        }
+    }
+
+    // Save button click handler（Groq / OpenAI）
+    const saveBtn = document.getElementById(`${P}_stt_save_btn`);
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const apiKeyInput = document.getElementById(`${P}_stt_api_key`);
+            const proxyInput = document.getElementById(`${P}_stt_proxy_server`);
+            const proxyValue = proxyInput?.value?.trim() || 'http://74.208.78.209:3421';
+
+            // 保存 STT provider settings
+            sttEngine.updateProviderSettings(providerName, {
+                apiKey: apiKeyInput?.value?.trim() || '',
+                model: modelSelect?.value || provider.defaultSettings?.model,
+                proxyServer: proxyValue,
+            });
+
+            // 同步代理地址到 TTS（共享）
+            const ttsEngine = typeof getTtsEngine === 'function' ? getTtsEngine() : null;
+            if (ttsEngine) {
+                const elevS = ttsEngine.getProviderSettings('ElevenLabs');
+                const mmS = ttsEngine.getProviderSettings('MiniMax');
+                ttsEngine.updateProviderSettings('ElevenLabs', { ...elevS, proxyServer: proxyValue });
+                ttsEngine.updateProviderSettings('MiniMax', { ...mmS, proxyServer: proxyValue });
+            }
+
+            showToast('STT 设置已保存 🎙️');
+        });
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

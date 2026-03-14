@@ -1222,3 +1222,43 @@
 .phone-dark-mode .shop-active-effect-remaining {
     color: #d8b4fe;
 }
+
+/* ── Home View & Inventory Actions ── */
+.phone-dark-mode .shop-home-logo {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .shop-home-logo-smile {
+    color: #ffb700;
+}
+
+.phone-dark-mode .shop-home-desc {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .shop-home-category-card {
+    background: #2c2c2e;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .shop-home-category-card i {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .shop-home-category-card:active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .shop-home-category-name {
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .shop-use-btn {
+    background: #3a3a3c;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .shop-use-btn:active {
+    background: #48484a;
+}

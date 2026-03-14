@@ -16,6 +16,7 @@ import { openTarotApp } from './tarot/tarotApp.js';
 import { openTreeApp } from './tree/treeApp.js';
 import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
 import { openCalendarApp } from './calendar/calendarApp.js';
+import { openVcApp } from './voiceCall/vcApp.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -98,6 +99,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link9.rel = 'stylesheet';
         link9.href = `${baseDir}/calendar/calendar.css`;
         document.head.appendChild(link9);
+    }
+    // Voice Call CSS
+    if (!document.getElementById('gf-voice-call-styles')) {
+        const link10 = document.createElement('link');
+        link10.id = 'gf-voice-call-styles';
+        link10.rel = 'stylesheet';
+        link10.href = `${baseDir}/voiceCall/voiceCall.css`;
+        document.head.appendChild(link10);
     }
 })();
 
@@ -270,6 +279,16 @@ export function initPhone() {
         color: '#ff6b6b',
         glow: 'rgba(255, 107, 107, 0.4)',
         onOpen: () => openCalendarApp(),
+    });
+
+    // ── 电话 (Voice Call) ──
+    registerApp({
+        id: 'voicecall',
+        name: '电话',
+        icon: 'fa-solid fa-phone',
+        color: '#34C759',
+        glow: 'rgba(52, 199, 89, 0.4)',
+        onOpen: () => openVcApp(),
     });
 
     // ── Console (调试) — always visible, but requires enable in Settings to function ──

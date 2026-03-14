@@ -15,6 +15,7 @@ import { getSettings as getMomentsSettings, getFeedCache } from '../moments/stat
 import { getMomentsSystemPrompt } from '../moments/momentsWorldInfo.js';
 import { getCharacterId } from '../moments/constants.js';
 import { pushPromptLog } from '../console/consoleApp.js';
+import { getLatestCallLog } from '../voiceCall/vcStorage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Moments Command Regex — shared with chatApp.js
@@ -183,6 +184,7 @@ Flag any instance where ${charName} seems to "mind-read" ${userName}'s unexpress
 </output_format>
 ${buildCalendarPrompt()}
 ${buildActiveBuffsPrompt(charName)}
+${buildRecentCallPrompt(charName, userName)}
 ${momentsFeedBlock}`;
 
     // Push to Console app for debugging
@@ -329,6 +331,47 @@ function buildActiveBuffsPrompt(charName) {
     return `\n<active_buffs>\n以下道具效果当前生效中，你必须在回复中严格遵守这些效果的指示：\n${buffLines.join('\n\n')}\n</active_buffs>`;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════
+// Recent Call Prompt Injection — 通话感知注入
+// ═══════════════════════════════════════════════════════════════════════
+
+/** How long after a call ended should the awareness prompt persist (ms) */
+const CALL_AWARENESS_DURATION = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Build the recent call awareness prompt block.
+ * If a voice call recently ended, inject a <recent_call> block so the character
+ * knows they just had a phone call and can naturally mention topics from the call.
+ * @param {string} charName
+ * @param {string} userName
+ * @returns {string}
+ */
+function buildRecentCallPrompt(charName, userName) {
+    try {
+        const latestCall = getLatestCallLog();
+        if (!latestCall || !latestCall.endTime || !latestCall.summary) return '';
+
+        // Only inject if the call ended recently
+        const endedAt = new Date(latestCall.endTime).getTime();
+        const elapsed = Date.now() - endedAt;
+        if (elapsed > CALL_AWARENESS_DURATION) return '';
+
+        const durationMin = Math.floor((latestCall.duration || 0) / 60);
+        const durationStr = durationMin > 0 ? `${durationMin}分钟` : `${latestCall.duration || 0}秒`;
+
+        return `\n<recent_call>
+【刚刚结束的语音通话】
+${charName}和${userName}刚刚结束了一通 ${durationStr} 的语音通话。以下是通话概要：
+${latestCall.summary}
+
+${charName}可以在短信中自然地提到通话里聊过的话题，但不要刻意重复通话内容。
+</recent_call>`;
+    } catch (e) {
+        console.warn('[聊天] buildRecentCallPrompt failed:', e);
+        return '';
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Moments Feed Prompt Injection — 朋友圈实时动态注入
@@ -595,9 +638,10 @@ export function buildRollingSummarizePrompt() {
  * @param {string[]} pendingMessages - Array of user's pending message strings
  * @param {Array} history - Recent chat history (from chatStorage)
  * @param {number} maxHistoryPairs - How many recent message pairs to include
+ * @param {boolean} imageAttached - Whether the user is attaching an image (multimodal)
  * @returns {string}
  */
-export function buildChatUserPrompt(pendingMessages, history = [], maxHistoryPairs = 15) {
+export function buildChatUserPrompt(pendingMessages, history = [], maxHistoryPairs = 15, imageAttached = false) {
     const parts = [];
     const charName = getCharacterInfo()?.name || '角色';
 
@@ -657,6 +701,11 @@ ${stLines.join('\n')}
         parts.push(`${getUserName()}发来短信：\n${userMsgs[0]}`);
     } else {
         parts.push(`${getUserName()}连续发来了${userMsgs.length}条短信：\n${userMsgs.map((m, i) => `${i + 1}. ${m}`).join('\n')}`);
+    }
+
+    // ─── Image Attachment Note ───
+    if (imageAttached) {
+        parts.push(`（${getUserName()}同时发送了一张图片，图片内容以 image_url 格式附在本消息中，请仔细查看图片并在回复中自然地回应图片内容。）`);
     }
 
     parts.push('请以JSON格式回复。');

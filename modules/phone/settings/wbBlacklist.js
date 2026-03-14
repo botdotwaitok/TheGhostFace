@@ -7,6 +7,14 @@ import { getCharacterFileName } from '../../utils.js';
 const STORAGE_KEY = 'gf_phone_wb_blacklist';
 
 // ═══════════════════════════════════════════════════════════════════════
+// Built-in default blocked patterns (substring match, case-insensitive)
+// These are always blocked regardless of localStorage state.
+// ═══════════════════════════════════════════════════════════════════════
+const DEFAULT_BLOCKED_PATTERNS = [
+    '交稿日',
+];
+
+// ═══════════════════════════════════════════════════════════════════════
 // Data structure
 // ═══════════════════════════════════════════════════════════════════════
 // {
@@ -43,15 +51,28 @@ export function saveBlacklist(data) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Query API — merges global + current character layers
+// Query API — merges global + current character layers + defaults
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Check if an entire world book is blocked (global OR current character).
+ * Check if a book name matches any built-in default blocked pattern.
+ * @param {string} bookName
+ * @returns {boolean}
+ */
+export function isDefaultBlocked(bookName) {
+    if (!bookName) return false;
+    const lower = bookName.toLowerCase();
+    return DEFAULT_BLOCKED_PATTERNS.some(p => lower.includes(p.toLowerCase()));
+}
+
+/**
+ * Check if an entire world book is blocked (default patterns OR global OR current character).
  * @param {string} bookName
  * @returns {boolean}
  */
 export function isBookBlocked(bookName) {
+    // Check built-in defaults first (survives cache clearing)
+    if (isDefaultBlocked(bookName)) return true;
     const bl = getBlacklist();
     // Check global
     if (bl.global.blockedBooks?.includes(bookName)) return true;

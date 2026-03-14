@@ -6,11 +6,12 @@ import { getPhoneUserName } from '../phoneContext.js';
 import {
     EVENT_TYPES, PERIOD_SYMPTOMS,
     loadEvents, saveEvents, addEvent, deleteEvent,
-    loadPeriodData, savePeriodData,
+    loadPeriodData, savePeriodData, loadWISettings,
     getPeriodStatusForDate, getHolidaysForDate,
     getMarkersForMonth, getLocalDateString, parseDate,
     getActivityForDate, fetchCloudHolidays,
 } from './calendarStorage.js';
+import { updateCalendarWorldInfo } from './calendarWorldInfo.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -18,6 +19,14 @@ import {
 // ═══════════════════════════════════════════════════════════════════════
 
 let _calYear, _calMonth; // currently displayed month
+
+/** Trigger WI update if calendar WI injection is enabled */
+function _triggerWIUpdateIfEnabled() {
+    const ws = loadWISettings();
+    if (ws.enabled) {
+        updateCalendarWorldInfo().catch(() => { });
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // App Entry
@@ -440,6 +449,7 @@ function renderUpcoming() {
                 deleteEvent(id);
                 renderUpcoming();
                 renderMonth(_calYear, _calMonth);
+                _triggerWIUpdateIfEnabled();
             }
         });
     });
@@ -682,6 +692,7 @@ function saveNewEvent() {
     closeAddEvent();
     renderMonth(_calYear, _calMonth);
     renderUpcoming();
+    _triggerWIUpdateIfEnabled();
 }
 
 // ── Period Settings ─────────────────────────────────────────────────
@@ -834,6 +845,7 @@ function savePeriodSettings() {
     closePeriodSettings();
     renderMonth(_calYear, _calMonth);
     renderUpcoming();
+    _triggerWIUpdateIfEnabled();
 
 
 }

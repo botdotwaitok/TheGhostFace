@@ -1,15 +1,18 @@
-// modules/phone/calendar/calendarWorldInfo.js — 日历 Prompt 注入
+// modules/phone/calendar/calendarWorldInfo.js — 日历 Prompt 注入 + 世界书注入
 // 经期提醒 + 节日提醒 + 日期感知 → 直接拼入 system prompt，让角色感知现实世界
-// 不再通过世界书注入，而是作为纯函数由 chatPromptBuilder 调用。
+// 可选功能：将近期事件预告注入世界书条目，让角色主动提起未来的事件。
 
 import { getPhoneUserName } from '../phoneContext.js';
 import {
     loadPeriodData, isTodayInPeriod,
     getHolidaysForDate, getLocalDateString, PERIOD_SYMPTOMS,
+    loadWISettings, getUpcomingEvents,
 } from './calendarStorage.js';
 
 /** 每日只注入一次经期/节日提醒，避免角色反复提及 */
 let _lastInjectedDate = '';
+
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 /**
  * 构建日历 prompt 块。
@@ -21,8 +24,7 @@ let _lastInjectedDate = '';
 export function buildCalendarPrompt() {
     const today = getLocalDateString();
     const now = new Date();
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    const dateLine = `今天是${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日，星期${weekdays[now.getDay()]}。`;
+    const dateLine = `今天是${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日，星期${WEEKDAYS[now.getDay()]}。`;
 
     // 同一天只注入一次经期/节日提醒
     if (_lastInjectedDate === today) {
@@ -53,7 +55,7 @@ export function buildCalendarPrompt() {
 
             let customNote = '';
             if (pd.customNote && pd.customNote.trim()) {
-                customNote = `\n用户备注：${pd.customNote.trim()}`;
+                customNote = `\n你恋人的备注：${pd.customNote.trim()}`;
             }
 
             blocks.push(
@@ -76,4 +78,139 @@ export function buildCalendarPrompt() {
     blocks.push(dateLine);
 
     return `\n<gf_calendar>\n【日历系统 · 现实世界感知】\n${blocks.join('\n\n')}\n</gf_calendar>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// World Book Injection — 近期事件预告
+// ═══════════════════════════════════════════════════════════════════════
+
+const CAL_WI_LOG = '[日历WI]';
+
+/**
+ * 将近期事件预告注入世界书条目 <gf_calendar_upcoming>。
+ * 让角色主动知道未来 N 天内有什么事件。
+ * 由 Settings App 中的开关控制，参考 momentsWorldInfo / treeWorldInfo 模式。
+ */
+export async function updateCalendarWorldInfo() {
+    try {
+        const { saveWorldInfo, loadWorldInfo } = await import('../../../../../../world-info.js');
+        const { findActiveWorldBook } = await import('../../utils.js');
+
+        const worldBookName = await findActiveWorldBook();
+        if (!worldBookName) {
+            console.warn(`${CAL_WI_LOG} 未找到活跃的世界书`);
+            return;
+        }
+
+        const WI_KEY = 'm_calendar';
+        const wb = await loadWorldInfo(worldBookName);
+        let targetEntry = Object.values(wb.entries).find(e => e.key && e.key.includes(WI_KEY));
+
+        const wiSettings = loadWISettings();
+
+        // If disabled → disable entry and return
+        if (!wiSettings.enabled) {
+            if (targetEntry && !targetEntry.disable) {
+                targetEntry.disable = true;
+                await saveWorldInfo(worldBookName, wb);
+                console.log(`${CAL_WI_LOG} 世界书条目已禁用`);
+            }
+            return;
+        }
+
+        // Get upcoming events
+        const upcoming = getUpcomingEvents(wiSettings.lookAheadDays);
+
+        // No events → disable entry
+        if (upcoming.length === 0) {
+            if (targetEntry && !targetEntry.disable) {
+                targetEntry.disable = true;
+                await saveWorldInfo(worldBookName, wb);
+                console.log(`${CAL_WI_LOG} 无近期事件，条目已禁用`);
+            }
+            return;
+        }
+
+        // Format event list
+        const eventLines = upcoming.map(ev => {
+            const d = new Date(ev.date + 'T00:00:00');
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            const wd = WEEKDAYS[d.getDay()];
+            return `${m}/${day} (周${wd}): ${ev.emoji} ${ev.title}`;
+        }).join('\n');
+
+        const entryContent = `
+<gf_calendar_upcoming>
+【日历系统 · 近期事件预告】
+以下是未来${wiSettings.lookAheadDays}天内的日历事件，{{char}}可以在合适的时机自然地提起：
+
+${eventLines}
+</gf_calendar_upcoming>
+`;
+
+        if (!targetEntry) {
+            // Create new entry
+            let maxId = 0;
+            Object.keys(wb.entries).forEach(id => {
+                const num = parseInt(id);
+                if (!isNaN(num) && num > maxId) maxId = num;
+            });
+            const newId = maxId + 1;
+
+            wb.entries[newId] = {
+                uid: newId,
+                key: [WI_KEY, '日历'],
+                comment: '日历近期事件预告 (Auto-generated)',
+                content: entryContent,
+                constant: true,
+                position: 4,
+                depth: 1,
+                order: 995,
+                disable: false,
+                excludeRecursion: true,
+                preventRecursion: true,
+                displayIndex: 0,
+            };
+        } else {
+            // Update existing entry
+            targetEntry.content = entryContent;
+            targetEntry.disable = false;
+            targetEntry.constant = true;
+            targetEntry.position = 4;
+            targetEntry.depth = 1;
+            targetEntry.order = 995;
+            targetEntry.excludeRecursion = true;
+            targetEntry.preventRecursion = true;
+        }
+
+        await saveWorldInfo(worldBookName, wb);
+        console.log(`${CAL_WI_LOG} 世界书条目已更新：${upcoming.length} 个事件（未来 ${wiSettings.lookAheadDays} 天）`);
+    } catch (e) {
+        console.warn(`${CAL_WI_LOG} updateCalendarWorldInfo failed:`, e);
+    }
+}
+
+/**
+ * 禁用日历的世界书条目（关闭开关时调用）
+ */
+export async function disableCalendarWorldInfo() {
+    try {
+        const { saveWorldInfo, loadWorldInfo } = await import('../../../../../../world-info.js');
+        const { findActiveWorldBook } = await import('../../utils.js');
+
+        const worldBookName = await findActiveWorldBook();
+        if (!worldBookName) return;
+
+        const wb = await loadWorldInfo(worldBookName);
+        const targetEntry = Object.values(wb.entries).find(e => e.key && e.key.includes('m_calendar'));
+
+        if (targetEntry && !targetEntry.disable) {
+            targetEntry.disable = true;
+            await saveWorldInfo(worldBookName, wb);
+            console.log(`${CAL_WI_LOG} 世界书条目已禁用`);
+        }
+    } catch (e) {
+        console.warn(`${CAL_WI_LOG} disableCalendarWorldInfo failed:`, e);
+    }
 }
