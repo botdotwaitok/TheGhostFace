@@ -211,7 +211,7 @@ export function addLocalComment(postId, content, authorName = null, replyToId = 
     let finalAuthorUsername = settings.username || '';
     const myName = settings.displayName || 'Anonymous';
     const myCamoName = settings.customUserName || '';
-    const stUserName = _getUserNameFallback();
+    const stUserName = getUserNameFallback();
 
     if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
         finalAuthorId = _getLocalCharAuthorId();
