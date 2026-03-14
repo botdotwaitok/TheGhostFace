@@ -723,7 +723,7 @@ export function parseMessageContent(messageText) {
     const timePatterns = [
         // 最宽松的时间匹配，匹配整个消息中的时间
         /🕐\s*时间[：:]\s*(\d{4}年\d{1,2}月\d{1,2}日)/,
-        // 兼容其他格式
+        // 兼容其她格式
         /时间[：:]\s*(\d{4}年\d{1,2}月\d{1,2}日)/,
         /(\d{4}年\d{1,2}月\d{1,2}日)\s+\d{1,2}:\d{2}/, // 带时分的格式
         /(\d{4}年\d{1,2}月\d{1,2}日)/ // 最基础的日期格式
@@ -761,7 +761,7 @@ export function parseMessageContent(messageText) {
             .replace(/^```.*$/gm, '')
             // 移除空行
             .replace(/^\s*$/gm, '')
-            // 移除其他可能的标签内容（但保留content）
+            // 移除其她可能的标签内容（但保留content）
             .replace(/<(?!content|\/content)[^>]*>[\s\S]*?<\/[^>]*>/gi, '')
             .trim();
 

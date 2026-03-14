@@ -207,7 +207,7 @@ export let SHOP_ITEMS = [
     {
         id: 'behavior_shard_yandere', name: '人格碎片·病娇', emoji: '🎪', price: 600, category: 'behavior',
         description: '你对象变成占有欲爆棚，危险的病娇模式。', duration: 15, effectType: 'personalityOverride',
-        promptTemplate: '【人格碎片·病娇生效中】{charName}的核心人格暂时切换为病娇模式。表现为：占有欲极强、对你的一举一动都要追问、提到其他人时语气突然变冷、用温柔的语气说出可怕的话（"你只能是我的哦♡"）、时而甜蜜时而阴暗。thought中充满"她是我的""不允许任何人接近她"。注意：这是一种戏剧化的表演，不要真的威胁你安全。',
+        promptTemplate: '【人格碎片·病娇生效中】{charName}的核心人格暂时切换为病娇模式。表现为：占有欲极强、对你的一举一动都要追问、提到其她人时语气突然变冷、用温柔的语气说出可怕的话（"你只能是我的哦♡"）、时而甜蜜时而阴暗。thought中充满"她是我的""不允许任何人接近她"。注意：这是一种戏剧化的表演，不要真的威胁你安全。',
     },
     {
         id: 'behavior_selfie_ticket', name: '自拍请求券', emoji: '📸', price: 250, category: 'behavior',

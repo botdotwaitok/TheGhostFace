@@ -167,7 +167,7 @@ export function getTreeImagePath(treeType, stageId, seasonId) {
         // 大树阶段分四季
         return `${TREE_ASSET_BASE}/tree_${treeType}_${seasonId}.png`;
     }
-    // 其他阶段用 stage 编号，不分季节
+    // 其她阶段用 stage 编号，不分季节
     const fileSuffix = STAGE_TO_FILE[stageId] || 'stage0';
     return `${TREE_ASSET_BASE}/tree_${treeType}_${fileSuffix}.png`;
 }

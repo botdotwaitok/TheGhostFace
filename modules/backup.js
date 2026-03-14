@@ -119,7 +119,7 @@ export let backupConfig = {
 
 export function saveBackupSettings() {
     try {
-        // localStorage 快速缓存（排除 SMTP 凭据——同源下其他扩展可读取 localStorage）
+        // localStorage 快速缓存（排除 SMTP 凭据——同源下其她扩展可读取 localStorage）
         try {
             const safeConfig = {
                 ...backupConfig,

@@ -47,7 +47,7 @@ export function buildQuizPrompt(charName, userName, count = 10) {
 
 **语言要求**：题目和选项必须使用角色描述中所使用的语言来书写（如角色描述是英文则用英文，中文则用中文，以此类推）。
 
-请严格按以下 JSON 格式输出，不要添加任何其他文字：
+请严格按以下 JSON 格式输出，不要添加任何其她文字：
 [
   { "question": "题目内容", "options": ["选项A", "选项B", "选项C", "选项D"], "answer": 0 }
 ]`;
@@ -85,7 +85,7 @@ export function buildTodPrompt(charName, userName, count = 10) {
 
 **语言要求**：题目必须使用角色描述中所使用的语言来书写（如角色描述是英文则用英文，中文则用中文，以此类推）。
 
-请严格按以下 JSON 格式输出，不要添加任何其他文字：
+请严格按以下 JSON 格式输出，不要添加任何其她文字：
 [
   { "question": "题目内容", "type": "player" },
   { "question": "题目内容", "type": "ai" }

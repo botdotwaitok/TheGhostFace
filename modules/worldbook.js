@@ -184,11 +184,11 @@ export async function manageGhostSummaryEntries(worldBookName, currentChatIdenti
                 logger.info(`✅ 启用当前聊天的总结条目: ${entry.comment}`);
             }
 
-            // ❌ 不再禁用其他聊天的条目
+            // ❌ 不再禁用其她聊天的条目
             // if (!isForCurrentChat && !entry.disable) {
             //   entry.disable = true;
             //   changed++;
-            //   logger.info(`❌ 禁用其他聊天的总结条目: ${entry.comment}`);
+            //   logger.info(`❌ 禁用其她聊天的总结条目: ${entry.comment}`);
             // }
         }
 

@@ -104,6 +104,8 @@ export async function queueComment(post) {
     const settings = getSettings();
     if (!settings.enabled) return;
     if (Math.random() > settings.autoCommentChance) return;
+    // 跳过 pending 帖子（草稿未发布）
+    if (post.pendingUpload) return;
 
     const charInfo = getPhoneCharInfo();
     if (!charInfo) return;
@@ -139,9 +141,9 @@ export async function queueComment(post) {
         }
     } else if (post.authorName === charInfo.name) {
         // 🌀 Parallel-world counterpart: same name but DIFFERENT authorId
-        relationshipDesc = `这条动态的发布者与你同名（都叫"${charInfo.name}"），ta是来自不同用户的平行世界同位体。你们虽然有相同的名字和相似的灵魂，但是是不同的个体。请以好奇、友好、或你性格中自然的方式与你的同位体互动。`;
+        relationshipDesc = `这条动态的发布者与你同名（都叫"${charInfo.name}"），ta是来自另一位用户的角色——你的平行世界同位体。你们虽然有相同的名字和相似的灵魂，但是是完全独立的个体。ta发布的内容是关于ta自己和ta的恋人的，不是关于你和"${myUserName}"的。请以好奇、友好、或你性格中自然的方式互动。`;
     } else {
-        relationshipDesc = `这条动态的发布者"${post.authorName}"是"${myUserName}"（你的恋人）的好友，或者是该好友的伴侣。如果你在设定里不认识对方，请当作是对你恋人朋友的礼貌互动或善意的好奇。`;
+        relationshipDesc = `这条动态的发布者"${post.authorName}"是"${myUserName}"（你的恋人）的好友或其伴侣。ta发布的内容是关于ta自己的生活和ta自己的恋人的，与你和"${myUserName}"无关。请以礼貌友好的身份互动，不要将帖子中的内容代入到自己身上。`;
     }
 
     pendingInteractions.push({
@@ -154,6 +156,8 @@ export async function queueComment(post) {
 export async function queueReply(post, comment) {
     const settings = getSettings();
     if (!settings.enabled) return;
+    // 跳过 pending 帖子（草稿未发布）
+    if (post.pendingUpload) return;
 
     const charInfo = getPhoneCharInfo();
     if (!charInfo) return;
@@ -233,7 +237,7 @@ export async function processPendingInteractions() {
 请**只**输出一段合法的 JSON 数组，数组中每个对象包含：
 - "id": 对应提供内容的ID
 - "response": 你的评论/回复内容
-不要输出代码块符号(如 \`\`\`json)，不要输出任何其他文本。`;
+不要输出代码块符号(如 \`\`\`json)，不要输出任何其她文本。`;
 
         let userPromptItems = [];
 

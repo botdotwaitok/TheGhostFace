@@ -5,7 +5,7 @@ import { getCharaFilename } from '../../../../utils.js';
 
 
 
-// 定义常量（避免依赖其他模块）
+// 定义常量（避免依赖其她模块）
 const MODULE_NAME = 'the_ghost_face';
 const PANEL_ID = `${MODULE_NAME}_control_panel`;
 const MAX_LOG_ENTRIES = 100;

@@ -40,7 +40,7 @@ export async function updateMomentsWorldInfo() {
         }
 
         // Format recent feed
-        const recentPosts = feedCache.slice(0, 5);
+        const recentPosts = feedCache.filter(p => !p.pendingUpload).slice(0, 5);
         const charInfo = getCharacterInfo();
         const myCharName = charInfo ? charInfo.name : null;
         const myAuthorIds = getMyAuthorIds();
@@ -63,7 +63,16 @@ export async function updateMomentsWorldInfo() {
                 );
             }
             const isCounterpart = myCharName && p.authorName === myCharName && !myAuthorIds.has(p.authorId);
-            let text = `【帖子】[ID:${shortId}] [${p.authorName}]${isCounterpart ? ' [⚡同位体]' : ''} (${timeStr}): ${p.content}${postReplied ? (noNewActivity ? ' [你已评论][无新互动，请勿再评论此帖]' : ' [你已评论]') : ''}`;
+            // 确定帖子归属关系标签
+            let ownerLabel = '';
+            if (myAuthorIds.has(p.authorId) && p.authorName !== myCharName) {
+                ownerLabel = ` [${userName}发布]`;
+            } else if (isCounterpart) {
+                ownerLabel = ` [⚡同位体·非你本人·来自其她用户的角色]`;
+            } else if (!myAuthorIds.has(p.authorId) && p.authorName !== myCharName) {
+                ownerLabel = ` [${userName}的好友或其伴侣发布]`;
+            }
+            let text = `【帖子】[ID:${shortId}] [${p.authorName}]${ownerLabel} (${timeStr}): ${p.content}${postReplied ? (noNewActivity ? ' [你已评论][无新互动，请勿再评论此帖]' : ' [你已评论]') : ''}`;
 
             if (p.comments && p.comments.length > 0) {
                 const recentComments = p.comments.slice(-5).map(c => {
@@ -96,7 +105,12 @@ export async function updateMomentsWorldInfo() {
 
 
 多媒体：可使用 <图片>描述</图片>, <视频>描述</视频>, <音乐>描述</音乐>, <新闻>描述</新闻>。
-背景：出现在实时动态中的人们都是"${userName}"（你的恋人）的好友或其伴侣，请保持礼貌。社交平台用来表达情绪或记录生活，非纯粹对话。绝禁脏话。
+⚠️身份规则（重要）：
+- 你是"${myCharName}"，你的恋人/主人是"${userName}"。
+- 如果帖子标注了"[${userName}发布]"，代表你的恋人本人发的动态，ta的社交平台网名可能和本名不同。
+- 如果帖子标注了"[${userName}的好友或其伴侣发布]"，说明这是别人发的帖子，帖子中提到的内容是关于ta自己和ta自己恋人的事，与你和"${userName}"无关，不要代入到你自己身上。
+- 如果帖子标注了"[⚡同位体·非你本人·来自其她用户的角色]"，说明这是来自另一位用户的角色，ta和你同名、是你的平行世界分身，但你们是完全独立的个体。ta发的帖子是关于ta自己和ta的恋人的，不是关于你的。
+- 社交平台用来表达情绪或记录生活，非纯粹对话。绝禁脏话。
 以下是{{char}}的社交平台实时动态。
 注意：无需在正文中提及朋友圈或评论，直接发即可。
 

@@ -1,5 +1,5 @@
 // modules/phone/voiceCall/sttInit.js — STT 初始化模块
-// 注册所有 Provider，创建全局 SttEngine 单例，供 settingsApp 和其他模块使用。
+// 注册所有 Provider，创建全局 SttEngine 单例，供 settingsApp 和其她模块使用。
 
 import { SttEngine } from './sttEngine.js';
 import { BrowserSttProvider } from './providers/browserProvider.js';

@@ -501,7 +501,7 @@ export function getMessageArray(source) {
         return source;
     }
 
-    // 方法3：检查其他可能的属性
+    // 方法3：检查其她可能的属性
     if (source?.chatHistory && Array.isArray(source.chatHistory)) {
         // console.log('🔍 [getMessageArray] 使用 source.chatHistory，长度:', source.chatHistory.length);
         return source.chatHistory;

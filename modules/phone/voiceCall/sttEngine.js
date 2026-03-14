@@ -50,13 +50,13 @@ export class SttEngine {
 
         // ── 回调接口 ──
         /** @type {(text: string) => void} 最终识别结果 */
-        this.onTranscript = () => {};
+        this.onTranscript = () => { };
         /** @type {(text: string) => void} 中间结果（实时预览） */
-        this.onInterim = () => {};
+        this.onInterim = () => { };
         /** @type {(state: SttState) => void} 状态变化 */
-        this.onStateChange = () => {};
+        this.onStateChange = () => { };
         /** @type {(error: Error) => void} 错误回调 */
-        this.onError = () => {};
+        this.onError = () => { };
 
         // 加载持久化设置
         this._settings = this._loadSettings();
@@ -138,7 +138,7 @@ export class SttEngine {
     /**
      * 开始监听语音
      * Browser Provider 使用自己的 SpeechRecognition，不经过 MediaRecorder。
-     * 其他 Provider 使用 MediaRecorder 录音 → WAV 转换 → processAudio。
+     * 其她 Provider 使用 MediaRecorder 录音 → WAV 转换 → processAudio。
      */
     async startListening() {
         if (!this._activeProvider) {
@@ -169,7 +169,7 @@ export class SttEngine {
                 return;
             }
 
-            // 其他 API-based Provider → MediaRecorder 录音
+            // 其她 API-based Provider → MediaRecorder 录音
             await this._startMediaRecording();
 
         } catch (err) {
