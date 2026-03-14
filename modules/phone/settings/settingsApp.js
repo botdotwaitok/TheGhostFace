@@ -1067,6 +1067,57 @@ export function openSettingsApp() {
                             <span id="${P}_tts_gsvi_speed_val" class="phone-settings-slider-val">1.0x</span>
                         </div>
                     </div>
+                    <div class="phone-settings-row">
+                        <label>文本语言</label>
+                        <select id="${P}_tts_gsvi_text_lang" class="phone-settings-input" style="height:36px;">
+                            <option value="中文">中文</option>
+                            <option value="英语">英语</option>
+                            <option value="日语">日语</option>
+                            <option value="粤语">粤语</option>
+                            <option value="韩语">韩语</option>
+                            <option value="中英混合">中英混合</option>
+                            <option value="日英混合">日英混合</option>
+                            <option value="粤英混合">粤英混合</option>
+                            <option value="韩英混合">韩英混合</option>
+                            <option value="多语种混合">多语种混合</option>
+                            <option value="多语种混合(粤语)">多语种混合(粤语)</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>参考语言</label>
+                        <select id="${P}_tts_gsvi_prompt_lang" class="phone-settings-input" style="height:36px;">
+                            <option value="">(请先获取声音列表)</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>默认情绪</label>
+                        <select id="${P}_tts_gsvi_emotion" class="phone-settings-input" style="height:36px;">
+                            <option value="">(请先获取声音列表)</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>文本切分</label>
+                        <select id="${P}_tts_gsvi_split_method" class="phone-settings-input" style="height:36px;">
+                            <option value="不切">不切</option>
+                            <option value="凑四句一切">凑四句一切</option>
+                            <option value="凑50字一切">凑50字一切</option>
+                            <option value="按中文句号。切">按中文句号。切</option>
+                            <option value="按英文句号.切">按英文句号.切</option>
+                            <option value="按标点符号切">按标点符号切</option>
+                        </select>
+                    </div>
+                    <div class="phone-settings-row">
+                        <label>Batch Size</label>
+                        <div class="phone-settings-slider-row">
+                            <input id="${P}_tts_gsvi_batch_size" type="range" min="1" max="100" step="1" value="1" class="phone-settings-slider" />
+                            <span id="${P}_tts_gsvi_batch_size_val" class="phone-settings-slider-val">1</span>
+                        </div>
+                    </div>
+                    <div class="phone-settings-row" style="justify-content:center; padding-top: 4px;">
+                        <button id="${P}_tts_gsvi_test_btn" class="phone-settings-btn" style="width:100%; max-width: 200px; font-size: 13px;">
+                            <i class="fa-solid fa-play"></i> 试听当前设置
+                        </button>
+                    </div>
                 </div>
 
                 <!-- ElevenLabs 专属设置 -->
@@ -1558,7 +1609,7 @@ export function openSettingsApp() {
                                 <div style="font-weight: 600; margin-bottom: 4px; color: #FFa500;"><i class="fa-solid fa-triangle-exclamation" style="margin-right: 4px;"></i>浏览器语音识别不可用</div>
                                 此浏览器不支持内置语音识别，请改用 <b style="color: #34C759;">Groq Whisper (免费快速)</b> 等 API 方案。
                                 <div style="display: flex; align-items: center; gap: 4px; margin-top: 6px; color: #34C759; font-weight: 600;">
-                                    <i class="fa-solid fa-book-open" style="font-size: 11px;"></i> 请去社区查看《iOS 语音通话设置指南》教程帖子
+                                    <i class="fa-solid fa-book-open" style="font-size: 11px;"></i> 请去社区查看《iOS 语音通话设置指南》教程指南
                                 </div>
                             </div>
                         `;
@@ -1638,6 +1689,12 @@ export function openSettingsApp() {
             const gsviVoiceInput = document.getElementById(`${P}_tts_gsvi_voice`);
             const gsviSpeedSlider = document.getElementById(`${P}_tts_gsvi_speed`);
             const gsviSpeedVal = document.getElementById(`${P}_tts_gsvi_speed_val`);
+            const gsviTextLang = document.getElementById(`${P}_tts_gsvi_text_lang`);
+            const gsviPromptLang = document.getElementById(`${P}_tts_gsvi_prompt_lang`);
+            const gsviSplitMethod = document.getElementById(`${P}_tts_gsvi_split_method`);
+            const gsviBatchSize = document.getElementById(`${P}_tts_gsvi_batch_size`);
+            const gsviBatchSizeVal = document.getElementById(`${P}_tts_gsvi_batch_size_val`);
+            const gsviEmotion = document.getElementById(`${P}_tts_gsvi_emotion`);
             const elevKeyInput = document.getElementById(`${P}_tts_11labs_key`);
             const elevVoiceInput = document.getElementById(`${P}_tts_11labs_voice`);
             const elevModelSelect = document.getElementById(`${P}_tts_11labs_model`);
@@ -1653,6 +1710,34 @@ export function openSettingsApp() {
             // Fill existing fields
             if (gsviEndpointInput) gsviEndpointInput.value = gsviS.endpoint || 'http://localhost:9881';
             if (gsviFormatSelect) gsviFormatSelect.value = gsviS.apiFormat || 'auto';
+            if (gsviTextLang) gsviTextLang.value = gsviS.textLang === undefined ? '多语种混合' : gsviS.textLang;
+            if (gsviPromptLang) {
+                if (gsviS.promptLang) {
+                    gsviPromptLang.innerHTML = `<option value="${gsviS.promptLang}">${gsviS.promptLang}</option>`;
+                    gsviPromptLang.value = gsviS.promptLang;
+                } else {
+                    gsviPromptLang.innerHTML = `<option value="">(请先获取声音列表)</option>`;
+                    gsviPromptLang.value = '';
+                }
+            }
+            if (gsviEmotion) {
+                if (gsviS.emotion) {
+                    gsviEmotion.innerHTML = `<option value="${gsviS.emotion}">${gsviS.emotion}</option>`;
+                    gsviEmotion.value = gsviS.emotion;
+                } else {
+                    gsviEmotion.innerHTML = `<option value="">(请先获取声音列表)</option>`;
+                    gsviEmotion.value = '';
+                }
+            }
+            if (gsviSplitMethod) gsviSplitMethod.value = gsviS.textSplitMethod === undefined ? '按标点符号切' : gsviS.textSplitMethod;
+            if (gsviBatchSize && gsviBatchSizeVal) {
+                const bVal = gsviS.batchSize !== undefined ? gsviS.batchSize : 1;
+                gsviBatchSize.value = bVal;
+                gsviBatchSizeVal.textContent = bVal;
+                gsviBatchSize.addEventListener('input', () => {
+                    gsviBatchSizeVal.textContent = gsviBatchSize.value;
+                });
+            }
             if (elevKeyInput) elevKeyInput.value = elevS.apiKey || '';
             if (mmKeyInput) mmKeyInput.value = mmS.apiKey || '';
             if (proxyInput) proxyInput.value = elevS.proxyServer || mmS.proxyServer || 'http://74.208.78.209:3421';
@@ -1680,10 +1765,69 @@ export function openSettingsApp() {
                     const opt = document.createElement('option');
                     opt.value = v.id;
                     opt.textContent = v.name || v.id;
+                    if (v.promptLangs) {
+                        opt.dataset.promptLangs = JSON.stringify(v.promptLangs);
+                    }
+                    if (v.emotionsMap) {
+                        opt.dataset.emotionsMap = JSON.stringify(v.emotionsMap);
+                    }
+                    if (v.version) {
+                        opt.dataset.version = v.version;
+                    }
                     selectEl.appendChild(opt);
                 });
                 if (savedId) selectEl.value = savedId;
                 // If savedId not in list, keep first option selected
+            }
+
+            function _updateGsviOptions(opt) {
+                if (!opt || !gsviPromptLang || !gsviEmotion) return;
+                try {
+                    const promptLangs = JSON.parse(opt.dataset.promptLangs || '[]');
+                    const emotionsMap = JSON.parse(opt.dataset.emotionsMap || '{}');
+                    
+                    const currentPromptLang = gsviPromptLang.value;
+                    const currentEmotion = gsviEmotion.value;
+
+                    // Update promptLangs
+                    if (promptLangs.length > 0) {
+                        gsviPromptLang.innerHTML = promptLangs.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+                        if (currentPromptLang && promptLangs.includes(currentPromptLang)) {
+                            gsviPromptLang.value = currentPromptLang;
+                        } else {
+                            gsviPromptLang.value = promptLangs[0];
+                        }
+                    } else {
+                        gsviPromptLang.innerHTML = `<option value="">(请先获取声音列表)</option>`;
+                        gsviPromptLang.value = '';
+                    }
+
+                    // Update emotions based on selected promptLang
+                    const selectedPromptLang = gsviPromptLang.value;
+                    const emotions = emotionsMap[selectedPromptLang] || [];
+                    
+                    if (emotions.length > 0) {
+                        gsviEmotion.innerHTML = emotions.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
+                        if (currentEmotion && emotions.includes(currentEmotion)) {
+                            gsviEmotion.value = currentEmotion;
+                        } else {
+                            gsviEmotion.value = emotions[0];
+                        }
+                    } else {
+                        gsviEmotion.innerHTML = `<option value="默认">默认</option>`;
+                        gsviEmotion.value = '默认';
+                    }
+                } catch (e) {
+                    console.error('Failed to parse GSVI options', e);
+                }
+            }
+
+            if (gsviPromptLang) {
+                gsviPromptLang.addEventListener('change', () => {
+                    if (gsviVoiceInput && gsviVoiceInput.options.length > 0) {
+                        _updateGsviOptions(gsviVoiceInput.options[gsviVoiceInput.selectedIndex]);
+                    }
+                });
             }
 
             /**
@@ -1715,6 +1859,12 @@ export function openSettingsApp() {
                     const voices = await ttsEngine.fetchVoices(providerName);
                     _populateVoiceSelect(selectEl, voices, savedId);
                     showToast(`已获取 ${voices.length} 个声音/模型`);
+
+                    // Try to auto-set promptLang if we got data back from GSVI
+                    if (providerName === 'GPT-SoVITS' && selectEl.options.length > 0) {
+                        const selectedOpt = selectEl.options[selectEl.selectedIndex];
+                        _updateGsviOptions(selectedOpt);
+                    }
                 } catch (err) {
                     console.error(`[Settings] fetchVoices(${providerName}) failed:`, err);
                     showToast(`获取失败: ${err.message}`);
@@ -1725,8 +1875,15 @@ export function openSettingsApp() {
 
             // Restore saved voice IDs as pre-selected option (even before fetch)
             if (gsviVoiceInput && gsviS.voiceId) {
-                gsviVoiceInput.innerHTML = `<option value="${gsviS.voiceId}">${gsviS.voiceId}</option>`;
+                const preVersion = (gsviS.model || '').replace('GSVI-', '');
+                gsviVoiceInput.innerHTML = `<option value="${gsviS.voiceId}" data-version="${preVersion}">${gsviS.voiceId}</option>`;
                 gsviVoiceInput.value = gsviS.voiceId;
+            }
+            if (gsviVoiceInput) {
+                gsviVoiceInput.addEventListener('change', () => {
+                    const opt = gsviVoiceInput.options[gsviVoiceInput.selectedIndex];
+                    _updateGsviOptions(opt);
+                });
             }
             if (elevVoiceInput && elevS.voiceId) {
                 elevVoiceInput.innerHTML = `<option value="${elevS.voiceId}">${elevS.voiceId}</option>`;
@@ -1769,16 +1926,105 @@ export function openSettingsApp() {
             _initSpeedSlider(elevSpeedSlider, elevSpeedVal, elevS.speed);
             _initSpeedSlider(mmSpeedSlider, mmSpeedVal, mmS.speed);
 
+            // Test GSVI audio
+            const gsviTestBtn = document.getElementById(`${P}_tts_gsvi_test_btn`);
+            if (gsviTestBtn) {
+                gsviTestBtn.addEventListener('click', async () => {
+                    const origHtml = gsviTestBtn.innerHTML;
+                    try {
+                        gsviTestBtn.disabled = true;
+                        gsviTestBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
+                        
+                        let tempVersion = 'GSVI-v4';
+                        if (gsviVoiceInput && gsviVoiceInput.options.length > 0) {
+                            const opt = gsviVoiceInput.options[gsviVoiceInput.selectedIndex];
+                            if (opt && opt.dataset.version) {
+                                tempVersion = `GSVI-${opt.dataset.version}`;
+                            }
+                        }
+
+                        // Temporary settings object for testing
+                        const tempSettings = {
+                            endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:9881',
+                            apiFormat: gsviFormatSelect?.value || 'auto',
+                            voiceId: gsviVoiceInput?.value?.trim() || '',
+                            model: tempVersion,
+                            speed: parseFloat(gsviSpeedSlider?.value) || 1.0,
+                            textLang: gsviTextLang?.value || '多语种混合',
+                            promptLang: gsviPromptLang?.value && gsviPromptLang.value !== '(请先获取声音列表)' ? gsviPromptLang.value : '',
+                            emotion: gsviEmotion?.value && gsviEmotion.value !== '(请先获取声音列表)' ? gsviEmotion.value : '',
+                            textSplitMethod: gsviSplitMethod?.value || '按标点符号切',
+                            batchSize: gsviBatchSize ? parseInt(gsviBatchSize.value, 10) || 1 : 1,
+                        };
+
+                        if (!tempSettings.voiceId || tempSettings.voiceId === '') {
+                            throw new Error('请先选择一个声音角色！');
+                        }
+
+                        // Get provider via public accessor
+                        let provider = null;
+                        if (typeof ttsEngine.getProvider === 'function') {
+                            provider = ttsEngine.getProvider('GPT-SoVITS');
+                        } else if (ttsEngine._providers) {
+                            const entry = ttsEngine._providers.get ? ttsEngine._providers.get('GPT-SoVITS') : ttsEngine._providers['GPT-SoVITS'];
+                            provider = entry?.instance || entry;
+                        }
+                        if (!provider) throw new Error('TTS Provider 初始化失败');
+
+                        const testText = '你好，这是一段语音测试合成效果。';
+                        const audioBuffer = await provider.synthesize(testText, tempSettings);
+
+                        const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+                        const url = URL.createObjectURL(blob);
+                        const audio = new Audio(url);
+                        
+                        gsviTestBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> 播放中...';
+                        audio.onended = () => {
+                            URL.revokeObjectURL(url);
+                            gsviTestBtn.disabled = false;
+                            gsviTestBtn.innerHTML = origHtml;
+                        };
+                        audio.onerror = () => {
+                            URL.revokeObjectURL(url);
+                            gsviTestBtn.disabled = false;
+                            gsviTestBtn.innerHTML = origHtml;
+                            showToast('音频播放失败');
+                        };
+                        
+                        await audio.play();
+                    } catch (err) {
+                        console.error('Test TTS failed:', err);
+                        showToast('试听失败: ' + err.message);
+                        gsviTestBtn.disabled = false;
+                        gsviTestBtn.innerHTML = origHtml;
+                    }
+                });
+            }
+
             // Save button
             onClick(`${P}_tts_save_btn`, () => {
                 const selectedProvider = ttsProviderSelect?.value || 'none';
+
+                let gsviModelVersion = 'GSVI-v4';
+                if (gsviVoiceInput && gsviVoiceInput.options.length > 0) {
+                    const selectedOpt = gsviVoiceInput.options[gsviVoiceInput.selectedIndex];
+                    if (selectedOpt && selectedOpt.dataset.version) {
+                        gsviModelVersion = `GSVI-${selectedOpt.dataset.version}`;
+                    }
+                }
 
                 // Save GPT-SoVITS settings
                 ttsEngine.updateProviderSettings('GPT-SoVITS', {
                     endpoint: gsviEndpointInput?.value?.trim() || 'http://localhost:9881',
                     apiFormat: gsviFormatSelect?.value || 'auto',
                     voiceId: gsviVoiceInput?.value?.trim() || '',
+                    model: gsviModelVersion,
                     speed: parseFloat(gsviSpeedSlider?.value) || 1.0,
+                    textLang: gsviTextLang?.value || '多语种混合',
+                    promptLang: gsviPromptLang?.value || '',
+                    emotion: gsviEmotion?.value || '',
+                    textSplitMethod: gsviSplitMethod?.value || '按标点符号切',
+                    batchSize: gsviBatchSize ? parseInt(gsviBatchSize.value, 10) || 1 : 1,
                 });
 
                 // Save ElevenLabs settings

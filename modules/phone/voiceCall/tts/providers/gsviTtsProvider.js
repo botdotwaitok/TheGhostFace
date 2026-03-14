@@ -61,14 +61,16 @@ export class GsviTtsProvider {
             text,
             target_voice: voiceId,
             use_st_adapter: true,
-            text_lang: textLang,
-            text_split_method: 'cut5',
-            batch_size: 1,
+            text_lang: settings.textLang || '多语种混合',
+            prompt_lang: settings.promptLang || '',
+            text_split_method: settings.textSplitMethod || '按标点符号切',
+            batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
             media_type: 'wav',
             streaming_mode: 'false',
         };
 
         console.debug(`${LOG_PREFIX} POST ${endpoint}/`);
+        console.log(`${LOG_PREFIX} Adapter Request Body:`, requestBody);
 
         const response = await fetch(this._resolveUrl(`${endpoint}/`), {
             method: 'POST',
@@ -103,14 +105,14 @@ export class GsviTtsProvider {
             speed,
             other_params: {
                 app_key: '',
-                text_lang: textLang,
-                prompt_lang: promptLang,
-                emotion,
+                text_lang: settings.textLang || '多语种混合',
+                prompt_lang: settings.promptLang || '',
+                emotion: settings.emotion || '默认',
                 top_k: 10,
                 top_p: 1,
                 temperature: 1,
-                text_split_method: '按标点符号切',
-                batch_size: 1,
+                text_split_method: settings.textSplitMethod || '按标点符号切',
+                batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
                 batch_threshold: 0.75,
                 split_bucket: true,
                 fragment_interval: 0.3,
@@ -123,6 +125,7 @@ export class GsviTtsProvider {
         };
 
         console.debug(`${LOG_PREFIX} POST ${endpoint}/v1/audio/speech`);
+        console.log(`${LOG_PREFIX} GSVI Request Body:`, requestBody);
 
         const response = await fetch(this._resolveUrl(`${endpoint}/v1/audio/speech`), {
             method: 'POST',
@@ -225,10 +228,14 @@ export class GsviTtsProvider {
 
                 for (const [modelName, folders] of Object.entries(models)) {
                     const emotions = [];
+                    const promptLangs = [];
+                    const emotionsMap = {};
                     let promptLang = '';
                     if (folders && typeof folders === 'object') {
                         for (const [folderName, emotionList] of Object.entries(folders)) {
                             if (!promptLang) promptLang = folderName;
+                            promptLangs.push(folderName);
+                            emotionsMap[folderName] = Array.isArray(emotionList) ? emotionList.filter(e => e && e.length > 0) : [];
                             if (Array.isArray(emotionList)) {
                                 emotions.push(...emotionList.filter(e => e && e.length > 0));
                             }
@@ -239,6 +246,8 @@ export class GsviTtsProvider {
                         name: `${modelName} [${version}]`,
                         language: promptLang || 'auto',
                         emotions,
+                        promptLangs,
+                        emotionsMap,
                         version,
                         prompt_lang: promptLang || '',
                     });
