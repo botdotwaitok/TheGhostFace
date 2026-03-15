@@ -71,6 +71,11 @@
     opacity: 0.6;
 }
 
+/* Phone call button — extra spacing from ⋯ */
+#chat_call_btn {
+    margin-right: 8px;
+}
+
 /* ─── Messages Area ─── */
 .chat-messages {
     flex: 1;

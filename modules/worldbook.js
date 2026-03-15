@@ -490,11 +490,17 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         let foundTrackingEntry = false;
         let foundSummaryEntries = 0;
 
-        // 🥇 优先方法1：查找追踪条目
+        // 🥇 优先方法1：查找追踪条目（必须匹配当前聊天标识）
         Object.values(worldBookData.entries).forEach(entry => {
             if (entry.comment === GHOST_TRACKING_COMMENT) {
                 foundTrackingEntry = true;
                 const content = entry.content || '';
+                // 🔧 校验聊天标识：只有属于当前聊天的追踪条目才可信
+                const chatMatch = content.match(/聊天标识:\s*(.+)/);
+                if (chatMatch && chatMatch[1].trim() !== currentChatIdentifier) {
+                    logger.debug(`🔍 追踪条目属于其他聊天 (${chatMatch[1].trim()})，跳过`);
+                    return; // 跳过，让备用方法接管
+                }
                 const match = content.match(/最后总结楼层:\s*(\d+)/);
                 if (match) {
                     const floorNum = parseInt(match[1]) - 1; // 转为0-based

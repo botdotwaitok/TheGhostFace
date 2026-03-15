@@ -94,6 +94,9 @@ export function openChatApp() {
         </div>`;
 
     const actionsHtml = `
+        <button class="chat-nav-btn" id="chat_call_btn" title="语音通话">
+            <i class="fa-solid fa-phone"></i>
+        </button>
         <button class="chat-nav-btn" id="chat_menu_btn" title="更多">
             <i class="fa-solid fa-ellipsis"></i>
         </button>`;
@@ -145,6 +148,7 @@ function bindChatEvents() {
     const kiwiBtn = document.getElementById('chat_kiwi_btn');
     const sendBtn = document.getElementById('chat_send_btn');
     const menuBtn = document.getElementById('chat_menu_btn');
+    const callBtn = document.getElementById('chat_call_btn');
     const menuOverlay = document.getElementById('chat_menu_overlay');
     const menuCancel = document.getElementById('chat_menu_cancel');
     const clearHistoryBtn = document.getElementById('chat_clear_history');
@@ -487,6 +491,13 @@ function bindChatEvents() {
             e.stopPropagation();
             _overlayOpenedAt = Date.now();
             menuOverlay?.classList.add('active');
+        });
+    }
+
+    // ─── Phone call button (with chat context) ───
+    if (callBtn) {
+        callBtn.addEventListener('click', () => {
+            openVoiceCall({ chatContext: true });
         });
     }
     if (menuCancel) {

@@ -45,6 +45,7 @@ export async function updateMomentsWorldInfo() {
         const myCharName = charInfo ? charInfo.name : null;
         const myAuthorIds = getMyAuthorIds();
 
+        const userName = getUserNameFallback();
         const feedText = recentPosts.map(p => {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const shortId = p.id.split('_').pop().slice(-5);
@@ -86,7 +87,7 @@ export async function updateMomentsWorldInfo() {
             return text;
         }).join('\n\n');
 
-        const userName = getUserNameFallback();
+
         let baseText = `
         <gf_moments>
         【社交网络系统】
@@ -106,7 +107,7 @@ export async function updateMomentsWorldInfo() {
 
 多媒体：可使用 <图片>描述</图片>, <视频>描述</视频>, <音乐>描述</音乐>, <新闻>描述</新闻>。
 ⚠️身份规则（重要）：
-- 你是"${myCharName}"，你的恋人/主人是"${userName}"。
+- 你是"${myCharName}"，你的恋人是"${userName}"。
 - 如果帖子标注了"[${userName}发布]"，代表你的恋人本人发的动态，ta的社交平台网名可能和本名不同。
 - 如果帖子标注了"[${userName}的好友或其伴侣发布]"，说明这是别人发的帖子，帖子中提到的内容是关于ta自己和ta自己恋人的事，与你和"${userName}"无关，不要代入到你自己身上。
 - 如果帖子标注了"[⚡同位体·非你本人·来自其她用户的角色]"，说明这是来自另一位用户的角色，ta和你同名、是你的平行世界分身，但你们是完全独立的个体。ta发的帖子是关于ta自己和ta的恋人的，不是关于你的。

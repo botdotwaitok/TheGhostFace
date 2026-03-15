@@ -81,7 +81,7 @@ async function renderDiscordBindSection(P) {
             if (!/^[A-Z0-9]{6}$/.test(code)) return showToast('绑定码格式不正确（6位字母数字）');
             try {
                 await moments.bindDiscordByCode(code);
-                showToast('绑定成功！🔗');
+                showToast('绑定成功！');
                 if (input) input.value = '';
                 renderDiscordBindSection(P);
             } catch (e) {
@@ -1125,7 +1125,7 @@ export function openSettingsApp() {
                     <div class="phone-settings-row">
                         <label>API Key</label>
                         <input id="${P}_tts_11labs_key" type="password" class="phone-settings-input"
-                               placeholder="sk-..." />
+                               placeholder="不是sk开头的那个哦..." />
                     </div>
                     <div class="phone-settings-row">
                         <label>Voice ID</label>
@@ -1176,6 +1176,14 @@ export function openSettingsApp() {
                         </div>
                     </div>
                     <div class="phone-settings-row">
+                        <label>自定义 Voice ID</label>
+                        <input id="${P}_tts_minimax_custom_voice" type="text" class="phone-settings-input"
+                               placeholder="留空则使用上方下拉框的选择" />
+                    </div>
+                    <div style="padding: 0 16px 8px; font-size: 11px; color: #8e8e93; line-height: 1.4;">
+                        如果你有国际服生成的 Voice ID，可以直接粘贴在这里，会覆盖上方下拉框的选择。
+                    </div>
+                    <div class="phone-settings-row">
                         <label>模型</label>
                         <select id="${P}_tts_minimax_model" class="phone-settings-input" style="height: 36px;">
                             <option value="speech-02-hd">speech-02-hd (推荐)</option>
@@ -1199,7 +1207,7 @@ export function openSettingsApp() {
                     <div class="phone-settings-row">
                         <label>代理地址</label>
                         <input id="${P}_tts_proxy_server" type="text" class="phone-settings-input"
-                               placeholder="http://74.208.78.209:3421" />
+                               placeholder="https://api.entity.li" />
                     </div>
                 </div>
 
@@ -1702,6 +1710,7 @@ export function openSettingsApp() {
             const elevSpeedVal = document.getElementById(`${P}_tts_11labs_speed_val`);
             const mmKeyInput = document.getElementById(`${P}_tts_minimax_key`);
             const mmVoiceInput = document.getElementById(`${P}_tts_minimax_voice`);
+            const mmCustomVoiceInput = document.getElementById(`${P}_tts_minimax_custom_voice`);
             const mmModelSelect = document.getElementById(`${P}_tts_minimax_model`);
             const mmSpeedSlider = document.getElementById(`${P}_tts_minimax_speed`);
             const mmSpeedVal = document.getElementById(`${P}_tts_minimax_speed_val`);
@@ -1740,7 +1749,8 @@ export function openSettingsApp() {
             }
             if (elevKeyInput) elevKeyInput.value = elevS.apiKey || '';
             if (mmKeyInput) mmKeyInput.value = mmS.apiKey || '';
-            if (proxyInput) proxyInput.value = elevS.proxyServer || mmS.proxyServer || 'http://74.208.78.209:3421';
+            if (mmCustomVoiceInput) mmCustomVoiceInput.value = mmS.customVoiceId || '';
+            if (proxyInput) proxyInput.value = elevS.proxyServer || mmS.proxyServer || 'https://api.entity.li';
 
             // Fill new model + speed fields
             if (elevModelSelect) elevModelSelect.value = elevS.model || 'eleven_multilingual_v2';
@@ -1785,7 +1795,7 @@ export function openSettingsApp() {
                 try {
                     const promptLangs = JSON.parse(opt.dataset.promptLangs || '[]');
                     const emotionsMap = JSON.parse(opt.dataset.emotionsMap || '{}');
-                    
+
                     const currentPromptLang = gsviPromptLang.value;
                     const currentEmotion = gsviEmotion.value;
 
@@ -1805,7 +1815,7 @@ export function openSettingsApp() {
                     // Update emotions based on selected promptLang
                     const selectedPromptLang = gsviPromptLang.value;
                     const emotions = emotionsMap[selectedPromptLang] || [];
-                    
+
                     if (emotions.length > 0) {
                         gsviEmotion.innerHTML = emotions.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
                         if (currentEmotion && emotions.includes(currentEmotion)) {
@@ -1934,7 +1944,7 @@ export function openSettingsApp() {
                     try {
                         gsviTestBtn.disabled = true;
                         gsviTestBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
-                        
+
                         let tempVersion = 'GSVI-v4';
                         if (gsviVoiceInput && gsviVoiceInput.options.length > 0) {
                             const opt = gsviVoiceInput.options[gsviVoiceInput.selectedIndex];
@@ -1977,7 +1987,7 @@ export function openSettingsApp() {
                         const blob = new Blob([audioBuffer], { type: 'audio/wav' });
                         const url = URL.createObjectURL(blob);
                         const audio = new Audio(url);
-                        
+
                         gsviTestBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> 播放中...';
                         audio.onended = () => {
                             URL.revokeObjectURL(url);
@@ -1990,7 +2000,7 @@ export function openSettingsApp() {
                             gsviTestBtn.innerHTML = origHtml;
                             showToast('音频播放失败');
                         };
-                        
+
                         await audio.play();
                     } catch (err) {
                         console.error('Test TTS failed:', err);
@@ -2033,16 +2043,18 @@ export function openSettingsApp() {
                     voiceId: elevVoiceInput?.value?.trim() || '',
                     model: elevModelSelect?.value || 'eleven_multilingual_v2',
                     speed: parseFloat(elevSpeedSlider?.value) || 1.0,
-                    proxyServer: proxyInput?.value?.trim() || 'http://74.208.78.209:3421',
+                    proxyServer: proxyInput?.value?.trim() || 'https://api.entity.li',
                 });
 
                 // Save MiniMax settings
+                const mmCustomVoice = mmCustomVoiceInput?.value?.trim() || '';
                 ttsEngine.updateProviderSettings('MiniMax', {
                     apiKey: mmKeyInput?.value?.trim() || '',
-                    voiceId: mmVoiceInput?.value?.trim() || '',
+                    voiceId: mmCustomVoice || mmVoiceInput?.value?.trim() || '',
+                    customVoiceId: mmCustomVoice,
                     model: mmModelSelect?.value || 'speech-02-hd',
                     speed: parseFloat(mmSpeedSlider?.value) || 1.0,
-                    proxyServer: proxyInput?.value?.trim() || 'http://74.208.78.209:3421',
+                    proxyServer: proxyInput?.value?.trim() || 'https://api.entity.li',
                 });
 
                 // Switch active provider
@@ -2086,7 +2098,7 @@ export function openSettingsApp() {
                 setKeepAliveEnabled(newState);
                 if (newState) {
                     startKeepAlive();
-                    showToast('静默保活已开启 🔒');
+                    showToast('静默保活已开启');
                 } else {
                     stopKeepAlive();
                     showToast('静默保活已关闭');
@@ -2227,8 +2239,8 @@ function _renderSttProviderSettings(P, sttEngine) {
         const ttsProxyFallback = ttsEngine
             ? (ttsEngine.getProviderSettings('ElevenLabs')?.proxyServer
                 || ttsEngine.getProviderSettings('MiniMax')?.proxyServer
-                || 'http://74.208.78.209:3421')
-            : 'http://74.208.78.209:3421';
+                || 'https://api.entity.li')
+            : 'https://api.entity.li';
         const sttProxy = savedSettings.proxyServer || ttsProxyFallback;
 
         html += `
@@ -2236,7 +2248,7 @@ function _renderSttProviderSettings(P, sttEngine) {
         <div class="phone-settings-row">
             <label>代理地址</label>
             <input id="${P}_stt_proxy_server" type="text" class="phone-settings-input"
-                   placeholder="http://74.208.78.209:3421"
+                   placeholder="https://api.entity.li"
                    value="${sttProxy}" />
         </div>
         <div style="padding: 0 16px 8px; font-size: 11px; color: #8e8e93; line-height: 1.4;">
@@ -2270,7 +2282,7 @@ function _renderSttProviderSettings(P, sttEngine) {
         saveBtn.addEventListener('click', () => {
             const apiKeyInput = document.getElementById(`${P}_stt_api_key`);
             const proxyInput = document.getElementById(`${P}_stt_proxy_server`);
-            const proxyValue = proxyInput?.value?.trim() || 'http://74.208.78.209:3421';
+            const proxyValue = proxyInput?.value?.trim() || 'https://api.entity.li';
 
             // 保存 STT provider settings
             sttEngine.updateProviderSettings(providerName, {

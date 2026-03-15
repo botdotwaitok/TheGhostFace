@@ -9,8 +9,8 @@
  *
  * On plain HTTP pages this is a no-op — the original URL is returned as-is.
  *
- * @param {string} url - The original URL (e.g. "http://74.208.78.209:3421/api/auth/login")
- * @returns {string}   - Possibly rewritten URL (e.g. "/proxy/http://74.208.78.209:3421/api/auth/login")
+ * @param {string} url - The original URL (e.g. "https://api.entity.li/api/auth/login")
+ * @returns {string}   - Possibly rewritten URL (e.g. "/proxy/http://example.com/api/auth/login")
  */
 export function resolveProxyUrl(url) {
     if (window.isSecureContext && url.startsWith('http://')) {

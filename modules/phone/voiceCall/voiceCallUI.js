@@ -22,6 +22,7 @@ let _timerInterval = null;
 let _callId = null;
 let _callMessages = [];    // Transcript: [{ role: 'user'|'char', content, timestamp }]
 let _isProcessingLLM = false;  // Guard: prevent overlapping LLM requests
+let _callOptions = {};     // Options passed from caller (e.g. { chatContext: true })
 
 // ═══════════════════════════════════════════════════════════════════════
 // Template & Mounting
@@ -84,9 +85,11 @@ function _unmountUI() {
 
 /**
  * Open the true-voice-call UI.
+ * @param {object} [options]
+ * @param {boolean} [options.chatContext=false] - If true, inject chat context into the call prompt
  */
-export async function openVoiceCall() {
-    console.log(`${LOG_PREFIX} Opening Voice Call...`);
+export async function openVoiceCall({ chatContext = false } = {}) {
+    console.log(`${LOG_PREFIX} Opening Voice Call... (chatContext: ${chatContext})`);
     _sttEngine = getSttEngine();
 
     // Verify STT setup
@@ -106,6 +109,7 @@ export async function openVoiceCall() {
     _callId = generateCallId();
     _callMessages = [];
     _isProcessingLLM = false;
+    _callOptions = { chatContext };
 
     addSystemSubtitle('正在建立加密通话...');
 
@@ -185,6 +189,7 @@ export async function closeVoiceCall() {
     _callId = null;
     _callMessages = [];
     _isProcessingLLM = false;
+    _callOptions = {};
 
     _unmountUI();
 }
@@ -439,7 +444,7 @@ async function _sendToLLM(text) {
         }
 
         // Build prompts
-        const systemPrompt = await buildVcSystemPrompt();
+        const systemPrompt = await buildVcSystemPrompt(_callOptions);
         const userPrompt = buildVcUserPrompt(text, _callMessages);
 
         // Call LLM with retry
