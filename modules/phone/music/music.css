@@ -1,0 +1,1126 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   modules/phone/music/music.css — Resonance 音乐推荐 App
+   Apple Music inspired dark UI with glassmorphism
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Page Root ─────────────────────────────────────────────────────── */
+
+.music-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Override viewport header to match the dark theme + banner gradient */
+.phone-app-viewport:has(.music-page) .phone-app-viewport-header {
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.phone-app-viewport:has(.music-page) .phone-app-back-btn {
+    color: #fc3c44;
+}
+
+.phone-app-viewport:has(.music-page) .phone-app-viewport-title {
+    color: #fff;
+}
+
+/* Pref button in viewport header */
+.phone-app-viewport:has(.music-page) .music-pref-btn {
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.phone-app-viewport:has(.music-page) .music-pref-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+}
+
+/* ─── Banner ────────────────────────────────────────────────────────── */
+
+.music-banner {
+    position: relative;
+    padding: 28px 20px 20px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.music-banner-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(252, 60, 68, 0.25) 0%, rgba(148, 45, 211, 0.2) 50%, rgba(30, 80, 160, 0.15) 100%);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+}
+
+.music-banner-content {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 1;
+}
+
+.music-banner-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #fc3c44 0%, #942dd3 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(252, 60, 68, 0.35);
+    flex-shrink: 0;
+}
+
+.music-banner-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #fff;
+}
+
+.music-banner-subtitle {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* ─── Tab Bar ───────────────────────────────────────────────────────── */
+
+.music-tab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 0 16px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.music-tab {
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.music-tab i {
+    font-size: 15px;
+}
+
+.music-tab.active {
+    color: #fc3c44;
+    border-bottom-color: #fc3c44;
+}
+
+.music-tab:hover:not(.active) {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Tab Content ───────────────────────────────────────────────────── */
+
+.music-tab-content {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 20px;
+}
+
+.music-tab-content.active {
+    display: block;
+}
+
+/* ─── Date Navigator ────────────────────────────────────────────────── */
+
+.music-date-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 12px 0;
+}
+
+.music-date-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.music-date-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.music-date-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.music-date-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    min-width: 100px;
+    text-align: center;
+}
+
+/* ─── Song Cards ────────────────────────────────────────────────────── */
+
+.music-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.music-song-card {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 16px;
+    animation: music-card-in 0.5s ease both;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.music-song-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes music-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.music-song-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.music-song-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.music-song-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.music-song-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.music-copy-btn {
+    opacity: 0;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 4px;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    flex-shrink: 0;
+}
+
+.music-song-card:hover .music-copy-btn {
+    opacity: 1;
+}
+
+.music-copy-btn:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Mobile: always show copy button */
+@media (hover: none) {
+    .music-copy-btn {
+        opacity: 0.6;
+    }
+}
+
+.music-song-artist {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 2px;
+}
+
+/* ─── Like Button ───────────────────────────────────────────────────── */
+
+.music-like-btn {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.music-like-btn:hover {
+    color: rgba(252, 60, 68, 0.6);
+}
+
+.music-like-btn.liked {
+    color: #fc3c44;
+}
+
+.music-like-btn.liked:hover {
+    color: #fc3c44;
+}
+
+.music-like-pop {
+    animation: music-like-bounce 0.4s ease;
+}
+
+@keyframes music-like-bounce {
+    0% { transform: scale(1); }
+    25% { transform: scale(1.35); }
+    50% { transform: scale(0.9); }
+    100% { transform: scale(1); }
+}
+
+/* ─── Song Comment ──────────────────────────────────────────────────── */
+
+.music-song-comment {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 13px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.65);
+    font-style: italic;
+    position: relative;
+}
+
+.music-quote-icon {
+    font-size: 14px;
+    color: rgba(252, 60, 68, 0.4);
+    margin-right: 4px;
+    vertical-align: text-top;
+}
+
+/* ─── Empty State ───────────────────────────────────────────────────── */
+
+.music-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.music-empty-icon {
+    font-size: 48px;
+    color: rgba(255, 255, 255, 0.15);
+    margin-bottom: 16px;
+}
+
+.music-empty-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 6px;
+}
+
+.music-empty-desc {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 24px;
+}
+
+/* ─── Generate Button ───────────────────────────────────────────────── */
+
+.music-generate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #fc3c44 0%, #d42e8a 100%);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(252, 60, 68, 0.35);
+    transition: all 0.3s ease;
+}
+
+.music-generate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(252, 60, 68, 0.5);
+}
+
+.music-generate-btn:active {
+    transform: translateY(0);
+}
+
+.music-generate-btn i {
+    font-size: 18px;
+}
+
+/* ─── History List ──────────────────────────────────────────────────── */
+
+.music-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.music-history-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.music-history-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.music-history-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    flex-shrink: 0;
+    width: 70px;
+}
+
+.music-history-songs {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.music-history-likes {
+    font-size: 12px;
+    color: #fc3c44;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.music-history-likes i {
+    font-size: 11px;
+}
+
+.music-history-arrow {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+}
+
+/* ─── Loading Overlay ───────────────────────────────────────────────── */
+
+.music-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 15, 30, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.music-loading-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.music-loading-content {
+    text-align: center;
+}
+
+.music-loading-icon {
+    font-size: 48px;
+    color: #fc3c44;
+    margin-bottom: 16px;
+    animation: music-spin 2s linear infinite;
+}
+
+@keyframes music-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.music-loading-text {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+}
+
+.music-loading-dots {
+    margin-top: 8px;
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.music-loading-dots span {
+    animation: music-dot-pulse 1.5s ease-in-out infinite;
+}
+
+.music-loading-dots span:nth-child(2) {
+    animation-delay: 0.3s;
+}
+
+.music-loading-dots span:nth-child(3) {
+    animation-delay: 0.6s;
+}
+
+@keyframes music-dot-pulse {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
+}
+
+/* ─── Scrollbar Styling ─────────────────────────────────────────────── */
+
+.music-page::-webkit-scrollbar,
+.music-tab-content::-webkit-scrollbar {
+    width: 3px;
+}
+
+.music-page::-webkit-scrollbar-track,
+.music-tab-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.music-page::-webkit-scrollbar-thumb,
+.music-tab-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+
+/* ─── Onboarding Overlay ────────────────────────────────────────────── */
+
+.music-onboarding-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.music-onboarding-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.music-onboarding-overlay.closing {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.music-onboarding-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 340px;
+    width: 100%;
+    animation: music-onboard-in 0.5s ease both;
+}
+
+@keyframes music-onboard-in {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.music-onboarding-icon {
+    font-size: 56px;
+    color: #fc3c44;
+    margin-bottom: 16px;
+    animation: music-headphone-pulse 2s ease-in-out infinite;
+}
+
+@keyframes music-headphone-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+
+.music-onboarding-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+}
+
+.music-onboarding-desc {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.45);
+    text-align: center;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+/* ─── Genre Chip Grid (shared between onboarding & pref settings) ─── */
+
+.music-genre-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+}
+
+.music-genre-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.music-genre-chip i {
+    font-size: 15px;
+}
+
+.music-genre-chip:hover {
+    border-color: rgba(252, 60, 68, 0.3);
+    background: rgba(252, 60, 68, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.music-genre-chip.selected {
+    border-color: #fc3c44;
+    background: rgba(252, 60, 68, 0.15);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(252, 60, 68, 0.2);
+}
+
+/* ─── Custom Note Input ─────────────────────────────────────────────── */
+
+.music-onboarding-custom {
+    width: 100%;
+    margin-top: 18px;
+}
+
+.music-input-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    padding: 2px 4px;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.music-input-wrap:focus-within {
+    border-color: rgba(252, 60, 68, 0.4);
+    box-shadow: 0 0 8px rgba(252, 60, 68, 0.2);
+}
+
+.music-custom-note-input,
+.music-custom-genre-input {
+    flex: 1;
+    width: 100%;
+    padding: 8px 10px;
+    border: none !important;
+    background: transparent !important;
+    color: #1c1c1e !important;
+    font-size: 13px;
+    outline: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+}
+
+.music-custom-note-input::placeholder,
+.music-custom-genre-input::placeholder {
+    color: #8e8e93 !important;
+}
+
+/* ─── Onboarding Confirm Button ─────────────────────────────────────── */
+
+.music-onboarding-confirm {
+    margin-top: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 32px;
+    border: none;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #fc3c44 0%, #d42e8a 100%);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(252, 60, 68, 0.35);
+    transition: all 0.3s ease;
+}
+
+.music-onboarding-confirm:disabled {
+    opacity: 0.35;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+}
+
+.music-onboarding-confirm:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(252, 60, 68, 0.5);
+}
+
+/* ─── Preference Settings Overlay ───────────────────────────────────── */
+
+.music-pref-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: translateY(20px);
+}
+
+.music-pref-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.music-pref-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    flex-shrink: 0;
+}
+
+.music-pref-close {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    transition: color 0.2s ease;
+}
+
+.music-pref-close:hover {
+    color: #fff;
+}
+
+.music-pref-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.music-pref-save {
+    border: none;
+    background: transparent;
+    color: #fc3c44;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 12px;
+    transition: opacity 0.2s ease;
+}
+
+.music-pref-save:hover {
+    opacity: 0.8;
+}
+
+.music-pref-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 20px;
+}
+
+.music-pref-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 12px;
+}
+
+/* ─── Custom Genre: + Add Button ────────────────────────────────────── */
+
+.music-genre-add {
+    border-style: dashed !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.music-genre-add:hover {
+    border-color: rgba(252, 60, 68, 0.4) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    background: rgba(252, 60, 68, 0.06) !important;
+}
+
+/* ─── Custom Genre: Inline Input Row ────────────────────────────────── */
+
+.music-genre-add-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.music-custom-genre-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #e8e8e8;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.music-custom-genre-input:focus {
+    border-color: rgba(252, 60, 68, 0.4);
+}
+
+.music-custom-genre-input::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+}
+
+.music-custom-genre-confirm {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: #fc3c44;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.2s ease;
+}
+
+.music-custom-genre-confirm:hover {
+    opacity: 0.85;
+}
+
+/* ─── Home Screen Icon Size Fix ─────────────────────────────────────── */
+/* Phosphor Icons have a larger base size than Font Awesome.
+   Override the scale(2) from .phone-app-icon i to match other app icons. */
+
+.phone-app-icon i.ph {
+    transform: scale(1.5);
+}
+
+/* ─── Custom Genre: Remove × Button on Chips ────────────────────────── */
+
+.music-custom-chip-remove {
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 2px;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+.music-custom-chip-remove:hover {
+    opacity: 1;
+}
+
+/* ─── Song Card Actions Group ───────────────────────────────────────── */
+
+.music-song-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* ─── Open in Platform Button ───────────────────────────────────────── */
+
+.music-open-btn {
+    border: none;
+    background: rgba(252, 60, 68, 0.12);
+    color: #fc3c44;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s ease;
+    flex-shrink: 0;
+}
+
+.music-open-btn:hover {
+    background: rgba(252, 60, 68, 0.25);
+    transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(252, 60, 68, 0.3);
+}
+
+.music-open-btn:active {
+    transform: scale(0.95);
+}
+
+/* Mobile: larger tap target */
+@media (hover: none) {
+    .music-open-btn {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+/* ─── Platform Selector Section ─────────────────────────────────────── */
+
+.music-platform-section {
+    width: 100%;
+    margin-top: 20px;
+}
+
+.music-platform-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.music-platform-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+}
+
+.music-platform-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.music-platform-chip i {
+    font-size: 16px;
+}
+
+.music-platform-chip:hover {
+    border-color: rgba(252, 60, 68, 0.3);
+    background: rgba(252, 60, 68, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.music-platform-chip.selected {
+    border-color: #fc3c44;
+    background: rgba(252, 60, 68, 0.15);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(252, 60, 68, 0.2);
+}
+
+/* ─── Song Cards Footer (hint + regenerate) ─────────────────────────── */
+
+.music-cards-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0 20px;
+}
+
+.music-cards-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.music-cards-hint i {
+    font-size: 13px;
+    color: rgba(252, 60, 68, 0.4);
+}
+
+.music-regenerate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.music-regenerate-btn:hover {
+    border-color: rgba(252, 60, 68, 0.3);
+    background: rgba(252, 60, 68, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.music-regenerate-btn:active {
+    transform: scale(0.95);
+}
+
+.music-regenerate-btn i {
+    font-size: 15px;
+}
+
+/* ─── Retry Countdown UI (inside loading overlay) ───────────────────── */
+
+.music-retry-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+}
+
+.music-retry-error {
+    font-size: 12px;
+    color: rgba(255, 180, 100, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 200px;
+    word-break: break-word;
+}
+
+.music-retry-countdown {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.music-retry-seconds {
+    font-weight: 700;
+    color: #fc3c44;
+    font-size: 18px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.music-retry-cancel {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 4px;
+}
+
+.music-retry-cancel:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.8);
+}

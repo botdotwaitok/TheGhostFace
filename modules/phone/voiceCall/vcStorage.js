@@ -21,7 +21,9 @@ const MAX_CALL_LOGS = 50;
 //   duration: number,     // seconds
 //   summary: string,      // AI-generated brief summary (optional)
 //   messages: [           // realtime transcript
-//     { role: 'user'|'char', content: string, timestamp: string }
+//     { role: 'user'|'char', content: string, timestamp: string,
+//       audioPath?: string  // (char only) persisted TTS audio path on ST server
+//     }
 //   ]
 // }
 // ═══════════════════════════════════════════════════════════════════════

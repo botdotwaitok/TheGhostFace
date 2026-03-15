@@ -155,6 +155,40 @@ export class TtsEngine {
     }
 
     /**
+     * 合成文字，播放，并返回音频 Blob + 时长 — 供调用方持久化保存。
+     * @param {string} text
+     * @returns {Promise<{ duration: number, audioBlob: Blob } | null>}
+     */
+    async speakAndCapture(text) {
+        if (!this._activeProvider || this._activeProviderName === 'none') {
+            console.debug(`${LOG_PREFIX} No TTS provider configured, skipping.`);
+            return null;
+        }
+        if (!text || text.trim().length === 0) return null;
+
+        this.stop();
+        console.debug(`${LOG_PREFIX} speakAndCapture: "${text.substring(0, 40)}..."`);
+
+        try {
+            const providerSettings = this._settings.providerSettings[this._activeProviderName] || {};
+            const audioBuffer = await this._retryWithBackoff(
+                () => this._activeProvider.synthesize(text, providerSettings),
+            );
+
+            // Create Blob from the raw ArrayBuffer (before decoding)
+            const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+
+            // Play and get duration
+            const duration = await this._playBuffer(audioBuffer);
+
+            return { duration, audioBlob };
+        } catch (err) {
+            console.error(`${LOG_PREFIX} speakAndCapture() failed:`, err);
+            return null;
+        }
+    }
+
+    /**
      * 立即停止当前播放。
      */
     stop() {

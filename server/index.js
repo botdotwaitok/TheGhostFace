@@ -15,7 +15,8 @@ const rateLimit = require('express-rate-limit');
 const { closeDb } = require('./db');
 
 const app = express();
-const PORT = parseInt(process.env.PORT) || 3421;
+app.set('trust proxy', 1);  // Trust Cloudflare proxy headers for real client IP
+const PORT = parseInt(process.env.PORT) || 8880;
 const SECRET_TOKEN = process.env.SECRET_TOKEN;
 
 if (!SECRET_TOKEN || SECRET_TOKEN === 'CHANGE_ME_TO_A_RANDOM_SECRET') {

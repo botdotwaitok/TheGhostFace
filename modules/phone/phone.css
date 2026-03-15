@@ -250,7 +250,8 @@
 }
 
 .phone-app-icon i {
-    transform: scale(2);
+    font-size: 36px !important;
+    transform: none !important;
 }
 
 .phone-app-item:hover .phone-app-icon {

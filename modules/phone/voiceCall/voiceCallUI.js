@@ -9,6 +9,7 @@ import { getTtsEngine } from './tts/ttsInit.js';
 import { callPhoneLLM } from '../../api.js';
 import { buildVcSystemPrompt, buildVcUserPrompt, generateCallSummary } from './vcPromptBuilder.js';
 import { saveCallLog, generateCallId } from './vcStorage.js';
+import { uploadAudioToST } from '../chat/voiceMessageService.js';
 
 const LOG_PREFIX = '[VoiceCallUI]';
 
@@ -463,18 +464,31 @@ async function _sendToLLM(text) {
 
         const cleanResponse = response.trim();
 
-        // Record char message
-        _callMessages.push({
+        // Record char message (audioPath added after TTS below)
+        const charMessageEntry = {
             role: 'char',
             content: cleanResponse,
             timestamp: new Date().toISOString(),
-        });
+        };
+        _callMessages.push(charMessageEntry);
 
-        // 🔊 TTS first (await synthesis + decode), then sync typewriter to audio duration
+        // 🔊 TTS: synthesize + play + capture blob for persistence
         let audioDuration = 0;
+        let audioPath = null;
         if (_ttsEngine) {
             try {
-                audioDuration = await _ttsEngine.speak(cleanResponse) || 0;
+                const ttsResult = await _ttsEngine.speakAndCapture(cleanResponse);
+                if (ttsResult) {
+                    audioDuration = ttsResult.duration || 0;
+                    // Upload audio to ST file system for persistence
+                    try {
+                        audioPath = await uploadAudioToST(ttsResult.audioBlob, 'voice_call');
+                        charMessageEntry.audioPath = audioPath;
+                        console.log(`${LOG_PREFIX} TTS audio saved: ${audioPath}`);
+                    } catch (uploadErr) {
+                        console.warn(`${LOG_PREFIX} TTS audio upload failed:`, uploadErr);
+                    }
+                }
             } catch (e) {
                 console.warn(`${LOG_PREFIX} TTS failed, text-only fallback`, e);
             }

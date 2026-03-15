@@ -22,6 +22,8 @@ import { loadWISettings, saveWISettings } from '../calendar/calendarStorage.js';
 import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbookManager.js';
+import { loadCallLogs } from '../voiceCall/vcStorage.js';
+import { loadChatHistory } from '../chat/chatStorage.js';
 import {
     isBookBlockedInScope, isEntryBlockedInScope,
     toggleBookBlock, toggleEntryBlock
@@ -126,7 +128,7 @@ function openAccountDetailPage() {
                 <div class="phone-settings-group-title" style="margin-top: 0;">服务器连接</div>
                 <div class="phone-settings-row">
                     <label>后端地址 (Backend URL)</label>
-                    <input id="${P}_backend_url" type="text" class="phone-settings-input" placeholder="https://your-server.com:3421" />
+                    <input id="${P}_backend_url" type="text" class="phone-settings-input" placeholder="https://api.entity.li" />
                 </div>
                 <div class="phone-settings-row">
                     <label>密钥 (Secret Token)</label>
@@ -1211,6 +1213,18 @@ export function openSettingsApp() {
                     </div>
                 </div>
 
+                <!-- 已保存语音文件 -->
+                <div class="phone-settings-group-title">已保存语音</div>
+                <div style="padding: 0 16px 8px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    聊天和通话中 TTS 合成的语音文件。保存在 SillyTavern 的 user/files/ 目录下。
+                </div>
+                <div class="phone-settings-row" style="justify-content: center; padding-top: 4px;">
+                    <button id="${P}_saved_audio_btn" class="phone-settings-btn" style="width:100%; max-width: 240px; font-size: 13px;">
+                        <i class="fa-solid fa-folder-open"></i> 查看已保存音频
+                    </button>
+                </div>
+                <div id="${P}_saved_audio_list" style="display: none; padding: 8px 16px 12px;"></div>
+
                 <div class="phone-settings-actions">
                     <button id="${P}_tts_save_btn" class="phone-settings-btn phone-settings-btn-primary">保存设置</button>
                 </div>
@@ -2064,6 +2078,83 @@ export function openSettingsApp() {
                     ? 'TTS 已关闭'
                     : `语音合成已切换: ${selectedProvider}`
                 );
+            });
+
+            // ── Saved Audio Viewer ──
+            onClick(`${P}_saved_audio_btn`, () => {
+                const listEl = document.getElementById(`${P}_saved_audio_list`);
+                if (!listEl) return;
+
+                // Toggle visibility
+                if (listEl.style.display !== 'none') {
+                    listEl.style.display = 'none';
+                    return;
+                }
+
+                // Collect all saved audio paths
+                const audioPaths = [];
+
+                // 1. From chat history (voice_user_* and voice_char_*)
+                try {
+                    const chatHistory = loadChatHistory();
+                    for (const msg of chatHistory) {
+                        if (msg.audioPath) {
+                            audioPaths.push({
+                                path: msg.audioPath,
+                                source: msg.role === 'user' ? '聊天-用户语音' : '聊天-角色语音',
+                                time: msg.timestamp || '',
+                            });
+                        }
+                    }
+                } catch (e) { console.warn('[Settings] Chat audio scan failed:', e); }
+
+                // 2. From voice call logs (voice_call_*)
+                try {
+                    const callLogs = loadCallLogs();
+                    for (const log of callLogs) {
+                        if (!log.messages) continue;
+                        for (const msg of log.messages) {
+                            if (msg.audioPath) {
+                                audioPaths.push({
+                                    path: msg.audioPath,
+                                    source: '通话-角色语音',
+                                    time: msg.timestamp || log.startTime || '',
+                                });
+                            }
+                        }
+                    }
+                } catch (e) { console.warn('[Settings] Call audio scan failed:', e); }
+
+                // Render
+                if (audioPaths.length === 0) {
+                    listEl.innerHTML = `<div style="text-align: center; padding: 16px; color: #8e8e93; font-size: 13px;">
+                        <i class="fa-solid fa-box-open" style="font-size: 24px; margin-bottom: 8px; display: block; opacity: 0.5;"></i>
+                        暂无已保存的语音文件
+                    </div>`;
+                } else {
+                    const chatCount = audioPaths.filter(a => a.source.startsWith('聊天')).length;
+                    const callCount = audioPaths.filter(a => a.source.startsWith('通话')).length;
+
+                    let html = `<div style="margin-bottom: 10px; font-size: 12px; color: #8e8e93;">
+                        共 <b style="color: #34C759;">${audioPaths.length}</b> 个音频文件
+                        （聊天 ${chatCount} · 通话 ${callCount}）
+                    </div>`;
+                    html += `<div style="max-height: 240px; overflow-y: auto; border-radius: 8px; background: rgba(0,0,0,0.15); padding: 8px;">`;
+                    for (const item of audioPaths) {
+                        const filename = item.path.split('/').pop();
+                        const timeStr = item.time ? new Date(item.time).toLocaleString() : '';
+                        html += `<div style="padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-file-audio" style="color: #34C759; flex-shrink: 0;"></i>
+                            <div style="min-width: 0; flex: 1;">
+                                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e0e0e0;" title="${escapeHtml(item.path)}">${escapeHtml(filename)}</div>
+                                <div style="font-size: 10px; color: #8e8e93; margin-top: 2px;">${escapeHtml(item.source)}${timeStr ? ' · ' + timeStr : ''}</div>
+                            </div>
+                        </div>`;
+                    }
+                    html += `</div>`;
+                    listEl.innerHTML = html;
+                }
+                listEl.style.display = '';
             });
         }
 

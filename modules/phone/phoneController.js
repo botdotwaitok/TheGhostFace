@@ -17,6 +17,7 @@ import { openTreeApp } from './tree/treeApp.js';
 import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
 import { openCalendarApp } from './calendar/calendarApp.js';
 import { openVcApp } from './voiceCall/vcApp.js';
+import { openMusicApp } from './music/musicApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
 
 // ─── State ───
@@ -108,6 +109,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link10.rel = 'stylesheet';
         link10.href = `${baseDir}/voiceCall/voiceCall.css`;
         document.head.appendChild(link10);
+    }
+    // Music CSS
+    if (!document.getElementById('gf-music-styles')) {
+        const link11 = document.createElement('link');
+        link11.id = 'gf-music-styles';
+        link11.rel = 'stylesheet';
+        link11.href = `${baseDir}/music/music.css`;
+        document.head.appendChild(link11);
     }
 })();
 
@@ -291,6 +300,16 @@ export function initPhone() {
         color: '#34C759',
         glow: 'rgba(52, 199, 89, 0.4)',
         onOpen: () => openVcApp(),
+    });
+
+    // ── 歌单 (Music / Resonance) ──
+    registerApp({
+        id: 'music',
+        name: '歌单',
+        icon: 'ph ph-music-notes',
+        color: '#fc3c44',
+        glow: 'rgba(252, 60, 68, 0.4)',
+        onOpen: () => openMusicApp(),
     });
 
     // ── Console (调试) — always visible, but requires enable in Settings to function ──
