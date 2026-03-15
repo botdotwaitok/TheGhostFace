@@ -162,9 +162,18 @@ ${chatContext
 </think>
 
 <output_format>
-你必须直接以纯文本回复，这就是${charName}在电话里说出的话。
-不要使用JSON格式。不要使用代码块。不要使用任何标记。
-直接输出${charName}要说的话。一段完整的口语回应。
+每一句${charName}的台词必须用 <say tone="...">...</say> 包裹，tone 属性必填。
+示例：<say tone="gentle">"等你好久了。"</say>
+如果多种语气混合，用逗号分隔（第一个为主）：<say tone="nervous,shy">"我...没想到你会来。"</say>
+允许的 tone 值（27个）：
+  Basic: default, happy, sad, angry, fear, surprise, disgust
+  Soft: gentle, tender, comfort
+  Shy: shy, nervous, embarrassed
+  Voice: whisper, shout, murmur, sigh
+  Emotion: cry, laugh, giggle, tease
+  Scene: serious, cold, excited, confused, sleepy, seductive
+无特定情绪时用 'default'。尽量用单个最匹配的 tone。
+不要使用JSON。不要使用代码块。直接输出带 <say> 标签的口语回应。
 ⚠️ 关键：你必须使用${charName}资料中对应的语言/语种来回复。使用的语言需要始终如一，不要中途切换语言。
 </output_format>
 ${buildCalendarPrompt()}`;

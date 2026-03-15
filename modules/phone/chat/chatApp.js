@@ -20,7 +20,7 @@ import {
     addPendingMessage, sendAllMessages,
     handleResponseReady, handleRetryEvent,
     handleAutoMessageReady, renderAutoMessages, renderDraftArea,
-    renderResponseToDom,
+    renderResponseToDom, handleCallDeclined,
 } from './chatMessageHandler.js';
 import {
     toggleDeleteMode, toggleSelectMessage, updateDeleteToolbar, handleBatchDelete,
@@ -596,6 +596,9 @@ function bindChatEvents() {
     }
     _autoMsgHandler = () => handleAutoMessageReady();
     window.addEventListener('phone-auto-message-ready', _autoMsgHandler);
+
+    // ── Register declined-call handler (character follow-up) ──
+    window.addEventListener('phone-call-declined', handleCallDeclined);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

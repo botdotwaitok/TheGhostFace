@@ -11,6 +11,9 @@ import { resolveProxyUrl } from '../../../utils/corsProxyFetch.js';
 const LOG_PREFIX = '[GsviTtsProvider]';
 
 export class GsviTtsProvider {
+    /** @type {Map<string, string[]>} character → available emotions cache */
+    _emotionsCache = new Map();
+
     /**
      * 合成语音
      * @param {string} text
@@ -55,11 +58,19 @@ export class GsviTtsProvider {
     // ─── Format 1: GPT-SoVITS Adapter (POST /) ───
     async _synthesizeAdapter(text, endpoint, settings) {
         const voiceId = settings.voiceId || '';
-        const textLang = settings.textLang || 'zh';
+        const rawEmotion = settings._emotion || null;
+
+        // Validate emotion against backend's available list (EntityWhisper pattern)
+        const emotion = await this.resolveEmotion(rawEmotion, voiceId, endpoint);
+
+        // Append /emotion to target_voice (EntityWhisper pattern: "character/emotion")
+        const targetVoice = (emotion && emotion !== 'default')
+            ? `${voiceId}/${emotion}`
+            : voiceId;
 
         const requestBody = {
             text,
-            target_voice: voiceId,
+            target_voice: targetVoice,
             use_st_adapter: true,
             text_lang: settings.textLang || '多语种混合',
             prompt_lang: settings.promptLang || '',
@@ -93,7 +104,9 @@ export class GsviTtsProvider {
         const voiceId = settings.voiceId || '';
         const model = settings.model || 'GSVI-v4';
         const speed = settings.speed || 1;
-        const emotion = settings.emotion || '默认';
+        // Dynamic emotion from <say tone> parsing, validated against backend
+        const rawEmotion = settings._emotion || settings.emotion || '默认';
+        const emotion = await this.resolveEmotion(rawEmotion, voiceId, endpoint);
         const textLang = settings.textLang || '多语种混合';
         const promptLang = settings.promptLang || '中文';
 
@@ -107,7 +120,7 @@ export class GsviTtsProvider {
                 app_key: '',
                 text_lang: settings.textLang || '多语种混合',
                 prompt_lang: settings.promptLang || '',
-                emotion: settings.emotion || '默认',
+                emotion: emotion || '默认',
                 top_k: 10,
                 top_p: 1,
                 temperature: 1,
@@ -141,6 +154,71 @@ export class GsviTtsProvider {
         }
 
         return response.arrayBuffer();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Emotion Validation — aligned with EntityWhisper
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Fetch available emotions for a character from the backend.
+     * GET /character_emotions?character=xxx → [string]
+     * Results are cached per character to avoid repeated network calls.
+     * @param {string} character - Voice ID / character name
+     * @param {string} endpoint - Backend endpoint URL
+     * @returns {Promise<string[]>}
+     */
+    async fetchEmotions(character, endpoint) {
+        if (!character) return [];
+
+        // Return cached if available
+        const cacheKey = `${endpoint}|${character}`;
+        if (this._emotionsCache.has(cacheKey)) {
+            return this._emotionsCache.get(cacheKey);
+        }
+
+        try {
+            const url = this._resolveUrl(
+                `${endpoint}/character_emotions?character=${encodeURIComponent(character)}`
+            );
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.warn(`${LOG_PREFIX} fetchEmotions HTTP ${response.status}`);
+                return [];
+            }
+            const emotions = await response.json();
+            this._emotionsCache.set(cacheKey, emotions);
+            console.info(`${LOG_PREFIX} Available emotions for "${character}": [${emotions.join(', ')}]`);
+            return emotions;
+        } catch (err) {
+            console.warn(`${LOG_PREFIX} fetchEmotions failed:`, err.message);
+            return [];
+        }
+    }
+
+    /**
+     * Validate a raw emotion against the backend's available list.
+     * If the emotion is not supported, falls back to 'default'.
+     * @param {string|null} rawEmotion - Emotion from <say tone> parsing
+     * @param {string} voiceId - Character / voice ID
+     * @param {string} endpoint - Backend endpoint URL
+     * @returns {Promise<string|null>} Validated emotion or null
+     */
+    async resolveEmotion(rawEmotion, voiceId, endpoint) {
+        if (!rawEmotion || rawEmotion === 'default') return rawEmotion;
+
+        const available = await this.fetchEmotions(voiceId, endpoint);
+
+        // If we couldn't fetch the list, pass through (let backend decide)
+        if (available.length === 0) return rawEmotion;
+
+        if (available.includes(rawEmotion)) {
+            return rawEmotion;
+        }
+
+        // Fallback
+        console.warn(`${LOG_PREFIX} Emotion "${rawEmotion}" not in available list [${available.join(', ')}], falling back to "default"`);
+        return 'default';
     }
 
     /**

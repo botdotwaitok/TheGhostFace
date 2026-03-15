@@ -5,7 +5,8 @@
 //   import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona, getPhoneRecentChat, getPhoneWorldBookContext, getPhoneContext } from '../phoneContext.js';
 
 import { getContext } from '../../../../../extensions.js';
-import { getAllActiveWorldBookNames, getAllActiveEntries } from '../worldbookManager.js';
+import { checkWorldInfo, world_info_include_names } from '../../../../../world-info.js';
+import { getCharacterCardFields, getMaxContextSize } from '../../../../../../script.js';
 import { isBookBlocked, isEntryBlocked } from './settings/wbBlacklist.js';
 
 const CONTEXT_LOG_PREFIX = '[PhoneContext]';
@@ -126,69 +127,96 @@ export function getPhoneRecentChat(n = 10) {
 }
 
 /**
- * 获取当前所有激活世界书中的非禁用条目内容。
- * 通过 worldbookManager 获取全部激活世界书（全局 + 角色绑定 + charLore 附加），
- * 然后汇总所有未禁用且有内容的条目。
+ * 获取当前被激活的世界书条目内容。
+ * 使用 ST 原生的 checkWorldInfo 进行完整的 keyword 匹配（dry run 模式），
+ * 然后在激活结果上额外应用黑名单和鬼面内部条目过滤。
  * @returns {Promise<string>} 世界书内容文本，如无内容则返回空字符串
  */
 export async function getPhoneWorldBookContext() {
     try {
-        const allActiveBooks = await getAllActiveWorldBookNames();
-        if (!allActiveBooks || allActiveBooks.length === 0) {
-            console.log(`${CONTEXT_LOG_PREFIX} 未检测到任何激活的世界书`);
+        const context = getContext();
+        const chat = context.chat;
+
+        if (!chat || !Array.isArray(chat) || chat.length === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} 无聊天记录，跳过世界书扫描`);
             return '';
         }
 
-        // 黑名单过滤：移除整本被屏蔽的世界书
-        const activeBookNames = allActiveBooks.filter(name => !isBookBlocked(name));
-        if (activeBookNames.length < allActiveBooks.length) {
-            const blocked = allActiveBooks.filter(name => isBookBlocked(name));
-            console.log(`${CONTEXT_LOG_PREFIX} 黑名单屏蔽了 ${blocked.length} 本世界书:`, blocked);
+        // ── Build chat array for WI scanning (same format as ST's Generate()) ──
+        // Filter out system messages, format as "name: message" if setting requires, then REVERSE
+        const coreChat = chat.filter(x => !x.is_system && x.mes && x.mes.trim());
+        const chatForWI = coreChat
+            .map(x => {
+                const name = x.is_user ? (context.name1 || 'User') : (context.name2 || 'Character');
+                return world_info_include_names ? `${name}: ${x.mes}` : x.mes;
+            })
+            .reverse(); // ST scans from most recent to oldest
+
+        // ── Build globalScanData (character card fields for WI scanning) ──
+        const maxContext = getMaxContextSize();
+        let globalScanData;
+        try {
+            const fields = getCharacterCardFields();
+            globalScanData = {
+                personaDescription: fields.persona || '',
+                characterDescription: fields.description || '',
+                characterPersonality: fields.personality || '',
+                characterDepthPrompt: fields.charDepthPrompt || '',
+                scenario: fields.scenario || '',
+                creatorNotes: fields.creatorNotes || '',
+                trigger: 'normal',
+            };
+        } catch (e) {
+            console.warn(`${CONTEXT_LOG_PREFIX} getCharacterCardFields failed, using minimal scan data:`, e);
+            globalScanData = {
+                personaDescription: '', characterDescription: '',
+                characterPersonality: '', characterDepthPrompt: '',
+                scenario: '', creatorNotes: '', trigger: 'normal',
+            };
         }
-        if (activeBookNames.length === 0) {
-            console.log(`${CONTEXT_LOG_PREFIX} 所有世界书均被黑名单屏蔽`);
+
+        // ── Call ST's native checkWorldInfo (dry run = no side effects) ──
+        console.log(`${CONTEXT_LOG_PREFIX} 调用 ST checkWorldInfo (isDryRun=true, chat=${chatForWI.length} msgs, maxCtx=${maxContext})...`);
+        const result = await checkWorldInfo(chatForWI, maxContext, true, globalScanData);
+
+        if (!result || !result.allActivatedEntries || result.allActivatedEntries.size === 0) {
+            console.log(`${CONTEXT_LOG_PREFIX} ST checkWorldInfo 未激活任何条目`);
             return '';
         }
 
-        console.log(`${CONTEXT_LOG_PREFIX} 检测到 ${activeBookNames.length} 个激活世界书:`, activeBookNames);
+        const activated = Array.from(result.allActivatedEntries);
+        console.log(`${CONTEXT_LOG_PREFIX} ST checkWorldInfo 激活了 ${activated.length} 条条目`);
 
-        const allEntries = await getAllActiveEntries(activeBookNames);
-        if (!allEntries || allEntries.length === 0) {
-            console.log(`${CONTEXT_LOG_PREFIX} 激活世界书中无条目`);
-            return '';
-        }
-
-        // Filter: non-disabled, has content, skip internal tracking entries
-        const validEntries = allEntries.filter(entry => {
-            if (!entry || entry.disable) return false;
-            const content = (entry.content || '').trim();
-            if (!content) return false;
-            // Skip GhostFace internal tracking/summary entries
+        // ── Post-filter: blacklist + GhostFace internal entries ──
+        const validEntries = activated.filter(entry => {
+            if (!entry || !entry.content || !entry.content.trim()) return false;
+            // Blacklist: book-level
+            if (entry.world && isBookBlocked(entry.world)) return false;
+            // Blacklist: entry-level
             const comment = (entry.comment || '').trim();
+            if (entry.world && isEntryBlocked(entry.world, comment)) return false;
+            // Skip GhostFace internal tracking/summary entries
             if (comment.startsWith('鬼面总结-') || comment === '鬼面楼层追踪记录') return false;
-            // Skip moments feed entry — chatPromptBuilder builds its own precise version
+            // Skip moments feed entry
             const keys = Array.isArray(entry.key) ? entry.key : [];
             if (keys.includes('m_feed')) return false;
-            // 黑名单过滤：移除被屏蔽的条目
-            if (isEntryBlocked(entry.sourceWorldBook, comment)) return false;
             return true;
         });
 
         if (validEntries.length === 0) {
-            console.log(`${CONTEXT_LOG_PREFIX} 所有条目均被过滤，无有效内容`);
+            console.log(`${CONTEXT_LOG_PREFIX} 激活条目全部被黑名单/内部过滤排除`);
             return '';
         }
 
-        // Build context text from all valid entries
+        // ── Assemble final context text ──
         const contextParts = validEntries.map(entry => {
             const label = entry.comment || entry.key?.join(', ') || '未命名条目';
             return `【${label}】\n${entry.content.trim()}`;
         });
 
-        const result = contextParts.join('\n\n');
-        // Replace macros in the assembled world book context
-        const finalResult = replaceMacros(result);
-        console.log(`${CONTEXT_LOG_PREFIX} 世界书上下文已组装: ${validEntries.length} 条条目, ${finalResult.length} 字符`);
+        const result_text = contextParts.join('\n\n');
+        const finalResult = replaceMacros(result_text);
+        console.log(`${CONTEXT_LOG_PREFIX} 世界书上下文已组装: ${validEntries.length}/${activated.length} 条条目通过过滤, ${finalResult.length} 字符`);
         return finalResult;
     } catch (e) {
         console.warn(`${CONTEXT_LOG_PREFIX} getPhoneWorldBookContext failed:`, e);

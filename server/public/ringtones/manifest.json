@@ -1,0 +1,68 @@
+[
+  {
+    "id": "evening_star",
+    "name": "Evening Star",
+    "description": "A gentle elody that feels like starlight falling through a window on a quiet evening. Warm, intimate, slightly melancholic — like someone whispering goodnight.",
+    "mood": [
+      "温柔",
+      "安静",
+      "浪漫"
+    ],
+    "file": "evening_star.mp3"
+  },
+  {
+    "id": "pixel_love",
+    "name": "Pixel Love",
+    "description": "A playful ringtone with bouncy energy. Fun, lighthearted, a bit nerdy — like a love letter written in code.",
+    "mood": [
+      "活泼",
+      "可爱",
+      "俏皮"
+    ],
+    "file": "pixel_love.mp3"
+  },
+  {
+    "id": "midnight_waltz",
+    "name": "Midnight Waltz",
+    "description": "A slow, elegant waltz played on cello and violin. It paints a scene of two silhouettes dancing alone in a moonlit ballroom. Romantic, mysterious, deeply emotional.",
+    "mood": [
+      "优雅",
+      "深情",
+      "神秘"
+    ],
+    "file": "midnight_waltz.mp3"
+  },
+  {
+    "id": "velvet_noir",
+    "name": "Velvet Noir",
+    "description": "A smoky lo-fi jazz loop with lazy saxophone and vinyl crackle. It sounds like a late-night bar where someone nurses whiskey alone, unbothered by the world. Cool, effortless, dangerously charming.",
+    "mood": [
+      "成熟",
+      "慵懒",
+      "酷"
+    ],
+    "file": "velvet_noir.mp3"
+  },
+  {
+    "id": "honey_morning",
+    "name": "Honey Morning",
+    "description": "A bright acoustic ukulele paired with soft finger snaps and a hummed melody. It feels like waking up on a sunny weekend with nowhere to be — warm coffee, open windows, bare feet on wood floors.",
+    "mood": [
+      "阳光",
+      "甜蜜",
+      "元气"
+    ],
+    "file": "honey_morning.mp3"
+  },
+  {
+    "id": "neon_pulse",
+    "name": "Neon Pulse",
+    "description": "A cinematic electronic ringtone with deep bass drops and glitchy synth arpeggios. It evokes neon-lit city streets at 2am — futuristic, confident, a little dangerous. For someone who walks like the world is their runway.",
+    "mood": [
+      "帅气",
+      "神秘",
+      "未来感"
+    ],
+    "file": "neon_pulse.mp3"
+  }
+]

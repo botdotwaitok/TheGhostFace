@@ -36,6 +36,7 @@ import { buildBubbleRow, buildRecalledPeekBubble, formatChatTime } from './chatH
 import { applyAIReactions } from './chatReactions.js';
 import { renderBuffBar } from './chatInventory.js';
 import { getPendingVoiceData, clearPendingVoiceData } from './chatVoice.js';
+import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
 
 import {
     escHtml, CHAT_LOG_PREFIX, scrollToBottom, showTypingIndicator, sleep,
@@ -45,6 +46,56 @@ import {
     updateButtonStates, rerenderMessagesArea,
     isUserInChatApp,
 } from './chatApp.js';
+
+// ═══════════════════════════════════════════════════════════════════════
+// Declined Call → Character Follow-up
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Handle the 'phone-call-declined' event.
+ * Injects a system event into chat history and triggers background generation
+ * so the character reacts to the missed call (e.g. sends a follow-up message).
+ */
+export function handleCallDeclined() {
+    if (getIsGenerating()) {
+        console.log(`${CHAT_LOG_PREFIX} Skipping declined-call follow-up: already generating.`);
+        return;
+    }
+
+    console.log(`${CHAT_LOG_PREFIX} Call declined — triggering character follow-up.`);
+
+    // Inject missed call event into chat history as a user action
+    const history = loadChatHistory();
+    const now = new Date().toISOString();
+    const missedCallEntry = {
+        role: 'user',
+        content: '[用户拒接了来电]',
+        timestamp: now,
+    };
+    history.push(missedCallEntry);
+    saveChatHistory(history);
+
+    // Show the missed call card in chat UI if user is viewing
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (messagesArea) {
+        // Remove empty state if present
+        const emptyState = messagesArea.querySelector('.chat-empty');
+        if (emptyState) emptyState.remove();
+
+        messagesArea.insertAdjacentHTML('beforeend',
+            `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`);
+        messagesArea.insertAdjacentHTML('beforeend',
+            buildBubbleRow('user', '[用户拒接了来电]'));
+        scrollToBottom(true);
+    }
+
+    // Trigger background generation (character will react to the missed call)
+    const historyBeforeSend = history.slice(0, -1);
+    setIsGenerating(true);
+    updateButtonStates();
+    showTypingIndicator(true);
+    startBackgroundGeneration(['[用户拒接了来电]'], historyBeforeSend);
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Pending Messages Logic
@@ -519,6 +570,47 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
             }
             updatedHistory.push(historyEntry);
 
+            // ── AI-initiated voice message ──
+            if (cmsg.special === 'voice' && cmsg.text) {
+                showTypingIndicator(true);
+                try {
+                    const ttsResult = await synthesizeToBlob(cmsg.text);
+                    if (ttsResult) {
+                        const audioPath = await uploadAudioToST(ttsResult.audioBlob, 'voice_char');
+                        historyEntry.special = 'voice';
+                        historyEntry.audioDuration = Math.round(ttsResult.duration);
+                        historyEntry.audioPath = audioPath;
+                        console.log(`${CHAT_LOG_PREFIX} AI voice message TTS: ${ttsResult.duration.toFixed(1)}s`);
+                    }
+                } catch (e) {
+                    console.warn(`${CHAT_LOG_PREFIX} AI voice TTS failed, text fallback:`, e);
+                }
+                showTypingIndicator(false);
+                if (messagesArea) {
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        buildBubbleRow('char', cmsg.text, cmsg.thought, undefined, null, historyEntry));
+                }
+                scrollToBottom(true);
+                continue;
+            }
+
+            // ── AI-initiated phone call ──
+            if (cmsg.special === 'call') {
+                if (messagesArea) {
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        `<div class="chat-retract"><i class="ph ph-phone-incoming"></i> 来电...</div>`);
+                    scrollToBottom(true);
+                }
+                // Small delay for the "incoming call" text to be visible
+                await sleep(800);
+                try {
+                    openVoiceCall({ chatContext: true, incoming: true, greetingText: cmsg.text || '' });
+                } catch (e) {
+                    console.warn(`${CHAT_LOG_PREFIX} AI call failed:`, e);
+                }
+                continue;
+            }
+
             // If this is the last message and we're deferring for TTS → skip DOM render
             if (shouldDeferLast && isLast) {
                 deferredHistoryEntry = historyEntry;
@@ -745,6 +837,8 @@ export function parseApiResponse(raw) {
             delay: typeof m.delay === 'number' ? m.delay : 1,
             // Phase 2: recall blocker support
             recalledContent: (m.recalledContent && typeof m.recalledContent === 'string') ? m.recalledContent.trim() : '',
+            // Phase 3: AI-initiated voice messages & calls
+            special: (m.special === 'voice' || m.special === 'call') ? m.special : '',
         });
 
         // Extract optional AI reactions

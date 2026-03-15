@@ -3,6 +3,7 @@
 // Inspired by Chrome DevTools — with left sidebar tabs, object tree, search, auto-refresh.
 
 import { openAppInViewport } from '../phoneController.js';
+import { getContext } from '../../../../../../extensions.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants & State
@@ -84,12 +85,35 @@ export function pushErrorLog(message, level = 'error') {
 /** Push a prompt log entry (called after building prompts) */
 export function pushPromptLog(label, systemPrompt, userPrompt) {
     if (!isConsoleEnabled()) return;
-    _pushLog(_promptLogs, {
+    const entry = {
         time: new Date(),
         label: label || 'Chat Prompt',
         systemPrompt: systemPrompt || '',
         userPrompt: userPrompt || '',
-    });
+        systemTokens: null,
+        userTokens: null,
+        totalTokens: null,
+    };
+    _pushLog(_promptLogs, entry);
+
+    // Async token counting — update the entry in-place when done
+    _computeTokenCounts(entry);
+}
+
+async function _computeTokenCounts(entry) {
+    try {
+        const context = getContext();
+        if (!context?.getTokenCountAsync) return;
+        const [sysTk, usrTk] = await Promise.all([
+            entry.systemPrompt ? context.getTokenCountAsync(entry.systemPrompt) : 0,
+            entry.userPrompt ? context.getTokenCountAsync(entry.userPrompt) : 0,
+        ]);
+        entry.systemTokens = sysTk;
+        entry.userTokens = usrTk;
+        entry.totalTokens = sysTk + usrTk;
+    } catch (e) {
+        console.debug('[Console] Token count failed:', e);
+    }
 }
 
 /** Open the Console app UI */
@@ -542,29 +566,40 @@ function renderPromptList() {
         const sysPreview = truncatePrompt(entry.systemPrompt, PROMPT_PREVIEW_LENGTH);
         const userPreview = truncatePrompt(entry.userPrompt, PROMPT_PREVIEW_LENGTH);
 
+        // Token count badges
+        const totalBadge = entry.totalTokens != null
+            ? `<span class="console-prompt-token-badge"><i class="ph ph-coins"></i> ${entry.totalTokens} tokens</span>`
+            : `<span class="console-prompt-token-badge" style="opacity:0.4;"><i class="ph ph-coins"></i> counting...</span>`;
+
+        const sysTokenLabel = entry.systemTokens != null
+            ? `<span class="console-prompt-token-inline">${entry.systemTokens} tk</span>` : '';
+        const usrTokenLabel = entry.userTokens != null
+            ? `<span class="console-prompt-token-inline">${entry.userTokens} tk</span>` : '';
+
         return `
         <div class="console-prompt-entry" data-prompt-index="${_promptLogs.length - 1 - i}">
             <div class="console-prompt-header">
                 <span class="console-prompt-label">${escHtml(entry.label)}</span>
+                ${totalBadge}
                 <span class="console-prompt-time">${timeStr}</span>
             </div>
             <div class="console-prompt-preview">
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">System Prompt</div>
+                    <div class="console-prompt-section-title">System Prompt ${sysTokenLabel}</div>
                     <div class="console-prompt-section-preview">${escHtml(sysPreview)}</div>
                 </div>
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">User Prompt</div>
+                    <div class="console-prompt-section-title">User Prompt ${usrTokenLabel}</div>
                     <div class="console-prompt-section-preview">${escHtml(userPreview)}</div>
                 </div>
             </div>
             <div class="console-prompt-full" style="display:none;">
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">System Prompt (完整)</div>
+                    <div class="console-prompt-section-title">System Prompt (完整) ${sysTokenLabel}</div>
                     <pre class="console-prompt-full-text">${escHtml(entry.systemPrompt)}</pre>
                 </div>
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">User Prompt (完整)</div>
+                    <div class="console-prompt-section-title">User Prompt (完整) ${usrTokenLabel}</div>
                     <pre class="console-prompt-full-text">${escHtml(entry.userPrompt)}</pre>
                 </div>
             </div>

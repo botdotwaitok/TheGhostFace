@@ -22,12 +22,12 @@ const DEFAULT_WI_SETTINGS = {
 // ═══════════════════════════════════════════════════════════════════════
 
 export const EVENT_TYPES = [
-    { id: 'custom', label: '普通事件', emoji: '📌', color: '#5b9bd5' },
-    { id: 'anniversary', label: '纪念日', emoji: '💕', color: '#e88db6' },
-    { id: 'period', label: '经期', emoji: '🩸', color: '#ff6b6b' },
-    { id: 'birthday', label: '生日', emoji: '🎂', color: '#ffb347' },
-    { id: 'holiday', label: '节日', emoji: '🎉', color: '#ffa726' },
-    { id: 'reminder', label: '提醒', emoji: '⏰', color: '#7e57c2' },
+    { id: 'custom', label: '普通事件', icon: 'ph ph-push-pin', emoji: '📌', color: '#5b9bd5' },
+    { id: 'anniversary', label: '纪念日', icon: 'ph ph-heart', emoji: '💕', color: '#e88db6' },
+    { id: 'period', label: '经期', icon: 'ph ph-drop', emoji: '🩸', color: '#ff6b6b' },
+    { id: 'birthday', label: '生日', icon: 'ph ph-cake', emoji: '🎂', color: '#ffb347' },
+    { id: 'holiday', label: '节日', icon: 'ph ph-confetti', emoji: '🎉', color: '#ffa726' },
+    { id: 'reminder', label: '提醒', icon: 'ph ph-alarm', emoji: '⏰', color: '#7e57c2' },
 ];
 
 // Period symptom presets — user picks which apply + can add custom

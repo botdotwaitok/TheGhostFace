@@ -28,6 +28,16 @@ import {
     isBookBlockedInScope, isEntryBlockedInScope,
     toggleBookBlock, toggleEntryBlock
 } from './wbBlacklist.js';
+import {
+    getCurrentRingtone, clearRingtoneSelection,
+    runSelectionFlow, playRingtone, stopRingtone, isRingtonePlaying,
+    uploadUserRingtone
+} from '../voiceCall/ringtoneManager.js';
+import {
+    isAmbientEnabled, setAmbientEnabled, getAmbientInfo,
+    initAmbient, uploadUserAmbient, clearUserAmbient,
+    startAmbient, stopAmbient, isAmbientPlaying
+} from '../voiceCall/ambientManager.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Discord Binding Section (reused in account detail page)
@@ -977,6 +987,18 @@ export function openSettingsApp() {
                     </span>
                 </div>
 
+                <!-- ─── 来电铃声 ─── -->
+                <div class="phone-settings-group-title">来电铃声</div>
+                <div id="${P}_ringtone_card" class="phone-ringtone-card">
+                    <!-- Dynamically rendered by _renderRingtoneCard() -->
+                </div>
+
+                <!-- ─── 通话氛围音 ─── -->
+                <div class="phone-settings-group-title">通话氛围音</div>
+                <div id="${P}_ambient_card" class="phone-ambient-card">
+                    <!-- Dynamically rendered by _renderAmbientCard() -->
+                </div>
+
                 <!-- ─── STT 语音识别 ─── -->
                 <div class="phone-settings-group-title">语音识别 (STT)</div>
                 <div class="phone-settings-row">
@@ -1057,7 +1079,7 @@ export function openSettingsApp() {
                             <select id="${P}_tts_gsvi_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
                                 <option value="">点击右侧按钮获取模型列表</option>
                             </select>
-                            <button id="${P}_tts_gsvi_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取模型列表">
+                            <button id="${P}_tts_gsvi_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;height:36px;box-sizing:border-box;" title="获取模型列表">
                                 <i class="fa-solid fa-rotate"></i> 获取
                             </button>
                         </div>
@@ -1135,7 +1157,7 @@ export function openSettingsApp() {
                             <select id="${P}_tts_11labs_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
                                 <option value="">点击右侧按钮获取声音列表</option>
                             </select>
-                            <button id="${P}_tts_11labs_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取声音列表">
+                            <button id="${P}_tts_11labs_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;height:36px;box-sizing:border-box;" title="获取声音列表">
                                 <i class="fa-solid fa-rotate"></i> 获取
                             </button>
                         </div>
@@ -1172,7 +1194,7 @@ export function openSettingsApp() {
                             <select id="${P}_tts_minimax_voice" class="phone-settings-input" style="height:36px;flex:1;min-width:0;">
                                 <option value="">点击右侧按钮获取声音列表</option>
                             </select>
-                            <button id="${P}_tts_minimax_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;" title="获取声音列表">
+                            <button id="${P}_tts_minimax_fetch_btn" class="phone-settings-btn" style="padding:6px 10px;font-size:12px;white-space:nowrap;flex-shrink:0;height:36px;box-sizing:border-box;" title="获取声音列表">
                                 <i class="fa-solid fa-rotate"></i> 获取
                             </button>
                         </div>
@@ -1582,6 +1604,16 @@ export function openSettingsApp() {
                     }
                 });
             }
+        }
+
+        // ═══ Ringtone Settings ═══
+        {
+            _renderRingtoneCard(P);
+        }
+
+        // ═══ Ambient Settings ═══
+        {
+            _renderAmbientCard(P);
         }
 
         // ═══ STT Settings ═══
@@ -2393,6 +2425,264 @@ function _renderSttProviderSettings(P, sttEngine) {
 
             showToast('STT 设置已保存');
         });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Ambient Card — dynamic render + event binding
+// ═══════════════════════════════════════════════════════════════════════
+
+function _renderAmbientCard(P) {
+    const container = document.getElementById(`${P}_ambient_card`);
+    if (!container) return;
+
+    const info = getAmbientInfo();
+
+    container.innerHTML = `
+        <div class="phone-ambient-content">
+            <div class="phone-ambient-header">
+                <div class="phone-ambient-info">
+                    <i class="ph ph-waveform phone-ambient-icon"></i>
+                    <div>
+                        <div class="phone-ambient-name">${escapeHtml(info.name)}</div>
+                        <div class="phone-ambient-hint">通话中你对象思考时播放低音量背景音</div>
+                    </div>
+                </div>
+                <button id="${P}_ambient_toggle" class="phone-settings-ios-toggle ${info.enabled ? 'active' : ''}" aria-checked="${info.enabled}">
+                    <span class="phone-settings-ios-toggle-knob"></span>
+                </button>
+            </div>
+            <div class="phone-ambient-actions">
+                <button id="${P}_ambient_preview_btn" class="phone-settings-btn phone-ambient-preview-btn">
+                    <i class="ph ph-play"></i> 试听
+                </button>
+                <label for="${P}_ambient_upload_input" class="phone-settings-btn phone-ambient-upload-btn">
+                    <i class="ph ph-upload-simple"></i> 自己上传
+                </label>
+                <input id="${P}_ambient_upload_input" type="file" accept="audio/*" style="display:none;" />
+                ${info.isCustom ? `
+                <button id="${P}_ambient_reset_btn" class="phone-settings-btn phone-ambient-reset-btn">
+                    <i class="ph ph-arrow-counter-clockwise"></i> 恢复默认
+                </button>` : ''}
+            </div>
+        </div>
+    `;
+
+    // Toggle
+    const toggle = document.getElementById(`${P}_ambient_toggle`);
+    if (toggle) {
+        toggle.addEventListener('click', () => {
+            const nowEnabled = toggle.getAttribute('aria-checked') === 'true';
+            const newState = !nowEnabled;
+            setAmbientEnabled(newState);
+            toggle.setAttribute('aria-checked', String(newState));
+            toggle.classList.toggle('active', newState);
+            showToast(newState ? '氛围音已开启' : '氛围音已关闭');
+        });
+    }
+
+    // Preview
+    const previewBtn = document.getElementById(`${P}_ambient_preview_btn`);
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            if (isAmbientPlaying()) {
+                stopAmbient();
+                previewBtn.innerHTML = '<i class="ph ph-play"></i> 试听';
+                previewBtn.classList.remove('playing');
+            } else {
+                // Ensure audio is downloaded/cached first
+                previewBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 加载中...';
+                await initAmbient();
+                const ok = startAmbient();
+                if (ok) {
+                    previewBtn.innerHTML = '<i class="ph ph-stop"></i> 停止';
+                    previewBtn.classList.add('playing');
+                } else {
+                    previewBtn.innerHTML = '<i class="ph ph-play"></i> 试听';
+                    showToast('暂无可用的氛围音');
+                }
+            }
+        });
+    }
+
+    // Upload
+    const uploadInput = document.getElementById(`${P}_ambient_upload_input`);
+    if (uploadInput) {
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                stopAmbient();
+                showToast('正在上传...');
+                await uploadUserAmbient(file);
+                _renderAmbientCard(P);
+                showToast('氛围音已更换！');
+            } catch (err) {
+                showToast('上传失败: ' + (err.message || '未知错误'));
+            }
+        });
+    }
+
+    // Reset
+    const resetBtn = document.getElementById(`${P}_ambient_reset_btn`);
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            stopAmbient();
+            clearUserAmbient();
+            _renderAmbientCard(P);
+            showToast('已恢复默认氛围音');
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Ringtone Card — dynamic render + event binding
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Render the ringtone selection card inside the voice call settings.
+ * 3 states: unselected → selecting → selected (with reveal).
+ * @param {string} P - Settings ID prefix
+ */
+function _renderRingtoneCard(P) {
+    const container = document.getElementById(`${P}_ringtone_card`);
+    if (!container) return;
+
+    const ringtone = getCurrentRingtone();
+
+    if (ringtone) {
+        // ── State C: Selected (reveal!) ──
+        const isUserUploaded = ringtone.source === 'user';
+        const moodTags = (ringtone.mood || []).join(' · ');
+        container.innerHTML = `
+            <div class="phone-ringtone-selected">
+                <div class="phone-ringtone-reveal-header">
+                    <i class="ph ph-music-note phone-ringtone-icon"></i>
+                    <span class="phone-ringtone-name">${escapeHtml(ringtone.name)}</span>
+                    ${isUserUploaded ? '<span class="phone-ringtone-user-badge"><i class="ph ph-upload-simple"></i> 自选</span>' : ''}
+                </div>
+                ${!isUserUploaded && moodTags ? `<div class="phone-ringtone-mood">${escapeHtml(moodTags)}</div>` : ''}
+                ${!isUserUploaded && ringtone.reason ? `<div class="phone-ringtone-reason">"${escapeHtml(ringtone.reason)}"</div>` : ''}
+                <div class="phone-ringtone-actions">
+                    <button id="${P}_ringtone_preview_btn" class="phone-settings-btn phone-ringtone-preview-btn">
+                        <i class="ph ph-play"></i> 试听
+                    </button>
+                    <button id="${P}_ringtone_reselect_btn" class="phone-settings-btn phone-ringtone-reselect-btn">
+                        <i class="ph ph-arrow-counter-clockwise"></i> 重新选择
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Bind preview button
+        const previewBtn = document.getElementById(`${P}_ringtone_preview_btn`);
+        if (previewBtn) {
+            previewBtn.addEventListener('click', () => {
+                if (isRingtonePlaying()) {
+                    stopRingtone();
+                    previewBtn.innerHTML = '<i class="ph ph-play"></i> 试听';
+                    previewBtn.classList.remove('playing');
+                } else {
+                    playRingtone();
+                    previewBtn.innerHTML = '<i class="ph ph-stop"></i> 停止';
+                    previewBtn.classList.add('playing');
+                }
+            });
+        }
+
+        // Bind reselect button
+        const reselectBtn = document.getElementById(`${P}_ringtone_reselect_btn`);
+        if (reselectBtn) {
+            reselectBtn.addEventListener('click', () => {
+                stopRingtone();
+                clearRingtoneSelection();
+                _renderRingtoneCard(P); // Re-render to show unselected state
+            });
+        }
+    } else {
+        // ── State A: Not selected ──
+        container.innerHTML = `
+            <div class="phone-ringtone-empty">
+                <div class="phone-ringtone-empty-icon">
+                    <i class="ph ph-question"></i>
+                </div>
+                <div class="phone-ringtone-empty-text">??? (尚未选择)</div>
+                <div class="phone-ringtone-empty-actions">
+                    <button id="${P}_ringtone_select_btn" class="phone-settings-btn phone-settings-btn-primary phone-ringtone-select-btn">
+                        <i class="ph ph-music-notes"></i> 让Ta选
+                    </button>
+                    <label for="${P}_ringtone_upload_input" class="phone-settings-btn phone-ringtone-upload-btn">
+                        <i class="ph ph-upload-simple"></i> 自己选
+                    </label>
+                    <input id="${P}_ringtone_upload_input" type="file" accept="audio/*" style="display:none;" />
+                </div>
+            </div>
+        `;
+
+        // Bind select button (LLM selection)
+        const selectBtn = document.getElementById(`${P}_ringtone_select_btn`);
+        if (selectBtn) {
+            selectBtn.addEventListener('click', async () => {
+                // ── State B: Selecting (loading) ──
+                const charName = getPhoneCharInfo()?.name || 'TA';
+                container.innerHTML = `
+                    <div class="phone-ringtone-loading">
+                        <div class="phone-ringtone-loading-icon">
+                            <i class="ph ph-music-notes phone-ringtone-bounce"></i>
+                        </div>
+                        <div class="phone-ringtone-loading-text">${escapeHtml(charName)} 正在挑选中...</div>
+                    </div>
+                `;
+
+                try {
+                    await runSelectionFlow((status) => {
+                        const textEl = container.querySelector('.phone-ringtone-loading-text');
+                        if (textEl) textEl.textContent = status;
+                    });
+
+                    // Re-render to show selected state
+                    _renderRingtoneCard(P);
+                    showToast('铃声已选好！');
+                } catch (e) {
+                    console.error('[RingtoneSettings] Selection failed:', e);
+                    showToast('铃声选择失败: ' + (e.message || '未知错误'));
+                    _renderRingtoneCard(P); // Reset to unselected state
+                }
+            });
+        }
+
+        // Bind upload button (user upload)
+        const uploadInput = document.getElementById(`${P}_ringtone_upload_input`);
+        if (uploadInput) {
+            uploadInput.addEventListener('change', async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                // Show loading state
+                container.innerHTML = `
+                    <div class="phone-ringtone-loading">
+                        <div class="phone-ringtone-loading-icon">
+                            <i class="ph ph-upload-simple phone-ringtone-bounce"></i>
+                        </div>
+                        <div class="phone-ringtone-loading-text">正在上传铃声...</div>
+                    </div>
+                `;
+
+                try {
+                    await uploadUserRingtone(file, (status) => {
+                        const textEl = container.querySelector('.phone-ringtone-loading-text');
+                        if (textEl) textEl.textContent = status;
+                    });
+
+                    _renderRingtoneCard(P);
+                    showToast('铃声已上传！');
+                } catch (err) {
+                    console.error('[RingtoneSettings] Upload failed:', err);
+                    showToast('上传失败: ' + (err.message || '未知错误'));
+                    _renderRingtoneCard(P);
+                }
+            });
+        }
     }
 }
 

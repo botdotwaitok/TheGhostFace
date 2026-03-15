@@ -92,11 +92,12 @@ export class TtsEngine {
 
     /**
      * 合成文字并播放。使用三次指数退避重试来应对瞬时网络故障。
-     * Returns a promise that resolves when audio playback actually starts.
+     * Synthesize text and play the result through AudioContext.
      * @param {string} text
-     * @returns {Promise<number>} Audio duration in seconds (0 if no TTS)
+     * @param {string} [emotion] - Optional emotion/tone for TTS (e.g. 'gentle', 'happy')
+     * @returns {Promise<number>} Duration in seconds (0 if skipped)
      */
-    async speak(text) {
+    async speak(text, emotion) {
         if (!this._activeProvider || this._activeProviderName === 'none') {
             console.debug(`${LOG_PREFIX} No TTS provider configured, skipping.`);
             return 0;
@@ -107,11 +108,15 @@ export class TtsEngine {
         // Stop any ongoing playback before starting new
         this.stop();
 
-        console.debug(`${LOG_PREFIX} Speaking: "${text.substring(0, 40)}..."`);
+        console.debug(`${LOG_PREFIX} Speaking: "${text.substring(0, 40)}..." emotion=${emotion || 'none'}`);
 
         try {
-            const providerSettings = this._settings.providerSettings[this._activeProviderName] || {};
-            console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, settingsKeys=${Object.keys(providerSettings).join(',')}, hasApiKey=${!!providerSettings.apiKey}, keyLen=${(providerSettings.apiKey||'').length}`);
+            const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
+            // Inject emotion into settings for the provider to use
+            if (emotion && emotion !== 'default') {
+                providerSettings._emotion = emotion;
+            }
+            console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${emotion || 'none'}`);
 
             // Retry synthesize with exponential backoff (500ms → 1000ms → 2000ms)
             const audioBuffer = await this._retryWithBackoff(
@@ -157,9 +162,10 @@ export class TtsEngine {
     /**
      * 合成文字，播放，并返回音频 Blob + 时长 — 供调用方持久化保存。
      * @param {string} text
+     * @param {string} [emotion] - Optional emotion/tone for TTS (e.g. 'gentle', 'happy')
      * @returns {Promise<{ duration: number, audioBlob: Blob } | null>}
      */
-    async speakAndCapture(text) {
+    async speakAndCapture(text, emotion) {
         if (!this._activeProvider || this._activeProviderName === 'none') {
             console.debug(`${LOG_PREFIX} No TTS provider configured, skipping.`);
             return null;
@@ -167,10 +173,14 @@ export class TtsEngine {
         if (!text || text.trim().length === 0) return null;
 
         this.stop();
-        console.debug(`${LOG_PREFIX} speakAndCapture: "${text.substring(0, 40)}..."`);
+        console.debug(`${LOG_PREFIX} speakAndCapture: "${text.substring(0, 40)}..." emotion=${emotion || 'none'}`);
 
         try {
-            const providerSettings = this._settings.providerSettings[this._activeProviderName] || {};
+            const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
+            // Inject emotion into settings for the provider to use
+            if (emotion && emotion !== 'default') {
+                providerSettings._emotion = emotion;
+            }
             const audioBuffer = await this._retryWithBackoff(
                 () => this._activeProvider.synthesize(text, providerSettings),
             );

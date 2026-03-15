@@ -422,6 +422,22 @@ function parseSpecialMessages(text) {
                     </div>
                 </div>`,
         },
+        {
+            // Missed/declined call: [用户拒接了来电]
+            regex: /\[用户拒接了来电\]/,
+            render: () => `
+                <div class="chat-bubble">
+                    <div class="chat-special-card">
+                        <div class="chat-special-icon" style="background:linear-gradient(135deg,#FF3B30,#FF6961);">
+                            <i class="ph ph-phone-x"></i>
+                        </div>
+                        <div class="chat-special-content">
+                            未接来电
+                            <div class="chat-special-label">语音通话</div>
+                        </div>
+                    </div>
+                </div>`,
+        },
     ];
 
     // ── Try full-match first (entire text is exactly one special token) ──

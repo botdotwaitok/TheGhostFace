@@ -209,6 +209,54 @@
     50% { opacity: 0; }
 }
 
+/* ─── Hangup Confirmation ─── */
+.voice-call-controls.confirming {
+    gap: 0;
+}
+
+.voice-hangup-confirm {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    justify-content: center;
+    animation: fadeInUp 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.voice-hangup-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px;
+    border-radius: 50px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
+}
+
+.voice-hangup-option:active {
+    opacity: 0.7;
+    transform: scale(0.95);
+}
+
+.voice-hangup-option.with-summary {
+    background: rgba(52, 199, 89, 0.35);
+    border: 1px solid rgba(52, 199, 89, 0.5);
+}
+
+.voice-hangup-option.no-summary {
+    background: rgba(255, 59, 48, 0.35);
+    border: 1px solid rgba(255, 59, 48, 0.5);
+}
+
+.voice-hangup-option i {
+    font-size: 18px;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Voice Call App — Call History List & Detail
    ═══════════════════════════════════════════════════════════════════ */
@@ -448,6 +496,83 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   Ringing Stage — Incoming Call UI
+   ═══════════════════════════════════════════════════════════════════ */
+
+.voice-call-ringing-content {
+    justify-content: center;
+    align-items: center;
+    gap: 60px;
+}
+
+.voice-call-ringing-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.voice-call-ringing-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    animation: ringing-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ringing-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
+    50% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+.voice-call-ringing-status {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.5px;
+    animation: ringing-status-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes ringing-status-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.voice-call-ringing-controls {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 80px;
+}
+
+.voice-call-ringing-btn-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.voice-call-ringing-btn-label {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    text-align: center;
+}
+
+.voice-control-btn.ringing-decline {
+    background: #FF3B30;
+    width: 70px;
+    height: 70px;
+}
+
+.voice-control-btn.ringing-accept {
+    background: #34C759;
+    width: 70px;
+    height: 70px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    Dark Mode — .phone-dark-mode
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -524,4 +649,385 @@
 .phone-dark-mode .vc-transcript-bubble.char {
     background: rgba(255, 255, 255, 0.1);
     color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Ringtone Settings Card — Settings Page
+   ═══════════════════════════════════════════════════════════════════ */
+
+.phone-ringtone-card {
+    margin: 0 16px 16px;
+    border-radius: 14px;
+    background: rgba(52, 199, 89, 0.06);
+    border: 1px solid rgba(52, 199, 89, 0.12);
+    overflow: hidden;
+}
+
+/* ── State A: Empty / Not Selected ── */
+.phone-ringtone-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 12px;
+}
+
+.phone-ringtone-empty-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(142, 142, 147, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #8e8e93;
+}
+
+.phone-ringtone-empty-text {
+    font-size: 15px;
+    color: #8e8e93;
+    font-weight: 500;
+}
+
+.phone-ringtone-select-btn {
+    font-size: 13px !important;
+    padding: 8px 16px !important;
+    gap: 5px;
+    display: inline-flex !important;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* Actions row in empty state */
+.phone-ringtone-empty-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* Upload button — secondary blue style */
+.phone-ringtone-upload-btn {
+    font-size: 13px !important;
+    padding: 8px 16px !important;
+    gap: 5px;
+    display: inline-flex !important;
+    align-items: center;
+    white-space: nowrap;
+    cursor: pointer;
+    background: rgba(0, 122, 255, 0.1) !important;
+    color: #007AFF !important;
+    border: 1px solid rgba(0, 122, 255, 0.2) !important;
+    border-radius: 20px !important;
+    transition: all 0.2s;
+}
+
+.phone-ringtone-upload-btn:active {
+    opacity: 0.7;
+    transform: scale(0.97);
+}
+
+/* User-uploaded badge */
+.phone-ringtone-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #007AFF;
+    background: rgba(0, 122, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 6px;
+}
+
+/* ── State B: Loading / Selecting ── */
+.phone-ringtone-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px;
+    gap: 12px;
+}
+
+.phone-ringtone-loading-icon {
+    font-size: 28px;
+    color: #34C759;
+}
+
+.phone-ringtone-loading-text {
+    font-size: 14px;
+    color: #8e8e93;
+    font-weight: 500;
+}
+
+@keyframes ringtone-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+
+.phone-ringtone-bounce {
+    display: inline-block;
+    animation: ringtone-bounce 0.8s ease-in-out infinite;
+}
+
+/* ── State C: Selected (Reveal!) ── */
+.phone-ringtone-selected {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.phone-ringtone-reveal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.phone-ringtone-icon {
+    font-size: 20px;
+    color: #34C759;
+}
+
+.phone-ringtone-name {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.phone-ringtone-mood {
+    font-size: 13px;
+    color: #8e8e93;
+    padding-left: 28px;
+}
+
+.phone-ringtone-reason {
+    font-size: 13px;
+    color: #636366;
+    font-style: italic;
+    padding-left: 28px;
+    line-height: 1.4;
+}
+
+.phone-ringtone-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding-left: 28px;
+}
+
+.phone-ringtone-preview-btn,
+.phone-ringtone-reselect-btn {
+    font-size: 13px !important;
+    padding: 6px 14px !important;
+    border-radius: 18px !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 4px;
+}
+
+.phone-ringtone-preview-btn {
+    background: rgba(52, 199, 89, 0.12) !important;
+    color: #34C759 !important;
+    border: 1px solid rgba(52, 199, 89, 0.2) !important;
+}
+
+.phone-ringtone-preview-btn.playing {
+    background: rgba(255, 59, 48, 0.12) !important;
+    color: #FF3B30 !important;
+    border-color: rgba(255, 59, 48, 0.2) !important;
+}
+
+.phone-ringtone-reselect-btn {
+    background: rgba(142, 142, 147, 0.1) !important;
+    color: #8e8e93 !important;
+    border: 1px solid rgba(142, 142, 147, 0.15) !important;
+}
+
+/* ── Dark Mode ── */
+.phone-dark-mode .phone-ringtone-card {
+    background: rgba(48, 209, 88, 0.08);
+    border-color: rgba(48, 209, 88, 0.15);
+}
+
+.phone-dark-mode .phone-ringtone-empty-icon {
+    background: rgba(255, 255, 255, 0.1);
+    color: #8e8e93;
+}
+
+.phone-dark-mode .phone-ringtone-name {
+    color: #fff;
+}
+
+.phone-dark-mode .phone-ringtone-reason {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .phone-ringtone-loading-icon {
+    color: #30d158;
+}
+
+.phone-dark-mode .phone-ringtone-preview-btn {
+    background: rgba(48, 209, 88, 0.15) !important;
+    color: #30d158 !important;
+    border-color: rgba(48, 209, 88, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ringtone-preview-btn.playing {
+    background: rgba(255, 69, 58, 0.15) !important;
+    color: #ff453a !important;
+    border-color: rgba(255, 69, 58, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ringtone-reselect-btn {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #8e8e93 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.phone-dark-mode .phone-ringtone-upload-btn {
+    background: rgba(10, 132, 255, 0.15) !important;
+    color: #0A84FF !important;
+    border-color: rgba(10, 132, 255, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ringtone-user-badge {
+    background: rgba(10, 132, 255, 0.15);
+    color: #0A84FF;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Ambient Sound Settings Card
+   ═══════════════════════════════════════════════════════════════════ */
+
+.phone-ambient-card {
+    margin: 0 16px 16px;
+    border-radius: 14px;
+    background: rgba(88, 86, 214, 0.06);
+    border: 1px solid rgba(88, 86, 214, 0.12);
+    overflow: hidden;
+}
+
+.phone-ambient-content {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.phone-ambient-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.phone-ambient-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.phone-ambient-icon {
+    font-size: 22px;
+    color: #5856D6;
+    flex-shrink: 0;
+}
+
+.phone-ambient-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.phone-ambient-hint {
+    font-size: 11px;
+    color: #8e8e93;
+    margin-top: 1px;
+}
+
+.phone-ambient-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.phone-ambient-preview-btn,
+.phone-ambient-upload-btn,
+.phone-ambient-reset-btn {
+    font-size: 13px !important;
+    padding: 6px 14px !important;
+    border-radius: 18px !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.phone-ambient-preview-btn {
+    background: rgba(88, 86, 214, 0.12) !important;
+    color: #5856D6 !important;
+    border: 1px solid rgba(88, 86, 214, 0.2) !important;
+}
+
+.phone-ambient-preview-btn.playing {
+    background: rgba(255, 59, 48, 0.12) !important;
+    color: #FF3B30 !important;
+    border-color: rgba(255, 59, 48, 0.2) !important;
+}
+
+.phone-ambient-upload-btn {
+    cursor: pointer;
+    background: rgba(0, 122, 255, 0.1) !important;
+    color: #007AFF !important;
+    border: 1px solid rgba(0, 122, 255, 0.2) !important;
+}
+
+.phone-ambient-reset-btn {
+    background: rgba(142, 142, 147, 0.1) !important;
+    color: #8e8e93 !important;
+    border: 1px solid rgba(142, 142, 147, 0.15) !important;
+}
+
+/* ── Dark Mode ── */
+.phone-dark-mode .phone-ambient-card {
+    background: rgba(94, 92, 230, 0.08);
+    border-color: rgba(94, 92, 230, 0.15);
+}
+
+.phone-dark-mode .phone-ambient-icon {
+    color: #5E5CE6;
+}
+
+.phone-dark-mode .phone-ambient-name {
+    color: #fff;
+}
+
+.phone-dark-mode .phone-ambient-preview-btn {
+    background: rgba(94, 92, 230, 0.15) !important;
+    color: #5E5CE6 !important;
+    border-color: rgba(94, 92, 230, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ambient-preview-btn.playing {
+    background: rgba(255, 69, 58, 0.15) !important;
+    color: #ff453a !important;
+    border-color: rgba(255, 69, 58, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ambient-upload-btn {
+    background: rgba(10, 132, 255, 0.15) !important;
+    color: #0A84FF !important;
+    border-color: rgba(10, 132, 255, 0.25) !important;
+}
+
+.phone-dark-mode .phone-ambient-reset-btn {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #8e8e93 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
 }

@@ -145,7 +145,7 @@ function buildAddEventOverlay() {
         .filter(t => t.id !== 'holiday') // holidays are auto-detected, not user-created
         .map(t => `
         <div class="cal-type-card ${t.id === 'custom' ? 'type-selected' : ''}" data-type="${t.id}">
-            <div class="cal-type-emoji">${t.emoji}</div>
+            <div class="cal-type-emoji"><i class="${t.icon}"></i></div>
             <div class="cal-type-label">${t.label}</div>
         </div>
     `).join('');
@@ -418,7 +418,7 @@ function renderUpcoming() {
 
     list.innerHTML = combined.map(ev => {
         const typeInfo = EVENT_TYPES.find(t => t.id === ev.type);
-        const emoji = ev.emoji || typeInfo?.emoji || '📌';
+        const iconClass = ev.icon || typeInfo?.icon || 'ph ph-push-pin';
         const dateLabel = ev.startDate === ev.endDate
             ? formatShortDate(ev.startDate)
             : `${formatShortDate(ev.startDate)} ~ ${formatShortDate(ev.endDate)}`;
@@ -431,7 +431,7 @@ function renderUpcoming() {
 
         return `
         <div class="cal-upcoming-item">
-            <div class="cal-upcoming-emoji">${emoji}</div>
+            <div class="cal-upcoming-emoji"><i class="${iconClass}"></i></div>
             <div class="cal-upcoming-info">
                 <div class="cal-upcoming-name">${escHtml(ev.title)}</div>
                 <div class="cal-upcoming-date">${dateLabel}</div>
@@ -479,7 +479,7 @@ function openDayDetail(dateStr) {
         sections.push({
             label: '经期',
             items: [{
-                emoji: '🩸',
+                iconClass: 'ph ph-drop',
                 text: `经期 Day ${ps.dayOfPeriod}`,
                 color: '#ff6b6b',
                 deletable: true,
@@ -493,7 +493,7 @@ function openDayDetail(dateStr) {
     if (holidays.length > 0) {
         sections.push({
             label: '节日',
-            items: holidays.map(h => ({ emoji: h.emoji, text: h.name, color: '#ffa726' })),
+            items: holidays.map(h => ({ iconClass: 'ph ph-confetti', text: h.name, color: '#ffa726' })),
         });
     }
 
@@ -506,7 +506,7 @@ function openDayDetail(dateStr) {
             items: dayEvents.map(e => {
                 const typeInfo = EVENT_TYPES.find(t => t.id === e.type);
                 return {
-                    emoji: e.emoji || typeInfo?.emoji || '📌',
+                    iconClass: e.icon || typeInfo?.icon || 'ph ph-push-pin',
                     text: e.title + (e.note ? ` · ${e.note}` : ''),
                     color: e.color || typeInfo?.color || '#5b9bd5',
                 };
@@ -517,29 +517,39 @@ function openDayDetail(dateStr) {
     // Activities
     const acts = getActivityForDate(dateStr);
     const actItems = [];
-    if (acts.diary) actItems.push({ emoji: '📓', text: '写了日记', color: '#f8a4b8' });
-    if (acts.chat) actItems.push({ emoji: '💬', text: '聊天了', color: '#65d552' });
-    if (acts.tree) actItems.push({ emoji: '🌳', text: '照顾了树树', color: '#2d936c' });
+    if (acts.diary) actItems.push({ iconClass: 'ph ph-notebook', text: '写了日记', color: '#f8a4b8' });
+    if (acts.chat) actItems.push({ iconClass: 'ph ph-chat-dots', text: '聊天了', color: '#65d552' });
+    if (acts.tree) actItems.push({ iconClass: 'ph ph-tree', text: '照顾了树树', color: '#2d936c' });
     if (actItems.length > 0) {
         sections.push({ label: '今日活动', items: actItems });
     }
 
+    // Build the quick-add button (always shown)
+    const addBtnHtml = `
+        <div class="cal-day-add-wrapper">
+            <button class="cal-day-add-btn" id="cal_day_quick_add">
+                <i class="ph ph-plus-circle"></i>
+                <span>添加事件</span>
+            </button>
+        </div>
+    `;
+
     if (sections.length === 0) {
-        body.innerHTML = '<div class="cal-day-empty"><i class="ph ph-cloud"></i> 这天什么都没有呢</div>';
+        body.innerHTML = '<div class="cal-day-empty"><i class="ph ph-cloud"></i> 这天什么都没有呢</div>' + addBtnHtml;
     } else {
         body.innerHTML = sections.map(sec => `
             <div class="cal-day-section">
                 <div class="cal-day-section-label">${sec.label}</div>
                 ${sec.items.map(item => `
                     <div class="cal-day-item">
-                        <div class="cal-day-item-emoji">${item.emoji}</div>
+                        <div class="cal-day-item-emoji"><i class="${item.iconClass}"></i></div>
                         <div class="cal-day-item-dot" style="background:${item.color}"></div>
                         <div class="cal-day-item-text">${escHtml(item.text)}</div>
                         ${item.deletable ? `<button class="cal-upcoming-delete cal-day-delete-period" ${item.deleteAttr} title="删除"><i class="fa-solid fa-xmark"></i></button>` : ''}
                     </div>
                 `).join('')}
             </div>
-        `).join('');
+        `).join('') + addBtnHtml;
 
         // Bind period delete buttons
         body.querySelectorAll('.cal-day-delete-period').forEach(btn => {
@@ -555,6 +565,15 @@ function openDayDetail(dateStr) {
                 renderUpcoming();
                 _updatePeriodIcon();
             });
+        });
+    }
+
+    // Bind the quick-add button
+    const quickAddBtn = document.getElementById('cal_day_quick_add');
+    if (quickAddBtn) {
+        quickAddBtn.addEventListener('click', () => {
+            closeDayDetail();
+            openAddEvent(dateStr);
         });
     }
 
@@ -603,7 +622,7 @@ function closeDayDetail() {
 
 let _selectedEventType = 'custom';
 
-function openAddEvent() {
+function openAddEvent(presetDate) {
     const overlay = document.getElementById('cal_add_overlay');
     if (overlay) overlay.classList.add('add-active');
     // Reset form
@@ -613,11 +632,11 @@ function openAddEvent() {
     if (titleInput) titleInput.value = '';
     if (noteInput) noteInput.value = '';
 
-    const today = getLocalDateString();
+    const dateToUse = presetDate || getLocalDateString();
     const startDate = document.getElementById('cal_add_start_date');
     const endDate = document.getElementById('cal_add_end_date');
-    if (startDate) startDate.value = today;
-    if (endDate) endDate.value = today;
+    if (startDate) startDate.value = dateToUse;
+    if (endDate) endDate.value = dateToUse;
 
     // Reset type selection
     document.querySelectorAll('.cal-type-card').forEach(card => {
@@ -672,6 +691,7 @@ function saveNewEvent() {
         endDate,
         type: _selectedEventType,
         color: typeInfo?.color || '#5b9bd5',
+        icon: typeInfo?.icon || 'ph ph-push-pin',
         emoji: typeInfo?.emoji || '📌',
         recurring: _selectedEventType === 'anniversary' || _selectedEventType === 'birthday' ? 'yearly' : 'none',
         note: noteInput?.value?.trim() || '',
