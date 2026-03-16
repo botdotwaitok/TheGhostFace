@@ -35,6 +35,32 @@ export function replaceMacros(text, charName, userName) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Phone Chat → WI format converter
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 将 phone 聊天历史转换为 checkWorldInfo 所需的 string[] 格式。
+ * 各调用方应调用此函数，将结果传给 getPhoneWorldBookContext()。
+ * @param {Array<{role: string, content: string}>} messages - Phone 格式消息 [{role, content, ...}]
+ * @param {number} [limit=50] - 最多取多少条最近消息
+ * @returns {string[]} "name: content" 格式的数组（正序，getPhoneWorldBookContext 内部会 reverse）
+ */
+export function buildPhoneChatForWI(messages, limit = 50) {
+    if (!messages || !messages.length) return [];
+    const context = getContext();
+    const userName = context.name1 || 'User';
+    const charName = context.name2 || 'Character';
+
+    return messages
+        .filter(m => m && m.content && m.content.trim())
+        .slice(-limit)
+        .map(m => {
+            const name = m.role === 'user' ? userName : charName;
+            return `${name}: ${m.content}`;
+        });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -130,27 +156,40 @@ export function getPhoneRecentChat(n = 10) {
  * 获取当前被激活的世界书条目内容。
  * 使用 ST 原生的 checkWorldInfo 进行完整的 keyword 匹配（dry run 模式），
  * 然后在激活结果上额外应用黑名单和鬼面内部条目过滤。
+ *
+ * @param {string[]|null} [phoneChatMessages=null] - Phone 本地聊天消息数组
+ *   （由 buildPhoneChatForWI() 生成，正序 "name: content" 格式）。
+ *   传入后将用于 WI 关键词扫描，替代 ST 主聊天记录。
+ *   为 null 时回退到 ST 主聊天记录（兼容模式）。
  * @returns {Promise<string>} 世界书内容文本，如无内容则返回空字符串
  */
-export async function getPhoneWorldBookContext() {
+export async function getPhoneWorldBookContext(phoneChatMessages = null) {
     try {
         const context = getContext();
-        const chat = context.chat;
 
-        if (!chat || !Array.isArray(chat) || chat.length === 0) {
-            console.log(`${CONTEXT_LOG_PREFIX} 无聊天记录，跳过世界书扫描`);
-            return '';
+        // ── Build chat array for WI scanning ──
+        let chatForWI;
+
+        if (phoneChatMessages && phoneChatMessages.length > 0) {
+            // Phone-provided messages: already formatted as "name: text", just reverse
+            chatForWI = [...phoneChatMessages].reverse();
+            console.log(`${CONTEXT_LOG_PREFIX} 使用 phone 本地聊天数据进行世界书扫描 (${chatForWI.length} msgs)`);
+        } else {
+            // Fallback: use ST main chat
+            const chat = context.chat;
+            if (!chat || !Array.isArray(chat) || chat.length === 0) {
+                console.log(`${CONTEXT_LOG_PREFIX} 无聊天记录，跳过世界书扫描`);
+                return '';
+            }
+            const coreChat = chat.filter(x => !x.is_system && x.mes && x.mes.trim());
+            chatForWI = coreChat
+                .map(x => {
+                    const name = x.is_user ? (context.name1 || 'User') : (context.name2 || 'Character');
+                    return world_info_include_names ? `${name}: ${x.mes}` : x.mes;
+                })
+                .reverse(); // ST scans from most recent to oldest
+            console.log(`${CONTEXT_LOG_PREFIX} 回退到 ST 主聊天数据进行世界书扫描 (${chatForWI.length} msgs)`);
         }
-
-        // ── Build chat array for WI scanning (same format as ST's Generate()) ──
-        // Filter out system messages, format as "name: message" if setting requires, then REVERSE
-        const coreChat = chat.filter(x => !x.is_system && x.mes && x.mes.trim());
-        const chatForWI = coreChat
-            .map(x => {
-                const name = x.is_user ? (context.name1 || 'User') : (context.name2 || 'Character');
-                return world_info_include_names ? `${name}: ${x.mes}` : x.mes;
-            })
-            .reverse(); // ST scans from most recent to oldest
 
         // ── Build globalScanData (character card fields for WI scanning) ──
         const maxContext = getMaxContextSize();
@@ -298,12 +337,12 @@ export function getCoreFoundationPrompt() {
  *   worldBookContext: string
  * }>}
  */
-export async function getPhoneContext(recentChatN = 10) {
+export async function getPhoneContext(recentChatN = 10, phoneChatMessages = null) {
     return {
         charInfo: getPhoneCharInfo(),
         userName: getPhoneUserName(),
         userPersona: getPhoneUserPersona(),
         recentChat: getPhoneRecentChat(recentChatN),
-        worldBookContext: await getPhoneWorldBookContext(),
+        worldBookContext: await getPhoneWorldBookContext(phoneChatMessages),
     };
 }

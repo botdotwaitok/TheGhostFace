@@ -7,7 +7,6 @@ import { getTtsEngine } from '../voiceCall/tts/ttsInit.js';
 import { openAppInViewport } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
-import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 import { getConfig as getAutoMsgConfig, saveConfig as saveAutoMsgConfig, startAutoMessageTimer, stopAutoMessageTimer, formatIntervalLabel } from '../chat/autoMessage.js';
 import { isDiaryEnabled, getDiaryMode, setDiaryEnabled, setDiaryMode } from '../diary/diaryApp.js';
 import {
@@ -851,19 +850,6 @@ export function openSettingsApp() {
                 <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
             </summary>
             <div class="phone-settings-section-body">
-
-                <div class="phone-settings-group-title">后台保活</div>
-                <div class="phone-settings-row">
-                    <div class="phone-settings-toggle-row">
-                        <span class="phone-settings-toggle-label">静默保活（iOS推荐开启）</span>
-                        <button id="${P}_keepalive_toggle" class="phone-settings-ios-toggle" aria-checked="false">
-                            <span class="phone-settings-ios-toggle-knob"></span>
-                        </button>
-                    </div>
-                </div>
-                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
-                    防止浏览器杀掉后台进程。开启后，发送聊天消息时会自动播放无声音频保持页面活跃（注意，不能看视频/听音乐）。推荐 iOS 用户开启。
-                </div>
 
                 <div class="phone-settings-group-title">主动消息</div>
                 <div class="phone-settings-row">
@@ -2204,28 +2190,6 @@ export function openSettingsApp() {
                 consoleToggle.classList.toggle('active', newState);
                 setConsoleEnabled(newState);
                 showToast(newState ? 'Console 已启用' : 'Console 已关闭');
-            });
-        }
-
-        // ═══ Keep-Alive: Enable Toggle ═══
-        const keepAliveToggle = document.getElementById(`${P}_keepalive_toggle`);
-        const keepAliveOn = isKeepAliveEnabled();
-        if (keepAliveToggle) {
-            keepAliveToggle.setAttribute('aria-checked', String(keepAliveOn));
-            if (keepAliveOn) keepAliveToggle.classList.add('active');
-            keepAliveToggle.addEventListener('click', () => {
-                const wasOn = keepAliveToggle.getAttribute('aria-checked') === 'true';
-                const newState = !wasOn;
-                keepAliveToggle.setAttribute('aria-checked', String(newState));
-                keepAliveToggle.classList.toggle('active', newState);
-                setKeepAliveEnabled(newState);
-                if (newState) {
-                    startKeepAlive();
-                    showToast('静默保活已开启');
-                } else {
-                    stopKeepAlive();
-                    showToast('静默保活已关闭');
-                }
             });
         }
 

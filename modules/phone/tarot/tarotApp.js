@@ -6,7 +6,9 @@ import { callPhoneLLM } from '../../api.js';
 import {
     getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona,
     getPhoneRecentChat, getPhoneWorldBookContext, getCoreFoundationPrompt,
+    buildPhoneChatForWI,
 } from '../phoneContext.js';
+import { loadChatHistory } from '../chat/chatStorage.js';
 import { drawCards, getCardImageUrl, SPREAD_POSITIONS } from './tarotData.js';
 
 const BANNER_IMG = '/scripts/extensions/third-party/TheGhostFace/assets/images/sablenmikaela.png';
@@ -231,7 +233,13 @@ async function buildTarotPrompts(question, drawnCards) {
     const charInfo = getPhoneCharInfo();
     const userName = getPhoneUserName();
     const userPersona = getPhoneUserPersona();
-    const worldBookContext = await getPhoneWorldBookContext();
+    // Combine tarot conversation + phone chat as WI scan source
+    const tarotMsgs = conversationHistory
+        .filter(m => m.role === 'user' || m.role === 'reader')
+        .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+    const combinedMsgs = [...loadChatHistory(), ...tarotMsgs];
+    const phoneChatForWI = buildPhoneChatForWI(combinedMsgs);
+    const worldBookContext = await getPhoneWorldBookContext(phoneChatForWI);
     const recentChat = getPhoneRecentChat(5);
 
     // Core foundation prompt (world view)

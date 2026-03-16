@@ -613,7 +613,7 @@
     display: flex;
     gap: 16px;
     padding: 0 4px;
-    margin-bottom: 8px;
+    margin-bottom: 48px;
     user-select: none;
 }
 
@@ -651,8 +651,8 @@
 
 /* Memo Widget (replaces Weather) */
 .memo-widget {
-    background: linear-gradient(180deg, #1c263b, #2b3a53);
-    color: white;
+    background: #fdf5c9;
+    color: #1c1c1e;
     justify-content: space-between;
     cursor: default;
 }
@@ -679,7 +679,8 @@
     flex-direction: column;
     gap: 6px;
     flex: 1;
-    justify-content: center;
+    justify-content: flex-start;
+    padding-top: 8px;
 }
 
 .memo-item {
@@ -700,11 +701,11 @@
 }
 
 .memo-item-pending .memo-item-icon {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(0, 0, 0, 0.25);
 }
 
 .memo-item-done .memo-item-icon {
-    color: #34c759;
+    color: #77d88f;
 }
 
 .memo-item-done .memo-item-label {
@@ -724,8 +725,8 @@
 }
 
 .memo-status.memo-partial {
-    color: #ffd60a;
-    opacity: 0.7;
+    color: #d97706;
+    opacity: 0.9;
 }
 
 /* Calendar Widget */

@@ -4,7 +4,7 @@
 
 import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
-import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
+import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { loadChatHistory } from '../chat/chatStorage.js';
 import { getContext } from '../../../../../../extensions.js';
 import { resolveItemPrompt } from '../shop/shopData.js';
@@ -142,7 +142,7 @@ export async function generateCharacterDiaryEntry(userContent, mood, tags, recen
     const userName = getPhoneUserName();
     const chatSnippet = getTodayChatContext();
     const userPersona = getPhoneUserPersona();
-    const worldBookContext = await getPhoneWorldBookContext();
+    const worldBookContext = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
 
     // 构建最近日记上下文
     let recentDiaryContext = '';
@@ -251,7 +251,7 @@ export async function generateProactiveDiaryEntry(recentEntries = [], existingSe
     const userName = getPhoneUserName();
     const chatSnippet = getTodayChatContext();
     const userPersona = getPhoneUserPersona();
-    const worldBookContext = await getPhoneWorldBookContext();
+    const worldBookContext = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
 
     // 构建最近日记上下文
     let recentDiaryContext = '';

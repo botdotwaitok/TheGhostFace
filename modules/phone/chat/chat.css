@@ -1500,6 +1500,16 @@ textarea#chat_edit_textarea {
     font-weight: 500;
 }
 
+.chat-plus-action.active i {
+    background: linear-gradient(135deg, #34C759, #30D158);
+    color: #fff;
+}
+
+.chat-plus-action.active span {
+    color: #34C759;
+    font-weight: 600;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Dark Mode — .phone-dark-mode
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1732,6 +1742,15 @@ textarea#chat_edit_textarea {
 .phone-dark-mode .chat-plus-action i {
     background: #3a3a3c;
     color: #0a84ff;
+}
+
+.phone-dark-mode .chat-plus-action.active i {
+    background: linear-gradient(135deg, #34C759, #30D158);
+    color: #fff;
+}
+
+.phone-dark-mode .chat-plus-action.active span {
+    color: #30D158;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

@@ -13,6 +13,7 @@ import {
 } from './backgroundGen.js';
 import { hasAutoMessagePending, consumeAutoMessages } from './autoMessage.js';
 import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
+import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 
 // ── Sub-module imports ──
 import { buildChatPage, buildMessagesHtml, buildBubbleRow } from './chatHtmlBuilder.js';
@@ -422,6 +423,32 @@ function bindChatEvents() {
                 handleImageSelection(e.target.files[0]);
             }
             imageInput.value = '';
+        });
+    }
+
+    // ─── Plus panel: 保活 toggle ───
+    const keepAliveBtn = document.getElementById('chat_plus_keepalive_btn');
+    if (keepAliveBtn) {
+        keepAliveBtn.addEventListener('click', () => {
+            const wasOn = isKeepAliveEnabled();
+            const newState = !wasOn;
+            setKeepAliveEnabled(newState);
+            if (newState) {
+                startKeepAlive();
+            } else {
+                stopKeepAlive();
+            }
+            // Update button visual
+            keepAliveBtn.classList.toggle('active', newState);
+            const label = keepAliveBtn.querySelector('span');
+            if (label) label.textContent = newState ? '保活中' : '保活';
+            // Toast
+            const toast = document.createElement('div');
+            toast.className = 'chat-toast';
+            toast.textContent = newState ? '静默保活已开启' : '静默保活已关闭';
+            document.getElementById('chat_page_root')?.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+            // Don't close overlay — let user see the state change
         });
     }
 

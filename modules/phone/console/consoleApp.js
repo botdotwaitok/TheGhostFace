@@ -563,8 +563,6 @@ function renderPromptList() {
     const reversed = [..._promptLogs].reverse();
     return reversed.map((entry, i) => {
         const timeStr = formatTime(entry.time);
-        const sysPreview = truncatePrompt(entry.systemPrompt, PROMPT_PREVIEW_LENGTH);
-        const userPreview = truncatePrompt(entry.userPrompt, PROMPT_PREVIEW_LENGTH);
 
         // Token count badges
         const totalBadge = entry.totalTokens != null
@@ -576,6 +574,10 @@ function renderPromptList() {
         const usrTokenLabel = entry.userTokens != null
             ? `<span class="console-prompt-token-inline">${entry.userTokens} tk</span>` : '';
 
+        // Build structured section outline (collapsed view)
+        const sysOutline = _buildSectionOutline(entry.systemPrompt);
+        const usrOutline = _buildSectionOutline(entry.userPrompt);
+
         return `
         <div class="console-prompt-entry" data-prompt-index="${_promptLogs.length - 1 - i}">
             <div class="console-prompt-header">
@@ -586,11 +588,11 @@ function renderPromptList() {
             <div class="console-prompt-preview">
                 <div class="console-prompt-section">
                     <div class="console-prompt-section-title">System Prompt ${sysTokenLabel}</div>
-                    <div class="console-prompt-section-preview">${escHtml(sysPreview)}</div>
+                    <div class="console-prompt-section-preview">${sysOutline}</div>
                 </div>
                 <div class="console-prompt-section">
                     <div class="console-prompt-section-title">User Prompt ${usrTokenLabel}</div>
-                    <div class="console-prompt-section-preview">${escHtml(userPreview)}</div>
+                    <div class="console-prompt-section-preview">${usrOutline}</div>
                 </div>
             </div>
             <div class="console-prompt-full" style="display:none;">
@@ -607,6 +609,71 @@ function renderPromptList() {
                 [+] 展开完整内容
             </div>
         </div>`;
+    }).join('');
+}
+
+/**
+ * Parse a prompt string into a structured section outline.
+ * Recognizes XML-like tags (<tag>, </tag>), markdown headers (### ...),
+ * and labeled blocks (** ... **:) as section boundaries.
+ * Returns an HTML string showing each section name + first ~80 chars.
+ */
+function _buildSectionOutline(text) {
+    if (!text) return `<span style="opacity:0.4;">(空)</span>`;
+
+    // Split into lines and identify section boundaries
+    const lines = text.split('\n');
+    const sections = [];
+    let currentName = null;
+    let currentContent = [];
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        // Detect XML opening tags: <tag_name> or <tag_name attr="..."> (but not closing </tag>)
+        const xmlMatch = trimmed.match(/^<([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s[^>]*)?>$/);
+        // Detect markdown headers: ### Title or ## Title
+        const mdMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+        // Detect bold-labeled lines: **Label**: or **Label**
+        const boldMatch = trimmed.match(/^\*\*(.+?)\*\*\s*[:：]?\s*$/);
+
+        const isNewSection = xmlMatch || mdMatch || boldMatch;
+
+        if (isNewSection) {
+            // Flush previous section
+            if (currentName !== null) {
+                sections.push({ name: currentName, preview: currentContent.join(' ').substring(0, 80) });
+            }
+            // Start new section
+            if (xmlMatch) {
+                currentName = `<${xmlMatch[1]}>`;
+            } else if (mdMatch) {
+                currentName = mdMatch[2].trim();
+            } else if (boldMatch) {
+                currentName = boldMatch[1].trim();
+            }
+            currentContent = [];
+        } else {
+            // Skip XML closing tags from content preview
+            if (/^<\/[a-zA-Z_][a-zA-Z0-9_-]*>$/.test(trimmed)) continue;
+            currentContent.push(trimmed);
+        }
+    }
+    // Flush last section
+    if (currentName !== null) {
+        sections.push({ name: currentName, preview: currentContent.join(' ').substring(0, 80) });
+    }
+
+    if (sections.length === 0) {
+        // No sections found — show a flat truncated preview
+        return escHtml(text.substring(0, 120)) + (text.length > 120 ? '…' : '');
+    }
+
+    // Render as compact outline
+    return sections.map(s => {
+        const preview = s.preview ? ` <span style="opacity:0.5;">${escHtml(s.preview)}${s.preview.length >= 80 ? '…' : ''}</span>` : '';
+        return `<div style="line-height:1.5;"><span style="color:#007aff; font-weight:500;">${escHtml(s.name)}</span>${preview}</div>`;
     }).join('');
 }
 

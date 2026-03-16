@@ -4,7 +4,7 @@
 
 import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary } from './chatStorage.js';
 import { useMomentCustomApi, customApiConfig } from '../../api.js';
-import { getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
+import { getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { getActiveChatEffects, getActivePersonalityOverrides, getActiveSpecialMessageEffects, getActivePrankEffects, getActiveRobBuffs } from '../shop/shopStorage.js';
 import { getShopItem, resolveItemPrompt } from '../shop/shopData.js';
 import { buildPrankPrompts } from '../shop/prankSystem.js';
@@ -62,7 +62,8 @@ export async function buildChatSystemPrompt() {
         : '';
 
     // World Book context — memories & lore from the active world book
-    const worldBookText = await getPhoneWorldBookContext();
+    const phoneChatForWI = buildPhoneChatForWI(loadChatHistory());
+    const worldBookText = await getPhoneWorldBookContext(phoneChatForWI);
     const worldBookBlock = worldBookText
         ? `<world_info>\n以下是${charName}和${userName}之间已有的记忆与世界设定：\n${worldBookText}\n</world_info>`
         : '';
@@ -750,7 +751,7 @@ export async function buildAutoMessageSystemPrompt() {
         : '';
 
     // World Book
-    const worldBookText = await getPhoneWorldBookContext();
+    const worldBookText = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
     const worldBookBlock = worldBookText
         ? `<world_info>\n${worldBookText}\n</world_info>`
         : '';

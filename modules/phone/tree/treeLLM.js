@@ -8,6 +8,7 @@ import { handleMainChatOutput } from '../moments/momentsWorldInfo.js';
 import {
     getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona,
     getCoreFoundationPrompt, getPhoneContext, getPhoneWorldBookContext,
+    buildPhoneChatForWI,
 } from '../phoneContext.js';
 import {
     GROWTH_STAGES, CARE_ACTIONS, STAGE_SEASON_DESCRIPTIONS,
@@ -22,6 +23,7 @@ import {
     validateQuizQuestions, validateTodQuestions,
     QUIZ_LOW_THRESHOLD, TOD_LOW_THRESHOLD,
 } from './treeQuestions.js';
+import { loadChatHistory } from '../chat/chatStorage.js';
 
 const LOG = '[树树·LLM]';
 
@@ -40,7 +42,7 @@ const BATCH_COUNT = 2;
 async function _buildCharContext() {
     const charInfo = getPhoneCharInfo();
     const persona = getPhoneUserPersona();
-    const worldBook = await getPhoneWorldBookContext();
+    const worldBook = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
 
     let ctx = '';
 

@@ -4,6 +4,7 @@
 import { escHtml } from './chatApp.js';
 import { getCharacterInfo, getUserName } from './chatStorage.js';
 import { getGiftEventCardHtml } from '../shop/giftSystem.js';
+import { isKeepAliveEnabled } from '../keepAlive.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // HTML Builders
@@ -90,6 +91,10 @@ export function buildChatPage(history) {
                     <div class="chat-plus-action" id="chat_plus_inventory_btn">
                         <i class="fa-solid fa-box-open"></i>
                         <span>道具</span>
+                    </div>
+                    <div class="chat-plus-action ${isKeepAliveEnabled() ? 'active' : ''}" id="chat_plus_keepalive_btn">
+                        <i class="ph ph-broadcast"></i>
+                        <span>${isKeepAliveEnabled() ? '保活中' : '保活'}</span>
                     </div>
                 </div>
                 <div class="chat-menu-cancel" id="chat_plus_cancel">取消</div>

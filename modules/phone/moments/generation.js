@@ -5,8 +5,9 @@ import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
 import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
-import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
+import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
+import { loadChatHistory } from '../chat/chatStorage.js';
 import { addComment, toggleLike } from './apiClient.js';
 import { getMyAuthorIds, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
@@ -52,7 +53,7 @@ export async function maybeGeneratePost() {
         const userName = getPhoneUserName();
 
         const userPersona = getPhoneUserPersona();
-        const worldBookContext = await getPhoneWorldBookContext();
+        const worldBookContext = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
 
         let avatarData = charInfo.avatar;
         if (avatarData && !avatarData.startsWith('http') && !avatarData.startsWith('data:') && !avatarData.startsWith('/')) {
@@ -219,7 +220,7 @@ export async function processPendingInteractions() {
         pendingInteractions = [];
 
         const userPersona = getPhoneUserPersona();
-        const worldBookContext = await getPhoneWorldBookContext();
+        const worldBookContext = await getPhoneWorldBookContext(buildPhoneChatForWI(loadChatHistory()));
 
         const foundation = getCoreFoundationPrompt();
         const systemPrompt = `${foundation}

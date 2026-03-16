@@ -3,7 +3,7 @@
 // Modeled after chatPromptBuilder.js, but tailored for spoken conversation.
 
 import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona } from '../phoneContext.js';
-import { getPhoneWorldBookContext, getCoreFoundationPrompt } from '../phoneContext.js';
+import { getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { buildCalendarPrompt } from '../calendar/calendarWorldInfo.js';
 import { pushPromptLog } from '../console/consoleApp.js';
 import { loadChatSummary, loadChatHistory } from '../chat/chatStorage.js';
@@ -38,7 +38,8 @@ export async function buildVcSystemPrompt({ chatContext = false } = {}) {
         : '';
 
     // World Book context — memories & lore
-    const worldBookText = await getPhoneWorldBookContext();
+    const phoneChatForWI = buildPhoneChatForWI(loadChatHistory());
+    const worldBookText = await getPhoneWorldBookContext(phoneChatForWI);
     const worldBookBlock = worldBookText
         ? `<world_info>\n以下是${charName}和${userName}之间已有的记忆与世界设定：\n${worldBookText}\n</world_info>`
         : '';
