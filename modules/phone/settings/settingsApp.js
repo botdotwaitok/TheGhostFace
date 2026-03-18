@@ -2048,10 +2048,18 @@ export function openSettingsApp() {
                 const selectedProvider = ttsProviderSelect?.value || 'none';
 
                 let gsviModelVersion = 'GSVI-v4';
+                let gsviEmotionsMap = {};
                 if (gsviVoiceInput && gsviVoiceInput.options.length > 0) {
                     const selectedOpt = gsviVoiceInput.options[gsviVoiceInput.selectedIndex];
                     if (selectedOpt && selectedOpt.dataset.version) {
                         gsviModelVersion = `GSVI-${selectedOpt.dataset.version}`;
+                    }
+                    if (selectedOpt && selectedOpt.dataset.emotionsMap) {
+                        try {
+                            gsviEmotionsMap = JSON.parse(selectedOpt.dataset.emotionsMap);
+                        } catch (e) {
+                            console.warn('[Settings] Failed to parse emotionsMap', e);
+                        }
                     }
                 }
 
@@ -2065,6 +2073,7 @@ export function openSettingsApp() {
                     textLang: gsviTextLang?.value || '多语种混合',
                     promptLang: gsviPromptLang?.value || '',
                     emotion: gsviEmotion?.value || '',
+                    emotionsMap: gsviEmotionsMap,
                     textSplitMethod: gsviSplitMethod?.value || '按标点符号切',
                     batchSize: gsviBatchSize ? parseInt(gsviBatchSize.value, 10) || 1 : 1,
                 });

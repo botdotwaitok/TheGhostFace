@@ -114,9 +114,22 @@ export class TtsEngine {
             const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
             // Inject emotion into settings for the provider to use
             if (emotion && emotion !== 'default') {
-                providerSettings._emotion = emotion;
+                // If GPT-SoVITS, check if requested emotion exists in saved list
+                if (this._activeProviderName === 'GPT-SoVITS') {
+                    const promptLang = providerSettings.promptLang || '';
+                    const emotionsMap = providerSettings.emotionsMap || {};
+                    const validEmotions = emotionsMap[promptLang] || [];
+                    if (validEmotions.length > 0 && !validEmotions.includes(emotion)) {
+                        console.debug(`${LOG_PREFIX} Emotion "${emotion}" not found for ${promptLang}, using default: ${providerSettings.emotion}`);
+                        providerSettings._emotion = providerSettings.emotion || '默认';
+                    } else {
+                        providerSettings._emotion = emotion;
+                    }
+                } else {
+                    providerSettings._emotion = emotion;
+                }
             }
-            console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${emotion || 'none'}`);
+            console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
 
             // Retry synthesize with exponential backoff (500ms → 1000ms → 2000ms)
             const audioBuffer = await this._retryWithBackoff(
@@ -179,8 +192,23 @@ export class TtsEngine {
             const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
             // Inject emotion into settings for the provider to use
             if (emotion && emotion !== 'default') {
-                providerSettings._emotion = emotion;
+                // If GPT-SoVITS, check if requested emotion exists in saved list
+                if (this._activeProviderName === 'GPT-SoVITS') {
+                    const promptLang = providerSettings.promptLang || '';
+                    const emotionsMap = providerSettings.emotionsMap || {};
+                    const validEmotions = emotionsMap[promptLang] || [];
+                    if (validEmotions.length > 0 && !validEmotions.includes(emotion)) {
+                        console.debug(`${LOG_PREFIX} Emotion "${emotion}" not found for ${promptLang}, using default: ${providerSettings.emotion}`);
+                        providerSettings._emotion = providerSettings.emotion || '默认';
+                    } else {
+                        providerSettings._emotion = emotion;
+                    }
+                } else {
+                    providerSettings._emotion = emotion;
+                }
             }
+            console.log(`${LOG_PREFIX} [speakAndCapture] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
+
             const audioBuffer = await this._retryWithBackoff(
                 () => this._activeProvider.synthesize(text, providerSettings),
             );
