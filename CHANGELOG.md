@@ -2,8 +2,6 @@
 
 All notable changes to TheGhostFace will be documented in this file.
 
-Format: [Keep a Changelog](https://keepachangelog.com/)
-每次改动时顺手在 `[Unreleased]` 下记一行，release 时把它们移到新版本标题下。
 
 ---
 
