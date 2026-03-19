@@ -3,7 +3,7 @@
 
 import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
 import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
-import { callPhoneLLM } from '../../api.js';
+import { callPhoneLLM, useMomentCustomApi } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
@@ -36,6 +36,8 @@ function _isMyContent(item) {
 export async function maybeGeneratePost() {
     const settings = getSettings();
     if (!settings.enabled || getIsGeneratingPost()) return;
+    // 使用主 LLM 时，自动发帖由主 LLM 通过 World Info 处理，无需独立调用
+    if (!useMomentCustomApi) return;
     if (Math.random() > settings.autoPostChance) return;
 
     // ── Cooldown gate: skip if on cooldown ──
@@ -104,6 +106,8 @@ export async function maybeGeneratePost() {
 export async function queueComment(post) {
     const settings = getSettings();
     if (!settings.enabled) return;
+    // 使用主 LLM 时，评论由主 LLM 通过 World Info 处理，无需独立调用
+    if (!useMomentCustomApi) return;
     if (Math.random() > settings.autoCommentChance) return;
     // 跳过 pending 帖子（草稿未发布）
     if (post.pendingUpload) return;
@@ -157,6 +161,8 @@ export async function queueComment(post) {
 export async function queueReply(post, comment) {
     const settings = getSettings();
     if (!settings.enabled) return;
+    // 使用主 LLM 时，回复由主 LLM 通过 World Info 处理，无需独立调用
+    if (!useMomentCustomApi) return;
     // 跳过 pending 帖子（草稿未发布）
     if (post.pendingUpload) return;
 

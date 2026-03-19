@@ -3,7 +3,7 @@
 // 设计参照 sttEngine.js，保持模式一致。
 
 const LOG_PREFIX = '[TtsEngine]';
-const SETTINGS_KEY = 'gf_phone_tts_settings';
+import { getPhoneSetting, setPhoneSetting } from '../../phoneSettings.js';
 
 export class TtsEngine {
     constructor() {
@@ -293,12 +293,11 @@ export class TtsEngine {
 
     _loadSettings() {
         try {
-            const raw = localStorage.getItem(SETTINGS_KEY);
-            if (raw) {
-                const parsed = JSON.parse(raw);
+            const saved = getPhoneSetting('ttsSettings');
+            if (saved) {
                 return {
-                    provider: parsed.provider || 'none',
-                    providerSettings: parsed.providerSettings || {},
+                    provider: saved.provider || 'none',
+                    providerSettings: saved.providerSettings || {},
                 };
             }
         } catch { /* 静默 */ }
@@ -307,7 +306,7 @@ export class TtsEngine {
 
     _saveSettings() {
         try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(this._settings));
+            setPhoneSetting('ttsSettings', this._settings);
         } catch (e) {
             console.warn(`${LOG_PREFIX} save failed:`, e);
         }

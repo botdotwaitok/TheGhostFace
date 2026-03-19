@@ -5,6 +5,7 @@
 import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { resolveProxyUrl } from '../utils/corsProxyFetch.js';
 import { getSettings as getMomentsSettings } from '../moments/state.js';
+import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
 
 const LOG = '[AmbientManager]';
 
@@ -12,10 +13,7 @@ const LOG = '[AmbientManager]';
 // Constants & Config
 // ═══════════════════════════════════════════════════════════════════════
 
-const LS_ENABLED = 'gf_phone_ambient_enabled';
-const LS_CUSTOM_PATH = 'gf_phone_ambient_custom_path';
-const LS_CUSTOM_NAME = 'gf_phone_ambient_custom_name';
-const LS_DEFAULT_PATH = 'gf_phone_ambient_default_path';
+
 
 const AMBIENT_VOLUME = 0.15;
 const FADE_DURATION = 300; // ms
@@ -30,6 +28,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB (ambient files can be longer)
 /** @type {HTMLAudioElement|null} */
 let _audioEl = null;
 let _fadeInterval = null;
+let _isFadingOut = false;  // Guard: tracks ongoing fade-out to prevent race conditions
 
 // ═══════════════════════════════════════════════════════════════════════
 // Settings — localStorage persistence (global, not per-chat)
@@ -40,8 +39,7 @@ let _fadeInterval = null;
  * @returns {boolean}
  */
 export function isAmbientEnabled() {
-    const val = localStorage.getItem(LS_ENABLED);
-    return val === null ? true : val === 'true'; // Default enabled
+    return getPhoneSetting('ambientEnabled', true);
 }
 
 /**
@@ -49,7 +47,7 @@ export function isAmbientEnabled() {
  * @param {boolean} enabled
  */
 export function setAmbientEnabled(enabled) {
-    localStorage.setItem(LS_ENABLED, String(enabled));
+    setPhoneSetting('ambientEnabled', enabled);
     console.log(`${LOG} Ambient ${enabled ? 'enabled' : 'disabled'}`);
 }
 
@@ -58,9 +56,9 @@ export function setAmbientEnabled(enabled) {
  * @returns {{ enabled: boolean, isCustom: boolean, name: string, audioPath: string|null }}
  */
 export function getAmbientInfo() {
-    const customPath = localStorage.getItem(LS_CUSTOM_PATH);
-    const customName = localStorage.getItem(LS_CUSTOM_NAME);
-    const defaultPath = localStorage.getItem(LS_DEFAULT_PATH);
+    const customPath = getPhoneSetting('ambientCustomPath');
+    const customName = getPhoneSetting('ambientCustomName');
+    const defaultPath = getPhoneSetting('ambientDefaultPath');
 
     const isCustom = !!customPath;
     return {
@@ -87,14 +85,14 @@ export async function initAmbient() {
     }
 
     // If user has custom audio, we're good
-    const customPath = localStorage.getItem(LS_CUSTOM_PATH);
+    const customPath = getPhoneSetting('ambientCustomPath');
     if (customPath) {
         console.log(`${LOG} Using custom ambient: ${customPath}`);
         return;
     }
 
     // Check if default is already cached
-    const cachedPath = localStorage.getItem(LS_DEFAULT_PATH);
+    const cachedPath = getPhoneSetting('ambientDefaultPath');
     if (cachedPath) {
         console.log(`${LOG} Default ambient already cached: ${cachedPath}`);
         return;
@@ -123,7 +121,7 @@ export async function initAmbient() {
 
         // Cache to ST file system
         const webPath = await uploadAudioToST(audioBlob, 'ambient_default');
-        localStorage.setItem(LS_DEFAULT_PATH, webPath);
+        setPhoneSetting('ambientDefaultPath', webPath);
         console.log(`${LOG} Default ambient cached: ${webPath}`);
     } catch (e) {
         console.warn(`${LOG} Failed to download default ambient:`, e);
@@ -146,6 +144,13 @@ export function startAmbient() {
     if (!info.audioPath) {
         console.log(`${LOG} No ambient audio available`);
         return false;
+    }
+
+    // If fading out from a previous stop, cancel fade and force cleanup
+    if (_isFadingOut) {
+        _clearFade();
+        _isFadingOut = false;
+        _destroyAudio();
     }
 
     // Already playing
@@ -184,7 +189,9 @@ export function stopAmbient() {
     }
 
     // Fade out then destroy
+    _isFadingOut = true;
     _fadeToVolume(0, FADE_DURATION, () => {
+        _isFadingOut = false;
         _destroyAudio();
         console.log(`${LOG} Ambient stopped`);
     });
@@ -195,6 +202,7 @@ export function stopAmbient() {
  */
 export function stopAmbientImmediate() {
     _clearFade();
+    _isFadingOut = false;
     _destroyAudio();
 }
 
@@ -230,8 +238,8 @@ export async function uploadUserAmbient(audioFile) {
     const audioPath = await uploadAudioToST(audioBlob, 'ambient_user');
 
     const displayName = audioFile.name.replace(/\.[^.]+$/, '');
-    localStorage.setItem(LS_CUSTOM_PATH, audioPath);
-    localStorage.setItem(LS_CUSTOM_NAME, displayName);
+    setPhoneSetting('ambientCustomPath', audioPath);
+    setPhoneSetting('ambientCustomName', displayName);
 
     console.log(`${LOG} User ambient uploaded: "${displayName}" → ${audioPath}`);
     return { name: displayName, audioPath };
@@ -241,8 +249,8 @@ export async function uploadUserAmbient(audioFile) {
  * Clear custom ambient, revert to server default.
  */
 export function clearUserAmbient() {
-    localStorage.removeItem(LS_CUSTOM_PATH);
-    localStorage.removeItem(LS_CUSTOM_NAME);
+    removePhoneSetting('ambientCustomPath');
+    removePhoneSetting('ambientCustomName');
     console.log(`${LOG} Custom ambient cleared, using default`);
 }
 

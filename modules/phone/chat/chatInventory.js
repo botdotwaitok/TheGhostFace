@@ -1,15 +1,19 @@
 // modules/phone/chat/chatInventory.js — Buff bar, Inventory panel, Return Home
 // Extracted from chatApp.js
 
+import { getPhoneSetting } from '../phoneSettings.js';
+
 import { escHtml, CHAT_LOG_PREFIX, scrollToBottom } from './chatApp.js';
 import {
     loadChatHistory, getCharacterInfo, getUserName,
     sendSummaryAsUserMessage, sendRawTranscriptAsUserMessage,
+    loadChatSummary, saveChatSummary,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { saveToWorldBook } from '../../worldbook.js';
-import { buildSummarizePrompt } from './chatPromptBuilder.js';
+import { buildSummarizePrompt, buildRollingSummarizePrompt } from './chatPromptBuilder.js';
+import { pushPromptLog } from '../console/consoleApp.js';
 import {
     getInventory, activateItem, getActiveEffects,
     getActiveChatEffects, getActivePersonalityOverrides,
@@ -204,9 +208,9 @@ export async function handleReturnHome() {
         return;
     }
 
-    // Read user preferences from localStorage
-    const doMemoryFragments = localStorage.getItem('gf_phone_rh_memory') === 'true';
-    const syncMode = localStorage.getItem('gf_phone_rh_sync_mode') || 'summary';
+    // Read user preferences from persistent settings
+    const doMemoryFragments = getPhoneSetting('rhMemory', false);
+    const syncMode = getPhoneSetting('rhSyncMode', 'summary');
 
     const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
     const memoryLabel = doMemoryFragments ? '[ ON ] 提取记忆碎片' : '[ OFF ] 不提取记忆碎片';
@@ -280,7 +284,10 @@ export async function handleReturnHome() {
 
             const transcript = history.map(msg => {
                 const role = msg.role === 'user' ? userName : charName;
-                return `${role}: ${msg.content}`;
+                const timeStr = msg.timestamp
+                    ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : '';
+                return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
             }).join('\n');
 
             const summarizePrompt = buildSummarizePrompt();
@@ -310,5 +317,115 @@ export async function handleReturnHome() {
         if (statusEl) {
             statusEl.innerHTML = `<i class="ph ph-warning"></i> 同步失败: ${error.message}`;
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// "手动总结" — Manual Summarize
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Manually trigger rolling summary generation.
+ * Fallback for when auto-summarize fails or user wants to force it.
+ */
+export async function handleManualSummarize() {
+    const history = loadChatHistory();
+    const unsummarized = history.filter(m => !m.summarized);
+
+    if (unsummarized.length === 0) {
+        alert('没有需要总结的新消息～');
+        return;
+    }
+
+    if (!confirm(`将对 ${unsummarized.length} 条未总结消息进行压缩总结。\n这会消耗一次LLM调用，确定继续吗？`)) {
+        return;
+    }
+
+    const charName = getCharacterInfo()?.name || '角色';
+    const userName = getUserName();
+
+    // Show status in chat
+    const messagesArea = document.getElementById('chat_messages_area');
+    if (messagesArea) {
+        messagesArea.insertAdjacentHTML('beforeend',
+            `<div class="chat-retract" id="chat_summarize_status"><i class="ph ph-note"></i> 正在生成总结…</div>`);
+    }
+    scrollToBottom(true);
+
+    try {
+        // Keep recent 30 messages unsummarized (same as auto-summarize)
+        const KEEP_RECENT = 30;
+        const toSummarizeCount = unsummarized.length - KEEP_RECENT;
+
+        if (toSummarizeCount <= 0) {
+            const statusEl = document.getElementById('chat_summarize_status');
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-check-circle"></i> 消息数量不足，无需总结（少于30条未总结）';
+            return;
+        }
+
+        const messagesToSummarize = unsummarized.slice(0, toSummarizeCount);
+
+        // Build identity stamps for safe matching
+        const summarizedStamps = new Set(
+            messagesToSummarize.map(m => `${m.timestamp}|${m.role}|${(m.content || '').slice(0, 50)}`)
+        );
+
+        // Build transcript
+        const transcript = messagesToSummarize.map(msg => {
+            const role = msg.role === 'user' ? userName : charName;
+            const timeStr = msg.timestamp
+                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
+            return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
+        }).join('\n');
+
+        const existingSummary = loadChatSummary();
+        const summarySystemPrompt = buildRollingSummarizePrompt();
+
+        let summaryUserPrompt;
+        if (existingSummary) {
+            summaryUserPrompt = `旧总结：\n${existingSummary}\n\n新的聊天记录：\n${transcript}\n\n请合并为一份完整的总结。`;
+        } else {
+            summaryUserPrompt = `聊天记录：\n${transcript}\n\n请生成总结。`;
+        }
+
+        // Push to Console app for debugging
+        try { pushPromptLog('ManualSummarize System', summarySystemPrompt); } catch (e) { /* */ }
+        try { pushPromptLog('ManualSummarize User', '', summaryUserPrompt); } catch (e) { /* */ }
+
+        const statusEl = document.getElementById('chat_summarize_status');
+        if (statusEl) statusEl.innerHTML = '<i class="ph ph-spinner"></i> LLM 正在压缩总结…';
+
+        const newSummary = await callPhoneLLM(summarySystemPrompt, summaryUserPrompt, { maxTokens: 2000 });
+
+        if (!newSummary || !newSummary.trim()) {
+            throw new Error('LLM 返回了空的总结');
+        }
+
+        // Save summary
+        saveChatSummary(newSummary.trim());
+
+        // Mark messages as summarized
+        const freshHistory = loadChatHistory();
+        let markedCount = 0;
+        for (const msg of freshHistory) {
+            if (msg.summarized) continue;
+            const stamp = `${msg.timestamp}|${msg.role}|${(msg.content || '').slice(0, 50)}`;
+            if (summarizedStamps.has(stamp)) {
+                msg.summarized = true;
+                markedCount++;
+            }
+        }
+        // Use direct save to persist
+        const { saveChatHistory } = await import('./chatStorage.js');
+        saveChatHistory(freshHistory);
+
+        console.log(`${CHAT_LOG_PREFIX} ✅ 手动总结完成: ${newSummary.trim().length} 字, 标记 ${markedCount} 条`);
+        if (statusEl) statusEl.innerHTML = `<i class="ph ph-check-circle"></i> 总结完成！压缩了 ${markedCount} 条消息 (${newSummary.trim().length} 字)`;
+
+    } catch (error) {
+        console.error(`${CHAT_LOG_PREFIX} ❌ 手动总结失败:`, error);
+        const statusEl = document.getElementById('chat_summarize_status');
+        if (statusEl) statusEl.innerHTML = `<i class="ph ph-warning"></i> 总结失败: ${error.message}`;
     }
 }

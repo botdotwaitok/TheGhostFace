@@ -443,7 +443,7 @@ export async function generateQuizQuestions(count = 10) {
 ${charContext}
 ### [QUIZ_GENERATION_TASK]
 为情侣默契挑战游戏生成题目。
-请根据上述角色的性格、背景故事和她们的关系来设计有个性化的题目。`;
+题目应当天马行空、充满创意和随机性，不要全部围绕角色背景故事。角色性格仅用于确定正确答案，而非限制题目场景的想象力。`;
 
         const userPrompt = buildQuizPrompt(charName, userName, count);
 
@@ -491,7 +491,7 @@ export async function generateTodQuestions(count = 10) {
 ${charContext}
 ### [TOD_GENERATION_TASK]
 为情侣真心话大冒险游戏生成题目。
-请根据上述角色的性格、背景故事和她们的关系来设计各种各样的真心话问题。`;
+题目应当大胆、有创意、出人意料。不要只围绕角色背景和恋爱日常，要有丰富多样的脑洞问题。`;
 
         const userPrompt = buildTodPrompt(charName, userName, count);
 

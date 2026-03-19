@@ -648,34 +648,62 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
  * @returns {Promise<string>} LLM response text
  */
 export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null, images = null } = {}) {
-    if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
-        // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
-        console.log('📱 [Phone LLM] 使用自定义API');
-        return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images });
-    }
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 1000; // 1s → 2s → 4s
 
-    // ─── ST Main LLM path ───
-    if (images && images.length > 0) {
-        // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
-        console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
-        return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens);
-    }
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
+                // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
+                if (attempt === 1) console.log('📱 [Phone LLM] 使用自定义API');
+                return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images });
+            }
 
-    // 纯文本 → generateRaw（最可靠，适配所有 provider）
-    console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
-    const context = getContext();
-    if (typeof context.generateRaw !== 'function') {
-        throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
-    }
+            // ─── ST Main LLM path ───
+            if (images && images.length > 0) {
+                // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
+                if (attempt === 1) console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
+                return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens);
+            }
 
-    let combinedPrompt = '';
-    if (systemPrompt && systemPrompt.trim()) {
-        combinedPrompt += systemPrompt.trim() + '\n\n';
-    }
-    combinedPrompt += userPrompt;
+            // 纯文本 → generateRaw（最可靠，适配所有 provider）
+            if (attempt === 1) console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
+            const context = getContext();
+            if (typeof context.generateRaw !== 'function') {
+                throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
+            }
 
-    const result = await context.generateRaw(combinedPrompt, '', false, false, '');
-    return result?.trim() || '';
+            let combinedPrompt = '';
+            if (systemPrompt && systemPrompt.trim()) {
+                combinedPrompt += systemPrompt.trim() + '\n\n';
+            }
+            combinedPrompt += userPrompt;
+
+            const result = await context.generateRaw(combinedPrompt, '', false, false, '');
+            return result?.trim() || '';
+
+        } catch (err) {
+            lastError = err;
+
+            // Don't retry 4xx client errors (bad API key, malformed request, etc.)
+            const status = err?.status || (err?.message?.match(/(\d{3})/)?.[1] && parseInt(err.message.match(/(\d{3})/)[1]));
+            if (status >= 400 && status < 500) {
+                console.error(`📱 [Phone LLM] 4xx 客户端错误，不重试:`, err.message);
+                throw err;
+            }
+
+            if (attempt >= MAX_RETRIES) {
+                console.error(`📱 [Phone LLM] ❌ ${MAX_RETRIES}次重试全部失败`);
+                throw err;
+            }
+
+            const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+            console.warn(`📱 [Phone LLM] ⚠️ 第${attempt}次调用失败 (${err.message})，${delay / 1000}秒后重试...`);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+    throw lastError;
 }
 
 /**

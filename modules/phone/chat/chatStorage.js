@@ -8,6 +8,7 @@ import { buildRollingSummarizePrompt } from './chatPromptBuilder.js';
 import { saveToWorldBook } from '../../worldbook.js';
 import { callPhoneLLM } from '../../api.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona } from '../phoneContext.js';
+import { getPhoneSetting } from '../phoneSettings.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
@@ -17,12 +18,13 @@ const CHAT_LOG_PREFIX = '[聊天]';
 const MAX_HISTORY_MESSAGES = 500; // Raise cap — summarize handles compression
 
 // ─── Auto-summarize constants ───
-const SUMMARIZE_THRESHOLD = 200; // Trigger summarize when history reaches this
+const SUMMARIZE_THRESHOLD = 500; // Trigger summarize when history reaches this
 const KEEP_RECENT = 30;          // Keep the most recent N messages unsummarized
 
 // ─── chat_metadata keys ───
 const META_KEY_HISTORY = 'gf_phoneChatHistory';
 const META_KEY_SUMMARY = 'gf_phoneChatSummary';
+const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Character / User Info Helpers
@@ -96,6 +98,51 @@ export function saveChatHistory(messages) {
         }
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata 保存失败:`, e);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Pending Result Persistence (survives page refresh)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Persist a pending LLM result to chat_metadata so it survives page refresh.
+ * @param {{ rawResponse: string, messagesToSend: string[] } | null} result
+ */
+export function persistPendingResult(result) {
+    try {
+        if (chat_metadata) {
+            chat_metadata[META_KEY_PENDING_RESULT] = result || null;
+            saveMetadataDebounced();
+        }
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} Pending result persistence failed:`, e);
+    }
+}
+
+/**
+ * Load a previously persisted pending result from chat_metadata.
+ * @returns {{ rawResponse: string, messagesToSend: string[] } | null}
+ */
+export function loadPersistedPendingResult() {
+    try {
+        return chat_metadata?.[META_KEY_PENDING_RESULT] || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Clear the persisted pending result from chat_metadata.
+ */
+export function clearPersistedPendingResult() {
+    try {
+        if (chat_metadata?.[META_KEY_PENDING_RESULT]) {
+            delete chat_metadata[META_KEY_PENDING_RESULT];
+            saveMetadataDebounced();
+        }
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} Pending result clear failed:`, e);
     }
 }
 
@@ -271,7 +318,10 @@ export async function sendRawTranscriptAsUserMessage(history) {
 
     const transcript = history.map(msg => {
         const role = msg.role === 'user' ? userName : charName;
-        return `${role}: ${msg.content}`;
+        const timeStr = msg.timestamp
+            ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '';
+        return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
     }).join('\n');
 
     const messageText = `<恶灵QR>[手机聊天记录同步 — 原文]
@@ -391,7 +441,7 @@ export async function maybeAutoSummarize() {
         const charName = charInfo?.name || '角色';
         const userName = getUserName();
 
-        const doMemoryInAutoSummarize = localStorage.getItem('gf_phone_auto_summarize_memory') !== 'false';
+        const doMemoryInAutoSummarize = getPhoneSetting('autoSummarizeMemory', true);
         if (doMemoryInAutoSummarize) {
 
             // Convert phone messages to the format generateSummary() expects:

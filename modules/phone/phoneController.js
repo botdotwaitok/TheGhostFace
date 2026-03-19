@@ -18,6 +18,7 @@ import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
 import { openCalendarApp } from './calendar/calendarApp.js';
 import { openVcApp } from './voiceCall/vcApp.js';
 import { openMusicApp } from './music/musicApp.js';
+import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
 
 // ─── State ───
@@ -117,6 +118,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link11.rel = 'stylesheet';
         link11.href = `${baseDir}/music/music.css`;
         document.head.appendChild(link11);
+    }
+    // D&D CSS
+    if (!document.getElementById('gf-dnd-styles')) {
+        const link12 = document.createElement('link');
+        link12.id = 'gf-dnd-styles';
+        link12.rel = 'stylesheet';
+        link12.href = `${baseDir}/dnd/dnd.css`;
+        document.head.appendChild(link12);
     }
 })();
 
@@ -310,6 +319,16 @@ export function initPhone() {
         color: '#fc3c44',
         glow: 'rgba(252, 60, 68, 0.4)',
         onOpen: () => openMusicApp(),
+    });
+
+    // ── D&D (龙与地下城) ──
+    registerApp({
+        id: 'dnd',
+        name: 'D&D',
+        icon: 'ph ph-sword',
+        color: '#1a1a2e',
+        glow: 'rgba(212, 164, 76, 0.4)',
+        onOpen: () => openDndApp(),
     });
 
     // ── Console (调试) — always visible, but requires enable in Settings to function ──

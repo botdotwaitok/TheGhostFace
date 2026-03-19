@@ -3,7 +3,7 @@ import { getContext } from '../../../../extensions.js';
 import { createWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../../world-info.js';
 
 import * as utils from './utils.js';
-import { logger } from './utils.js';
+import { logger, estimateTokens } from './utils.js';
 import * as api from './api.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -16,9 +16,6 @@ const TIMELINE_POSITION = 1; // After Char
 const TIMELINE_KEYS = ['时间线', '故事', '大纲'];
 const TIMELINE_MAX_TOKENS = 2000;
 
-// Rough estimate: 1 CJK char ≈ 1.5 tokens, 1 English word ≈ 1.3 tokens
-// For safety we use a conservative char-to-token ratio
-const CHARS_PER_TOKEN = 1.5;
 
 // ═══════════════════════════════════════════════════════════════════════
 // World Book Read / Write
@@ -141,21 +138,22 @@ Your current task is to create a concise timeline outline from the conversation 
 **规则：**
 1. 只提取**重要的剧情转折、关键事件、情感节点**，忽略日常闲聊
 2. 每个事件用一行表示，格式为：\`- [时间标签] 事件描述\`
-3. **时间标签提取优先级（严格遵守）：**
-   - **最高优先**：使用对话中出现的**具体日期和时间**（如"2024年6月15日 下午3点"→\`[2024.6.15 下午]\`）
-   - **次高优先**：组合"天数+时段"（如\`[第1天-清晨]\`、\`[第2天-下午]\`、\`[第3天-晚上]\`）
-   - **最低优先**：仅当完全无法推断天数时，才使用纯阶段描述（如\`[初识阶段]\`）
-   - **禁止**：不要使用单独的\`[清晨]\`\`[晚上]\`\`[午饭时]\`等无日期的纯时段标签
-4. 从对话上下文中推断日期关系：如果发现"第二天早上"、"次日"、"昨天"等表达，必须结合上文推算出是第几天
+3. **时间标签规则（严格遵守）：**
+   - **注意**：下方对话中每条消息的开头可能带有 \`[日期]\` 前缀（如 \`[2025年7月22日]\`），这是真实日期，**必须直接使用**
+   - **格式**：\`[YYYY.M.DD 时段]\`（如 \`[2025.7.22 午夜]\`、\`[2025.9.10 下午]\`）
+   - **禁止**：不要使用叙事性描述替代日期（如 ~~\`[18岁生日当天]\`~~ → 应写 \`[2025.7.22]\`）
+   - **禁止**：不要使用 \`[第1天]\` \`[第2天]\` 等相对天数
+   - **仅在对话中完全没有日期信息时**，才允许使用阶段描述（如 \`[初识阶段]\`）
+4. 从对话上下文中推断日期关系：如果发现"第二天早上"、"次日"、"昨天"等表达，必须结合已知日期推算出具体日期
 5. 保持简洁，每段对话提取 **3-8 个要点**
 6. 保留关键情感信息和重要决定
 
 **输出格式示例（只输出时间线，不要输出其她任何内容）：**
 
-- [第1天-午夜] {{user}}首次出现在{{char}}梦中
-- [第1天-清晨] {{char}}发现自己获得了新的能力
-- [第1天-下午] {{char}}在学校完成了{{user}}的任务
-- [第2天-上午] {{char}}决定改变自己的命运
+- [2025.7.22 午夜] {{user}}首次出现在{{char}}梦中
+- [2025.7.22 清晨] {{char}}发现自己获得了新的能力
+- [2025.7.22 下午] {{char}}在学校完成了{{user}}的任务
+- [2025.7.23 上午] {{char}}决定改变自己的命运
 ...
 
 **以下是需要分析的对话内容：**
@@ -266,6 +264,14 @@ async function callLLM(prompt, maxTokens = 2048) {
             ]);
         } catch (err) {
             lastError = err;
+            // 上下文过长不走通用重试，跳出让调用方减半处理
+            const isContextError = err.code === 'CONTENT_EMPTY_LENGTH' ||
+                err.message?.includes('finish_reason=length') ||
+                err.message?.includes('context_length_exceeded');
+            if (isContextError) {
+                logger.warn('[时间线] ⚠️ 检测到上下文过长，停止重试，交给调用方处理');
+                throw err;
+            }
             if (attempt === MAX_RETRIES) {
                 logger.error(`[时间线] ❌ ${MAX_RETRIES}次重试全部失败`);
                 throw lastError;
@@ -289,36 +295,64 @@ export async function generateTimelineSegment(messages) {
         return '';
     }
 
-    // 过滤掉内容为空的消息
-    const validMessages = messages.filter(msg => {
-        const content = msg.parsedContent || msg.mes || msg.message || '';
-        return content.trim().length > 0;
-    });
+    // 内部辅助：用给定消息列表尝试一次 LLM 调用
+    const attemptWithMessages = async (msgs) => {
+        // 过滤掉内容为空的消息
+        const validMessages = msgs.filter(msg => {
+            const content = msg.parsedContent || msg.mes || msg.message || '';
+            return content.trim().length > 0;
+        });
 
-    if (validMessages.length === 0) {
-        logger.warn('[时间线] generateTimelineSegment: 所有消息内容为空，跳过');
-        return '';
+        if (validMessages.length === 0) {
+            logger.warn('[时间线] generateTimelineSegment: 所有消息内容为空，跳过');
+            return '';
+        }
+
+        // 格式化消息为文本
+        const messagesText = validMessages.map(msg => {
+            const speaker = msg.is_user ? '{{user}}'
+                : msg.is_system ? 'System'
+                    : (msg.name || '{{char}}');
+            const content = msg.parsedContent || msg.mes || msg.message || '[无内容]';
+            const datePrefix = msg.parsedDate ? `[${msg.parsedDate}] ` : '';
+            return `${datePrefix}${speaker}: ${content}`;
+        }).join('\n');
+
+        // 最终检查：如果格式化后的文本太短（无实质内容），跳过 LLM 调用
+        const strippedText = messagesText.replace(/\[.*?\]\s*\w+:\s*/g, '').trim();
+        if (strippedText.length < 10) {
+            logger.warn(`[时间线] generateTimelineSegment: 有效内容过短 (${strippedText.length} 字符)，跳过`);
+            return '';
+        }
+
+        const prompt = buildTimelinePrompt(messagesText);
+        return await callLLM(prompt);
+    };
+
+    // 第一次尝试：用全部消息
+    let result;
+    try {
+        result = await attemptWithMessages(messages);
+    } catch (error) {
+        const isContextError = error.code === 'CONTENT_EMPTY_LENGTH' ||
+            error.message?.includes('finish_reason=length') ||
+            error.message?.includes('context_length_exceeded');
+
+        if (isContextError && messages.length > 5) {
+            // 上下文过长 → 取后半段重试
+            logger.warn(`[时间线] ⚠️ 上下文过长 (${messages.length} 条消息)，减半重试...`);
+            const halfMessages = messages.slice(Math.floor(messages.length / 2));
+            try {
+                result = await attemptWithMessages(halfMessages);
+                logger.info('[时间线] ✅ 减半重试成功');
+            } catch (retryError) {
+                logger.error('[时间线] ❌ 减半重试也失败:', retryError);
+                throw retryError;
+            }
+        } else {
+            throw error;
+        }
     }
-
-    // 格式化消息为文本
-    const messagesText = validMessages.map(msg => {
-        const speaker = msg.is_user ? '{{user}}'
-            : msg.is_system ? 'System'
-                : (msg.name || '{{char}}');
-        const content = msg.parsedContent || msg.mes || msg.message || '[无内容]';
-        const datePrefix = msg.parsedDate ? `[${msg.parsedDate}] ` : '';
-        return `${datePrefix}${speaker}: ${content}`;
-    }).join('\n');
-
-    // 最终检查：如果格式化后的文本太短（无实质内容），跳过 LLM 调用
-    const strippedText = messagesText.replace(/\[.*?\]\s*\w+:\s*/g, '').trim();
-    if (strippedText.length < 10) {
-        logger.warn(`[时间线] generateTimelineSegment: 有效内容过短 (${strippedText.length} 字符)，跳过`);
-        return '';
-    }
-
-    const prompt = buildTimelinePrompt(messagesText);
-    const result = await callLLM(prompt);
 
     if (!result || !result.trim()) {
         logger.warn('[时间线] LLM 未返回时间线内容');
@@ -449,20 +483,3 @@ export async function appendToTimeline(messages) {
 // Utility
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * 粗略估算文本的 token 数
- * @param {string} text
- * @returns {number}
- */
-function estimateTokens(text) {
-    if (!text) return 0;
-    // CJK characters count more heavily; ASCII words count less
-    let cjk = 0;
-    let ascii = 0;
-    for (const ch of text) {
-        if (ch.charCodeAt(0) > 0x2E7F) cjk++;
-        else if (/\S/.test(ch)) ascii++;
-    }
-    // Each CJK char ≈ 1.5 tokens; every ~4 ASCII chars ≈ 1 token
-    return Math.ceil(cjk * CHARS_PER_TOKEN + ascii / 4);
-}

@@ -1,5 +1,6 @@
 // worldbook.js
 import { createWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../../world-info.js';
+import { getContext } from '../../../../extensions.js';
 
 
 import * as core from './core.js';
@@ -8,6 +9,19 @@ import { logger } from './utils.js';
 
 export const GHOST_SUMMARY_PREFIX = "鬼面总结-";
 export const GHOST_TRACKING_COMMENT = "鬼面楼层追踪记录";
+
+// 🔄 宏替换：将 {{user}}/{{char}} 替换为真实角色名
+function replaceMacros(text) {
+    if (!text || typeof text !== 'string') return text;
+    try {
+        const ctx = getContext();
+        const userName = ctx?.name1 || '{{user}}';
+        const charName = ctx?.name2 || '{{char}}';
+        return text.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, charName);
+    } catch {
+        return text;
+    }
+}
 
 
 //获取现有世界书内容作为上下文（防止AI重复生成）
@@ -322,9 +336,15 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                     ? `[第${startIndex + 1}-${endIndex + 1}楼]`
                     : `[主动记忆 ${new Date().toLocaleString()}]`;
 
-                const newKeywords = fragment.keywords && fragment.keywords.length > 0
+                // 🧠 合并 AI 关键词 + 标题核心词（保底：标题里的词一定触发）
+                const labelParts = (fragment.label || '')
+                    .split(/[-－]/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0);
+                const aiKeywords = fragment.keywords && fragment.keywords.length > 0
                     ? fragment.keywords
-                    : [fragment.label];
+                    : [];
+                const newKeywords = [...new Set([...labelParts, ...aiKeywords])];
 
                 // ============================================================
                 // 🔄 路径A: AI 明确指定了 updateTarget（===UPDATE=== 块）
@@ -337,7 +357,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
 
                     if (matchEntry && matchEntry.entryRef) {
                         // 直接覆盖旧条目内容
-                        matchEntry.entryRef.content = `${floorTag} ${fragment.content}`;
+                        matchEntry.entryRef.content = `${floorTag} ${replaceMacros(fragment.content)}`;
                         // 合并关键词（去重）
                         const oldKeys = Array.isArray(matchEntry.entryRef.key) ? matchEntry.entryRef.key : [];
                         const mergedKeys = [...new Set([...newKeywords, ...oldKeys])];
@@ -364,7 +384,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                     if (existing.label && isLabelSimilar(fragment.label, existing.label)) {
                         // 标题相似 → 合并更新旧条目
                         if (existing.entryRef) {
-                            existing.entryRef.content = `${floorTag} ${fragment.content}`;
+                            existing.entryRef.content = `${floorTag} ${replaceMacros(fragment.content)}`;
                             const oldKeys = Array.isArray(existing.entryRef.key) ? existing.entryRef.key : [];
                             const mergedKeys = [...new Set([...newKeywords, ...oldKeys])];
                             existing.entryRef.key = mergedKeys;
@@ -405,9 +425,9 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                     continue;
                 }
 
-                const safeLabel = (fragment.label || '未命名碎片').replace(/[\\/:*?"<>|]/g, '_');
+                const safeLabel = replaceMacros((fragment.label || '未命名碎片')).replace(/[\\/:*?"<>|]/g, '_');
                 const commentText = `记忆碎片 - ${safeLabel}`;
-                const entryContent = `${floorTag} ${fragment.content}`;
+                const entryContent = `${floorTag} ${replaceMacros(fragment.content)}`;
 
                 Object.assign(newEntry, {
                     comment: commentText,
