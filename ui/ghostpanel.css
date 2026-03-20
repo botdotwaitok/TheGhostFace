@@ -1095,7 +1095,7 @@ input[type="number"].ghost-input {
 
 .ghost-chat-bubble-user {
     align-self: flex-end;
-    background: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeChatTintColor) 75%, var(--SmartThemeQuoteColor));
     color: var(--SmartThemeBodyColor);
     border-bottom-right-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

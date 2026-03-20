@@ -965,7 +965,7 @@ function renderMessagesPage() {
         });
 
         // Hover effect inline since it's dynamic
-        item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--SmartThemeQuoteColor)');
+        item.addEventListener('mouseenter', () => item.style.backgroundColor = 'color-mix(in srgb, var(--SmartThemeChatTintColor) 75%, var(--SmartThemeQuoteColor) 25%)');
         item.addEventListener('mouseleave', () => item.style.backgroundColor = '');
     });
 }
