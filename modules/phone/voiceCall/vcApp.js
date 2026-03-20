@@ -28,11 +28,7 @@ export function openVcApp() {
         <div id="vc_call_list" class="vc-call-list">
             <!-- Call history rendered here -->
         </div>
-
-        <!-- Floating Action Button — Start New Call -->
-        <button id="vc_dial_fab" class="vc-dial-fab" title="拨打电话">
-            <i class="fa-solid fa-phone"></i>
-        </button>
+        <button id="vc_dial_fab" class="vc-dial-fab" title="拨打电话"><i class="fa-solid fa-phone"></i></button>
     </div>
     `;
 
@@ -192,6 +188,10 @@ function _openCallDetail(callId) {
     const actionsEl = document.getElementById('phone_app_viewport_actions');
     if (!body) return;
 
+    // Hide FAB when viewing detail
+    const fab = document.getElementById('vc_dial_fab');
+    if (fab) fab.style.display = 'none';
+
     body.innerHTML = html;
     if (titleEl) titleEl.textContent = '通话详情';
     if (actionsEl) actionsEl.innerHTML = '';
@@ -205,9 +205,7 @@ function _openCallDetail(callId) {
     window.addEventListener('phone-app-back', _backHandler);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Event Bindings
-// ═══════════════════════════════════════════════════════════════════════
+
 
 function _bindEvents() {
     // Dial FAB

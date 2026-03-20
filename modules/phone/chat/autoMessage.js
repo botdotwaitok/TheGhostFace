@@ -66,7 +66,7 @@ export function getPhoneIdleDuration() {
  * @param {number} ms
  * @returns {string} e.g. "3分钟", "1小时20分钟", "8小时"
  */
-function humanizeMs(ms) {
+export function humanizeMs(ms) {
     const totalMinutes = Math.floor(ms / 60000);
     if (totalMinutes < 1) return '不到1分钟';
     if (totalMinutes < 60) return `${totalMinutes}分钟`;

@@ -152,6 +152,14 @@ async function initializeGhostFace() {
 
     console.log('🚀 [鬼面] 开始初始化...');
 
+    // Phone settings migration (localStorage → extension_settings)
+    try {
+        const { initPhoneSettings } = await import('./modules/phone/phoneSettings.js');
+        initPhoneSettings();
+    } catch (e) {
+        console.warn('[鬼面] Phone settings init skipped:', e);
+    }
+
     try {
         // 第1步：设置全局导出
         const exportSuccess = setupGlobalExports();

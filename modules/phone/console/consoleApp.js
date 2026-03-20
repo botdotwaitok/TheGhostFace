@@ -3,7 +3,7 @@
 // Inspired by Chrome DevTools — with left sidebar tabs, object tree, search, auto-refresh.
 
 import { openAppInViewport } from '../phoneController.js';
-import { getContext } from '../../../../../../extensions.js';
+
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants & State
@@ -44,6 +44,7 @@ const MODULE_PREFIXES = [
     '[Calendar]',
     '[Friends]',
     '[Settings]',
+    '[D&D]',
 ];
 
 let _patchInstalled = false;
@@ -90,31 +91,11 @@ export function pushPromptLog(label, systemPrompt, userPrompt) {
         label: label || 'Chat Prompt',
         systemPrompt: systemPrompt || '',
         userPrompt: userPrompt || '',
-        systemTokens: null,
-        userTokens: null,
-        totalTokens: null,
     };
     _pushLog(_promptLogs, entry);
-
-    // Async token counting — update the entry in-place when done
-    _computeTokenCounts(entry);
 }
 
-async function _computeTokenCounts(entry) {
-    try {
-        const context = getContext();
-        if (!context?.getTokenCountAsync) return;
-        const [sysTk, usrTk] = await Promise.all([
-            entry.systemPrompt ? context.getTokenCountAsync(entry.systemPrompt) : 0,
-            entry.userPrompt ? context.getTokenCountAsync(entry.userPrompt) : 0,
-        ]);
-        entry.systemTokens = sysTk;
-        entry.userTokens = usrTk;
-        entry.totalTokens = sysTk + usrTk;
-    } catch (e) {
-        console.debug('[Console] Token count failed:', e);
-    }
-}
+
 
 /** Open the Console app UI */
 export function openConsoleApp() {
@@ -263,13 +244,27 @@ function installFetchPatch() {
             entry.status = response.status;
             entry.duration = Math.round(performance.now() - startTime);
 
-            // Extract LLM info from response (clone to avoid consuming body)
+            // Extract LLM info from response — but SKIP for streaming (SSE)
+            // responses. Calling clone.json() on a stream blocks until the
+            // entire body is consumed, which delays returning the response
+            // to SillyTavern and breaks the typewriter streaming effect.
             if (isLLM && response.ok) {
-                try {
-                    const clone = response.clone();
-                    const data = await clone.json();
-                    entry.llmInfo = _extractLLMInfo(data, requestBody);
-                } catch { /* response not JSON or already consumed */ }
+                const contentType = response.headers.get('content-type') || '';
+                const isStreamingResponse =
+                    contentType.includes('text/event-stream') ||
+                    contentType.includes('text/plain') ||
+                    (requestBody && requestBody.stream === true);
+
+                if (isStreamingResponse) {
+                    // For streaming, just record the model from request body
+                    entry.llmInfo = { model: requestBody?.model || '?', streaming: true };
+                } else {
+                    try {
+                        const clone = response.clone();
+                        const data = await clone.json();
+                        entry.llmInfo = _extractLLMInfo(data, requestBody);
+                    } catch { /* response not JSON or already consumed */ }
+                }
             }
 
             _pushLog(_networkLogs, entry);
@@ -564,15 +559,7 @@ function renderPromptList() {
     return reversed.map((entry, i) => {
         const timeStr = formatTime(entry.time);
 
-        // Token count badges
-        const totalBadge = entry.totalTokens != null
-            ? `<span class="console-prompt-token-badge"><i class="ph ph-coins"></i> ${entry.totalTokens} tokens</span>`
-            : `<span class="console-prompt-token-badge" style="opacity:0.4;"><i class="ph ph-coins"></i> counting...</span>`;
 
-        const sysTokenLabel = entry.systemTokens != null
-            ? `<span class="console-prompt-token-inline">${entry.systemTokens} tk</span>` : '';
-        const usrTokenLabel = entry.userTokens != null
-            ? `<span class="console-prompt-token-inline">${entry.userTokens} tk</span>` : '';
 
         // Build structured section outline (collapsed view)
         const sysOutline = _buildSectionOutline(entry.systemPrompt);
@@ -582,26 +569,25 @@ function renderPromptList() {
         <div class="console-prompt-entry" data-prompt-index="${_promptLogs.length - 1 - i}">
             <div class="console-prompt-header">
                 <span class="console-prompt-label">${escHtml(entry.label)}</span>
-                ${totalBadge}
                 <span class="console-prompt-time">${timeStr}</span>
             </div>
             <div class="console-prompt-preview">
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">System Prompt ${sysTokenLabel}</div>
+                    <div class="console-prompt-section-title">System Prompt</div>
                     <div class="console-prompt-section-preview">${sysOutline}</div>
                 </div>
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">User Prompt ${usrTokenLabel}</div>
+                    <div class="console-prompt-section-title">User Prompt</div>
                     <div class="console-prompt-section-preview">${usrOutline}</div>
                 </div>
             </div>
             <div class="console-prompt-full" style="display:none;">
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">System Prompt (完整) ${sysTokenLabel}</div>
+                    <div class="console-prompt-section-title">System Prompt (完整)</div>
                     <pre class="console-prompt-full-text">${escHtml(entry.systemPrompt)}</pre>
                 </div>
                 <div class="console-prompt-section">
-                    <div class="console-prompt-section-title">User Prompt (完整) ${usrTokenLabel}</div>
+                    <div class="console-prompt-section-title">User Prompt (完整)</div>
                     <pre class="console-prompt-full-text">${escHtml(entry.userPrompt)}</pre>
                 </div>
             </div>

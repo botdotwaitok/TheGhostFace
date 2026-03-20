@@ -8,6 +8,7 @@ import { updateDiaryWorldInfo, parseDiaryFromChatOutput } from './diaryWorldInfo
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getContext, extension_settings, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata, saveSettingsDebounced } from '../../../../../../../script.js';
+import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
@@ -84,19 +85,19 @@ const CUSTOM_VAR_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════════════
 
 export function isDiaryEnabled() {
-    return localStorage.getItem('gf_phone_diary_enabled') !== 'false';
+    return getPhoneSetting('diaryEnabled', true);
 }
 
 export function setDiaryEnabled(enabled) {
-    localStorage.setItem('gf_phone_diary_enabled', String(enabled));
+    setPhoneSetting('diaryEnabled', enabled);
 }
 
 export function getDiaryMode() {
-    return localStorage.getItem('gf_phone_diary_mode') || 'manual';
+    return getPhoneSetting('diaryMode', 'manual');
 }
 
 export function setDiaryMode(mode) {
-    localStorage.setItem('gf_phone_diary_mode', mode);
+    setPhoneSetting('diaryMode', mode);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -622,11 +623,11 @@ function buildDetailView(entry) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function getSavedTheme() {
-    return localStorage.getItem(DIARY_THEME_KEY) || 'default';
+    return getPhoneSetting('diaryTheme', 'default');
 }
 
 function saveTheme(themeId) {
-    localStorage.setItem(DIARY_THEME_KEY, themeId);
+    setPhoneSetting('diaryTheme', themeId);
 }
 
 function applyTheme(themeId) {
@@ -655,17 +656,17 @@ function applyTheme(themeId) {
 
 function loadCustomVars() {
     try {
-        const raw = localStorage.getItem(DIARY_CUSTOM_KEY);
-        return raw ? JSON.parse(raw) : null;
+        const raw = getPhoneSetting('diaryCustomVars');
+        return raw || null;
     } catch { return null; }
 }
 
 function saveCustomVars(vars) {
-    localStorage.setItem(DIARY_CUSTOM_KEY, JSON.stringify(vars));
+    setPhoneSetting('diaryCustomVars', vars);
 }
 
 function clearCustomVars() {
-    localStorage.removeItem(DIARY_CUSTOM_KEY);
+    removePhoneSetting('diaryCustomVars');
     const root = document.getElementById('diary_page_root');
     if (!root) return;
     // Remove all custom CSS variables from inline style

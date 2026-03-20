@@ -2,6 +2,7 @@
 // 管理 Provider 注册/切换、录音（MediaRecorder）、WAV 转换（Web Worker）、统一回调。
 
 import { VoiceActivityDetector } from './vad.js';
+import { getPhoneSetting, setPhoneSetting } from '../phoneSettings.js';
 
 const LOG_PREFIX = '[SttEngine]';
 
@@ -436,14 +437,13 @@ export class SttEngine {
 
     _loadSettings() {
         try {
-            const raw = localStorage.getItem(SETTINGS_KEY);
-            if (raw) {
-                const parsed = JSON.parse(raw);
+            const saved = getPhoneSetting('sttSettings');
+            if (saved) {
                 return {
-                    provider: parsed.provider || 'none',
-                    language: parsed.language || 'zh-CN',
-                    vadEnabled: !!parsed.vadEnabled,
-                    providerSettings: parsed.providerSettings || {},
+                    provider: saved.provider || 'none',
+                    language: saved.language || 'zh-CN',
+                    vadEnabled: !!saved.vadEnabled,
+                    providerSettings: saved.providerSettings || {},
                 };
             }
         } catch { /* 静默 */ }
@@ -459,7 +459,7 @@ export class SttEngine {
 
     _saveSettings() {
         try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(this._settings));
+            setPhoneSetting('sttSettings', this._settings);
         } catch (e) {
             console.warn(`${LOG_PREFIX} save settings failed:`, e);
         }

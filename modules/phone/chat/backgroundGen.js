@@ -5,6 +5,7 @@
 
 import { callPhoneLLM } from '../../api.js';
 import { buildChatSystemPrompt, buildChatUserPrompt, stripMomentsCommands } from './chatPromptBuilder.js';
+import { persistPendingResult, loadPersistedPendingResult, clearPersistedPendingResult } from './chatStorage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Config
@@ -83,6 +84,7 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
 
             // ── Success! Store result and exit loop ──
             _pendingResult = { rawResponse, messagesToSend };
+            persistPendingResult(_pendingResult);  // Persist so it survives page refresh
             _error = null;
             console.log(`${LOG_PREFIX} Generation succeeded on attempt ${attempt + 1}.`);
             break;
@@ -139,8 +141,13 @@ export function cancelRetry() {
  * @returns {{ rawResponse: string, messagesToSend: string[] } | null}
  */
 export function consumePendingResult() {
-    const result = _pendingResult;
+    let result = _pendingResult;
+    // Fallback: check persistent storage (survives page refresh)
+    if (!result) {
+        result = loadPersistedPendingResult();
+    }
     _pendingResult = null;
+    clearPersistedPendingResult();
     return result;
 }
 
@@ -161,7 +168,7 @@ export function isBackgroundGenerating() {
 
 /** @returns {boolean} */
 export function hasPendingResult() {
-    return !!_pendingResult;
+    return !!_pendingResult || !!loadPersistedPendingResult();
 }
 
 /** @returns {boolean} */

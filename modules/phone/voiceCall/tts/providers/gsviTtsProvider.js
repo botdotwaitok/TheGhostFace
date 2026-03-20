@@ -55,6 +55,45 @@ export class GsviTtsProvider {
         return 'adapter'; // Default: adapter format (more common)
     }
 
+    // ─── Language Mapping: Chinese full names ↔ short codes (v2Pro compat) ───
+    // Old GPT-SoVITS versions accept Chinese names ('多语种混合'), v2Pro needs codes ('auto').
+    // EntityWhisper uses short codes ('zh','en','ja'), so we normalize here for compatibility.
+    static LANG_CHINESE_TO_CODE = {
+        '中文': 'zh', '英语': 'en', '日语': 'ja', '粤语': 'yue',
+        '韩语': 'ko', '中英混合': 'zh', '日英混合': 'ja',
+        '粤英混合': 'yue', '韩英混合': 'ko',
+        '多语种混合': 'auto', '多语种混合(粤语)': 'auto',
+    };
+
+    /**
+     * Normalize text_lang for Adapter API: try short code first, fall back to original.
+     * @param {string} lang - raw text_lang value (could be Chinese name or short code)
+     * @returns {string}
+     */
+    _normalizeTextLang(lang) {
+        if (!lang) return 'auto';
+        // Already a short code — pass through
+        if (/^[a-z]{2,4}$/i.test(lang)) return lang;
+        return GsviTtsProvider.LANG_CHINESE_TO_CODE[lang] || lang;
+    }
+
+    // ─── Split Method Mapping: Chinese full names → short codes (v2Pro compat) ───
+    static SPLIT_CHINESE_TO_CODE = {
+        '不切': 'cut0', '凑四句一切': 'cut1', '按50字切': 'cut2',
+        '按中文句号切': 'cut3', '按英文句号切': 'cut4', '按标点符号切': 'cut5',
+    };
+
+    /**
+     * Normalize text_split_method for v2Pro.
+     * @param {string} method
+     * @returns {string}
+     */
+    _normalizeSplitMethod(method) {
+        if (!method) return 'cut5';
+        if (/^cut\d$/i.test(method)) return method;
+        return GsviTtsProvider.SPLIT_CHINESE_TO_CODE[method] || method;
+    }
+
     // ─── Format 1: GPT-SoVITS Adapter (POST /) ───
     async _synthesizeAdapter(text, endpoint, settings) {
         const voiceId = settings.voiceId || '';
@@ -72,9 +111,9 @@ export class GsviTtsProvider {
             text,
             target_voice: targetVoice,
             use_st_adapter: true,
-            text_lang: settings.textLang || '多语种混合',
-            prompt_lang: settings.promptLang || '',
-            text_split_method: settings.textSplitMethod || '按标点符号切',
+            text_lang: this._normalizeTextLang(settings.textLang),
+            prompt_lang: this._normalizeTextLang(settings.promptLang),
+            text_split_method: this._normalizeSplitMethod(settings.textSplitMethod),
             batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
             media_type: 'wav',
             streaming_mode: 'false',
@@ -107,8 +146,6 @@ export class GsviTtsProvider {
         // Dynamic emotion from <say tone> parsing, validated against backend
         const rawEmotion = settings._emotion || settings.emotion || '默认';
         const emotion = await this.resolveEmotion(rawEmotion, voiceId, endpoint);
-        const textLang = settings.textLang || '多语种混合';
-        const promptLang = settings.promptLang || '中文';
 
         const requestBody = {
             model,
@@ -118,13 +155,13 @@ export class GsviTtsProvider {
             speed,
             other_params: {
                 app_key: '',
-                text_lang: settings.textLang || '多语种混合',
-                prompt_lang: settings.promptLang || '',
+                text_lang: this._normalizeTextLang(settings.textLang),
+                prompt_lang: this._normalizeTextLang(settings.promptLang),
                 emotion: emotion || '默认',
                 top_k: 10,
                 top_p: 1,
                 temperature: 1,
-                text_split_method: settings.textSplitMethod || '按标点符号切',
+                text_split_method: this._normalizeSplitMethod(settings.textSplitMethod),
                 batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
                 batch_threshold: 0.75,
                 split_bucket: true,

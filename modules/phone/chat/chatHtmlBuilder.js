@@ -96,6 +96,10 @@ export function buildChatPage(history) {
                         <i class="ph ph-broadcast"></i>
                         <span>${isKeepAliveEnabled() ? '保活中' : '保活'}</span>
                     </div>
+                    <div class="chat-plus-action" id="chat_plus_summarize_btn">
+                        <i class="ph ph-note"></i>
+                        <span>总结</span>
+                    </div>
                 </div>
                 <div class="chat-menu-cancel" id="chat_plus_cancel">取消</div>
             </div>

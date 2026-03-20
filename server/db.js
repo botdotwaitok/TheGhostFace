@@ -167,6 +167,12 @@ function initTables() {
             data      TEXT NOT NULL DEFAULT '{}',
             updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS dnd_data (
+            userId    TEXT PRIMARY KEY,
+            data      TEXT NOT NULL DEFAULT '{}',
+            updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     `);
     console.log('[DB] Tables initialized');
 }

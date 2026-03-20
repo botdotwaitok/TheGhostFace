@@ -1684,10 +1684,27 @@
 /* Home screen dark mode — memo widget */
 .phone-dark-mode .memo-widget {
     background: linear-gradient(180deg, #1a1a2e, #222236);
+    color: #e5e5ea;
+}
+
+.phone-dark-mode .memo-item-pending .memo-item-icon {
+    color: rgba(255, 255, 255, 0.25);
 }
 
 .phone-dark-mode .memo-item-done .memo-item-icon {
     color: #30d158;
+}
+
+.phone-dark-mode .memo-status {
+    color: #aeaeb2;
+}
+
+.phone-dark-mode .memo-status.memo-all-done {
+    color: #30d158;
+}
+
+.phone-dark-mode .memo-status.memo-partial {
+    color: #ffd60a;
 }
 
 .phone-dark-mode .phone-section-label {

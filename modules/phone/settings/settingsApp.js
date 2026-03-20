@@ -6,6 +6,7 @@ import { getTtsEngine } from '../voiceCall/tts/ttsInit.js';
 
 import { openAppInViewport } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
+import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
 import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
 import { getConfig as getAutoMsgConfig, saveConfig as saveAutoMsgConfig, startAutoMessageTimer, stopAutoMessageTimer, formatIntervalLabel } from '../chat/autoMessage.js';
 import { isDiaryEnabled, getDiaryMode, setDiaryEnabled, setDiaryMode } from '../diary/diaryApp.js';
@@ -1314,7 +1315,7 @@ export function openSettingsApp() {
         const wallpaperPreview = document.getElementById(`${P}_wallpaper_preview`);
         const wallpaperInput = document.getElementById(`${P}_wallpaper_input`);
 
-        const savedWallpaper = localStorage.getItem('gf_phone_wallpaper');
+        const savedWallpaper = getPhoneSetting('wallpaper');
         if (savedWallpaper && wallpaperPreview) {
             wallpaperPreview.style.backgroundImage = `url(${savedWallpaper})`;
             wallpaperPreview.querySelector('i')?.remove();
@@ -1331,7 +1332,7 @@ export function openSettingsApp() {
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     const base64 = ev.target.result;
-                    localStorage.setItem('gf_phone_wallpaper', base64);
+                    setPhoneSetting('wallpaper', base64);
                     applyWallpaper(base64);
                     if (wallpaperPreview) {
                         wallpaperPreview.style.backgroundImage = `url(${base64})`;
@@ -1345,7 +1346,7 @@ export function openSettingsApp() {
         }
 
         onClick(`${P}_wallpaper_reset_btn`, () => {
-            localStorage.removeItem('gf_phone_wallpaper');
+            removePhoneSetting('wallpaper');
             applyWallpaper(null);
             if (wallpaperPreview) {
                 wallpaperPreview.style.backgroundImage = '';
@@ -1358,7 +1359,7 @@ export function openSettingsApp() {
 
         // ═══ Appearance: Dark Mode Toggle ═══
         const darkToggle = document.getElementById(`${P}_dark_mode_toggle`);
-        const isDark = localStorage.getItem('gf_phone_dark_mode') === 'true';
+        const isDark = getPhoneSetting('darkMode', false);
         if (darkToggle) {
             darkToggle.setAttribute('aria-checked', String(isDark));
             if (isDark) darkToggle.classList.add('active');
@@ -1370,7 +1371,7 @@ export function openSettingsApp() {
                 const newState = !isNowDark;
                 darkToggle.setAttribute('aria-checked', String(newState));
                 darkToggle.classList.toggle('active', newState);
-                localStorage.setItem('gf_phone_dark_mode', String(newState));
+                setPhoneSetting('darkMode', newState);
                 applyDarkMode(newState);
                 showToast(newState ? '已切换为深色模式' : '已切换为浅色模式');
             });
@@ -1521,7 +1522,7 @@ export function openSettingsApp() {
 
         // ═══ Auto-Summarize: Memory Toggle ═══
         const autoSumMemToggle = document.getElementById(`${P}_auto_summarize_memory_toggle`);
-        const autoSumMemOn = localStorage.getItem('gf_phone_auto_summarize_memory') !== 'false'; // default ON
+        const autoSumMemOn = getPhoneSetting('autoSummarizeMemory', true);
         if (autoSumMemToggle) {
             autoSumMemToggle.setAttribute('aria-checked', String(autoSumMemOn));
             if (autoSumMemOn) autoSumMemToggle.classList.add('active');
@@ -1530,14 +1531,14 @@ export function openSettingsApp() {
                 const newState = !wasOn;
                 autoSumMemToggle.setAttribute('aria-checked', String(newState));
                 autoSumMemToggle.classList.toggle('active', newState);
-                localStorage.setItem('gf_phone_auto_summarize_memory', String(newState));
+                setPhoneSetting('autoSummarizeMemory', newState);
                 showToast(newState ? '自动压缩将提取记忆碎片 🧩' : '自动压缩仅做滚动总结');
             });
         }
 
         // ═══ Return Home: Memory Toggle + Sync Mode ═══
         const rhMemoryToggle = document.getElementById(`${P}_rh_memory_toggle`);
-        const rhMemoryOn = localStorage.getItem('gf_phone_rh_memory') === 'true';
+        const rhMemoryOn = getPhoneSetting('rhMemory', false);
         if (rhMemoryToggle) {
             rhMemoryToggle.setAttribute('aria-checked', String(rhMemoryOn));
             if (rhMemoryOn) rhMemoryToggle.classList.add('active');
@@ -1546,19 +1547,19 @@ export function openSettingsApp() {
                 const newState = !wasOn;
                 rhMemoryToggle.setAttribute('aria-checked', String(newState));
                 rhMemoryToggle.classList.toggle('active', newState);
-                localStorage.setItem('gf_phone_rh_memory', String(newState));
+                setPhoneSetting('rhMemory', newState);
                 showToast(newState ? '回家时将提取记忆碎片 🧩' : '记忆碎片提取已关闭');
             });
         }
 
-        const currentRhMode = localStorage.getItem('gf_phone_rh_sync_mode') || 'summary';
+        const currentRhMode = getPhoneSetting('rhSyncMode', 'summary');
         const rhModeCards = document.querySelectorAll('.phone-settings-mode-card[data-rh-mode]');
         rhModeCards.forEach(card => {
             if (card.dataset.rhMode === currentRhMode) card.classList.add('mode-selected');
             card.addEventListener('click', () => {
                 rhModeCards.forEach(c => c.classList.remove('mode-selected'));
                 card.classList.add('mode-selected');
-                localStorage.setItem('gf_phone_rh_sync_mode', card.dataset.rhMode);
+                setPhoneSetting('rhSyncMode', card.dataset.rhMode);
                 const label = card.dataset.rhMode === 'raw' ? '原文灌入' : '压缩总结';
                 showToast(`回家同步方式: ${label}`);
             });
@@ -2680,9 +2681,9 @@ export function applyDarkMode(enabled) {
 }
 
 export function applySavedAppearance() {
-    const wallpaper = localStorage.getItem('gf_phone_wallpaper');
+    const wallpaper = getPhoneSetting('wallpaper');
     if (wallpaper) applyWallpaper(wallpaper);
 
-    const isDark = localStorage.getItem('gf_phone_dark_mode') === 'true';
+    const isDark = getPhoneSetting('darkMode', false);
     applyDarkMode(isDark);
 }

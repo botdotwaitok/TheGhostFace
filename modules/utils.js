@@ -229,4 +229,26 @@ export async function findActiveWorldBook() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 🔢 Token Estimation (shared utility)
+// ═══════════════════════════════════════════════════════════════════════
 
+// Rough estimate: 1 CJK char ≈ 1.5 tokens, 1 English word (~4 ASCII chars) ≈ 1 token
+const CHARS_PER_TOKEN_EST = 1.5;
+
+/**
+ * 粗略估算文本的 token 数
+ * CJK 字符按 1.5 tokens/字 计算，ASCII 按 4 字符/token 计算
+ * @param {string} text
+ * @returns {number}
+ */
+export function estimateTokens(text) {
+    if (!text) return 0;
+    let cjk = 0;
+    let ascii = 0;
+    for (const ch of text) {
+        if (ch.charCodeAt(0) > 0x2E7F) cjk++;
+        else if (/\S/.test(ch)) ascii++;
+    }
+    return Math.ceil(cjk * CHARS_PER_TOKEN_EST + ascii / 4);
+}

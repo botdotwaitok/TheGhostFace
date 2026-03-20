@@ -31,7 +31,7 @@ import {
 import {
     showReactionPicker, dismissReactionPicker, toggleReaction,
 } from './chatReactions.js';
-import { renderBuffBar, renderChatInventory, handleReturnHome } from './chatInventory.js';
+import { renderBuffBar, renderChatInventory, handleReturnHome, handleManualSummarize } from './chatInventory.js';
 import { beginRecording, clearPendingVoiceData, getPendingVoiceData } from './chatVoice.js';
 import { handleImageSelection, showImageLightbox } from './chatImage.js';
 import { handleVoicePlayback } from './chatVoice.js';
@@ -398,6 +398,15 @@ function bindChatEvents() {
         returnHomeBtn.addEventListener('click', () => {
             plusOverlay?.classList.remove('active');
             handleReturnHome();
+        });
+    }
+
+    // ─── Plus panel: "总结" ───
+    const summarizeBtn = document.getElementById('chat_plus_summarize_btn');
+    if (summarizeBtn) {
+        summarizeBtn.addEventListener('click', () => {
+            plusOverlay?.classList.remove('active');
+            handleManualSummarize();
         });
     }
 

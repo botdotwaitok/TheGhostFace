@@ -28,6 +28,7 @@ let _hangupConfirmTimeout = null;  // Auto-revert hangup confirmation
 let _callId = null;
 let _callMessages = [];    // Transcript: [{ role: 'user'|'char', content, timestamp }]
 let _isProcessingLLM = false;  // Guard: prevent overlapping LLM requests
+let _isTtsPlaying = false;     // Guard: suppress STT while TTS is playing
 let _callOptions = {};     // Options passed from caller (e.g. { chatContext: true })
 
 // ─── Ringing Stage State ───
@@ -506,6 +507,7 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
     _callId = null;
     _callMessages = [];
     _isProcessingLLM = false;
+    _isTtsPlaying = false;
     _callOptions = {};
 
     _unmountUI();
@@ -716,11 +718,11 @@ function _onSttStateChange(state) {
     // 🔄 Auto-restart STT when it goes idle — keeps the voice call loop alive
     if (state === 'idle' && _overlayMounted && _sttEngine) {
         const isMuted = micBtn.classList.contains('muted');
-        if (!isMuted) {
+        if (!isMuted && !_isTtsPlaying) {
             // Small delay to avoid race conditions with MediaRecorder cleanup
             setTimeout(() => {
                 // Re-check conditions after delay
-                if (_overlayMounted && _sttEngine && _sttEngine.state === 'idle') {
+                if (_overlayMounted && _sttEngine && _sttEngine.state === 'idle' && !_isTtsPlaying) {
                     console.debug('[VoiceCallUI] Auto-restarting STT...');
                     _sttEngine.startListening({ continuous: true }).catch(e => {
                         console.warn('[VoiceCallUI] STT auto-restart failed:', e);
@@ -861,6 +863,11 @@ async function _sendToLLM(text) {
         let audioDuration = 0;
         let audioPath = null;
         if (_ttsEngine) {
+            _isTtsPlaying = true;
+            // Stop STT during TTS to prevent capturing speaker output
+            if (_sttEngine && _sttEngine.state === 'listening') {
+                _sttEngine.stopListening();
+            }
             try {
                 const ttsResult = await _ttsEngine.speakAndCapture(displayText, emotion);
                 if (ttsResult) {
@@ -876,6 +883,8 @@ async function _sendToLLM(text) {
                 }
             } catch (e) {
                 console.warn(`${LOG_PREFIX} TTS failed, text-only fallback`, e);
+            } finally {
+                _isTtsPlaying = false;
             }
         }
 
