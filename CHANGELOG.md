@@ -7,6 +7,22 @@ All notable changes to TheGhostFace will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- 🎲 D&D App：后日谈系统 — 胜利通关后搭档角色以日记形式写下200-400字冒险回忆
+- 🎲 D&D App：多设备数据同步（与树树 App 同模式）
+- 🎲 D&D App：大商店系统 — 商品从6件扩展到31件（药水/武器/防具/卷轴/补给/饰品），商店和背包均增加分类Tab按钮
+- 🎲 D&D App：新角色起始15gp金币
+
+### Changed
+- 💬 聊天：打字性能优化 — `updateButtonStates()` 状态缓存避免每次按键重写 innerHTML、textarea resize 批量化、`escHtml()` 复用 DOM 元素、CSS 合成层优化
+
+### Fixed
+- 📞 语音通话：修复 STT 在 TTS 播放结束后不自动恢复的问题
+- 📞 语音通话：修复 TTS 合成 400 错误（ref_audio 时长不足3秒）
+- 🎲 D&D App：小屏幕 UI 响应式适配（`@media` queries）
+- 🎲 D&D App：修复宝箱/战斗/探索中金币类战利品不入账的 bug（物品被当作字符串塞背包，现在自动转为 gold 字段）
+- 🌳 树树：修复生成默契/真心话题目时界面卡死的问题 — LLM 调用增加 60s/90s 超时，生成页面新增"跳过"按钮，自动补充改为非阻塞提示条
+
 ---
 
 ## [4.1.6] — 2026-03-19

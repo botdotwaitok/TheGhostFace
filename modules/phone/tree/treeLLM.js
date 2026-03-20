@@ -542,7 +542,7 @@ ${charContext}
  *   返回 'approve' 通过，'retry' 重新生成
  * @param {number} [options.maxRetries=3] - 每步最多重试次数
  */
-export async function generateContentStepByStep({ onStepStart, onStepComplete, maxRetries = 3, skipCareLines = false, skipQuiz = false, skipTod = false } = {}) {
+export async function generateContentStepByStep({ onStepStart, onStepComplete, maxRetries = 3, skipCareLines = false, skipQuiz = false, skipTod = false, signal = null } = {}) {
     const data = loadTreeData();
     const stageId = data.treeState.stage;
 
@@ -561,6 +561,7 @@ export async function generateContentStepByStep({ onStepStart, onStepComplete, m
         totalSteps: stepsToRun,
         stepName: '照顾台词',
         maxRetries,
+        signal,
         onStepStart,
         onStepComplete,
         generateFn: async () => {
@@ -589,6 +590,7 @@ export async function generateContentStepByStep({ onStepStart, onStepComplete, m
         totalSteps: stepsToRun,
         stepName: '默契挑战题目',
         maxRetries,
+        signal,
         onStepStart,
         onStepComplete,
         generateFn: async () => {
@@ -622,6 +624,7 @@ export async function generateContentStepByStep({ onStepStart, onStepComplete, m
         totalSteps: stepsToRun,
         stepName: '真心话题目',
         maxRetries,
+        signal,
         onStepStart,
         onStepComplete,
         generateFn: async () => {
@@ -648,10 +651,16 @@ export async function generateContentStepByStep({ onStepStart, onStepComplete, m
 /**
  * 执行单步生成 + 玩家质检循环
  */
-async function _runStepWithQC({ step, totalSteps, stepName, maxRetries, onStepStart, onStepComplete, generateFn, clearFn }) {
+async function _runStepWithQC({ step, totalSteps, stepName, maxRetries, signal, onStepStart, onStepComplete, generateFn, clearFn }) {
     let retries = 0;
 
     while (retries <= maxRetries) {
+        // Check if aborted (user clicked skip)
+        if (signal?.aborted) {
+            console.log(`${LOG} ${stepName} 已被用户取消`);
+            throw new Error('用户取消生成');
+        }
+
         // Notify step start
         if (typeof onStepStart === 'function') {
             onStepStart({ step, totalSteps, stepName });
@@ -662,6 +671,10 @@ async function _runStepWithQC({ step, totalSteps, stepName, maxRetries, onStepSt
         try {
             result = await generateFn();
         } catch (e) {
+            // If aborted mid-generation, propagate immediately
+            if (signal?.aborted) {
+                throw new Error('用户取消生成');
+            }
             console.warn(`${LOG} ${stepName} 生成失败 (尝试 ${retries + 1}):`, e.message);
             result = { samples: [], rawCount: 0 };
         }

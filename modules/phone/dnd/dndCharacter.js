@@ -328,6 +328,7 @@ export function createCharacter({ name, raceId, classId, baseStats, proficientSk
         class: classId,
         level,
         xp: 0,
+        gold: 15,  // starting gold
         stats,
         proficiencyBonus: profBonus,
         ac,
@@ -858,16 +859,62 @@ export function consumeSpellSlot(character, spellLevel) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Shop Items
+// Shop Categories & Items
 // ═══════════════════════════════════════════════════════════════════════
 
+export const SHOP_CATEGORIES = [
+    { id: 'all',     name: '全部',  icon: 'ph-squares-four' },
+    { id: 'potion',  name: '药水',  icon: 'ph-flask' },
+    { id: 'weapon',  name: '武器',  icon: 'ph-sword' },
+    { id: 'armor',   name: '防具',  icon: 'ph-shield' },
+    { id: 'scroll',  name: '卷轴',  icon: 'ph-scroll' },
+    { id: 'supply',  name: '补给',  icon: 'ph-package' },
+    { id: 'trinket', name: '饰品',  icon: 'ph-diamond' },
+];
+
 export const SHOP_ITEMS = [
-    { id: 'healing_potion',    name: '治疗药水',     nameEn: 'Healing Potion',         price: 50,  icon: 'ph-flask',     description: '恢复 2D4+2 HP' },
-    { id: 'greater_healing',   name: '高等治疗药水', nameEn: 'Greater Healing Potion',  price: 150, icon: 'ph-flask',     description: '恢复 4D4+4 HP' },
-    { id: 'antidote',          name: '解毒药剂',     nameEn: 'Antidote',                price: 30,  icon: 'ph-drop',      description: '解除中毒状态' },
-    { id: 'arrows_20',         name: '箭矢×20',     nameEn: 'Arrows (20)',             price: 10,  icon: 'ph-arrow-up-right', description: '20支箭矢' },
-    { id: 'torch_5',           name: '火把×5',      nameEn: 'Torches (5)',             price: 5,   icon: 'ph-flame',     description: '照明用火把' },
-    { id: 'rope_50',           name: '绳索(50尺)',  nameEn: 'Rope (50 ft)',            price: 10,  icon: 'ph-lasso',     description: '攀爬、捆绑用' },
+    // ── 药水 (potion) ──
+    { id: 'healing_potion',      name: '治疗药水',       nameEn: 'Healing Potion',           price: 50,   icon: 'ph-flask',          category: 'potion', description: '恢复 2D4+2 HP' },
+    { id: 'greater_healing',     name: '高等治疗药水',   nameEn: 'Greater Healing Potion',   price: 150,  icon: 'ph-flask',          category: 'potion', description: '恢复 4D4+4 HP' },
+    { id: 'antidote',            name: '解毒药剂',       nameEn: 'Antidote',                 price: 30,   icon: 'ph-drop',           category: 'potion', description: '解除中毒状态' },
+    { id: 'strength_potion',     name: '力量药水',       nameEn: 'Potion of Strength',       price: 75,   icon: 'ph-flask',          category: 'potion', description: '下次战斗近战伤害+2' },
+    { id: 'invisibility_potion', name: '隐身药水',       nameEn: 'Potion of Invisibility',   price: 100,  icon: 'ph-flask',          category: 'potion', description: '下次战斗首回合获得隐身' },
+    { id: 'fire_resist_potion',  name: '抗火药剂',       nameEn: 'Potion of Fire Resistance',price: 50,   icon: 'ph-drop',           category: 'potion', description: '火焰伤害减半' },
+    { id: 'giant_str_potion',    name: '巨人力量药水',   nameEn: 'Potion of Giant Strength', price: 300,  icon: 'ph-flask',          category: 'potion', description: '力量临时变为21' },
+
+    // ── 武器 (weapon) ──
+    { id: 'silver_dagger',       name: '银匕首',         nameEn: 'Silver Dagger',            price: 25,   icon: 'ph-knife',          category: 'weapon', description: '对狼人/变形生物有效' },
+    { id: 'fine_longsword',      name: '精制长剑',       nameEn: 'Fine Longsword',           price: 200,  icon: 'ph-sword',          category: 'weapon', description: '精工铸造，攻击+1' },
+    { id: 'fine_longbow',        name: '精制长弓',       nameEn: 'Fine Longbow',             price: 200,  icon: 'ph-arrow-up-right', category: 'weapon', description: '精工制作，远程攻击+1' },
+    { id: 'throwing_axe',        name: '回旋飞斧',       nameEn: 'Throwing Axe',             price: 50,   icon: 'ph-axe',            category: 'weapon', description: '投掷武器，可远程攻击' },
+    { id: 'poison_dagger',       name: '淬毒匕首',       nameEn: 'Poisoned Dagger',          price: 80,   icon: 'ph-knife',          category: 'weapon', description: '额外 1D4 毒素伤害' },
+
+    // ── 防具 (armor) ──
+    { id: 'wooden_shield',       name: '木盾',           nameEn: 'Wooden Shield',            price: 10,   icon: 'ph-shield',         category: 'armor',  description: 'AC+2' },
+    { id: 'fine_scale_mail',     name: '精制鳞甲',       nameEn: 'Fine Scale Mail',          price: 400,  icon: 'ph-shield',         category: 'armor',  description: '精工铸造的鳞甲，AC+1' },
+    { id: 'cloak_of_resistance', name: '抗性披风',       nameEn: 'Cloak of Resistance',      price: 150,  icon: 'ph-coat-hanger',    category: 'armor',  description: '豁免检定+1' },
+    { id: 'ring_of_vitality',    name: '生命之戒',       nameEn: 'Ring of Vitality',         price: 250,  icon: 'ph-ring',           category: 'armor',  description: '最大 HP+5' },
+
+    // ── 卷轴 (scroll) ──
+    { id: 'scroll_cure',         name: '卷轴：治疗创伤', nameEn: 'Scroll: Cure Wounds',      price: 50,   icon: 'ph-scroll',         category: 'scroll', description: '恢复 1D8+3 HP' },
+    { id: 'scroll_fireball',     name: '卷轴：火球术',   nameEn: 'Scroll: Fireball',         price: 150,  icon: 'ph-scroll',         category: 'scroll', description: '全体敌人 8D6 火焰伤害' },
+    { id: 'scroll_lightning',    name: '卷轴：闪电箭',   nameEn: 'Scroll: Lightning Bolt',   price: 120,  icon: 'ph-scroll',         category: 'scroll', description: '直线 8D6 闪电伤害' },
+    { id: 'scroll_bless',        name: '卷轴：祝福术',   nameEn: 'Scroll: Bless',            price: 60,   icon: 'ph-scroll',         category: 'scroll', description: '攻击和豁免+1D4' },
+    { id: 'scroll_teleport',     name: '卷轴：传送术',   nameEn: 'Scroll: Teleport',         price: 300,  icon: 'ph-scroll',         category: 'scroll', description: '直接传送到下一房间' },
+
+    // ── 补给 (supply) ──
+    { id: 'arrows_20',           name: '箭矢×20',       nameEn: 'Arrows (20)',              price: 10,   icon: 'ph-arrow-up-right', category: 'supply', description: '20支箭矢' },
+    { id: 'bolts_20',            name: '弩矢×20',       nameEn: 'Bolts (20)',               price: 10,   icon: 'ph-arrow-up-right', category: 'supply', description: '20支弩矢' },
+    { id: 'torch_5',             name: '火把×5',        nameEn: 'Torches (5)',              price: 5,    icon: 'ph-flame',          category: 'supply', description: '照明用火把' },
+    { id: 'rope_50',             name: '绳索(50尺)',    nameEn: 'Rope (50 ft)',             price: 10,   icon: 'ph-lasso',          category: 'supply', description: '攀爬、捆绑用' },
+    { id: 'trap_kit',            name: '陷阱工具包',     nameEn: 'Trap Kit',                 price: 25,   icon: 'ph-wrench',         category: 'supply', description: '拆除和设置陷阱' },
+    { id: 'iron_spikes',         name: '铁钉×10',       nameEn: 'Iron Spikes (10)',         price: 5,    icon: 'ph-push-pin',       category: 'supply', description: '固定绳索或卡住门' },
+
+    // ── 饰品 (trinket) ──
+    { id: 'holy_water',          name: '圣水',           nameEn: 'Holy Water',               price: 25,   icon: 'ph-drop',           category: 'trinket', description: '对不死/邪魔 2D6 光辉伤害' },
+    { id: 'lucky_coin',          name: '幸运币',         nameEn: 'Lucky Coin',               price: 15,   icon: 'ph-coin',           category: 'trinket', description: '下次检定可重掷一次' },
+    { id: 'warding_charm',       name: '驱邪圣符',       nameEn: 'Warding Charm',            price: 50,   icon: 'ph-shield-star',    category: 'trinket', description: '下次战斗 AC+1' },
+    { id: 'adventurer_kit',      name: '冒险者补给包',   nameEn: 'Adventurer Kit',           price: 15,   icon: 'ph-backpack',       category: 'trinket', description: '补充背包中的基本物资' },
 ];
 
 /**
@@ -878,12 +925,37 @@ export function getShopItemName(shopItemId) {
     if (!item) return null;
     // Map shopItem IDs to inventory string names
     const nameMap = {
-        healing_potion:  '治疗药水x1',
-        greater_healing: '高等治疗药水x1',
-        antidote:        '解毒药剂',
-        arrows_20:       '箭矢x20',
-        torch_5:         '火把x5',
-        rope_50:         '绳索(50尺)',
+        healing_potion:       '治疗药水x1',
+        greater_healing:      '高等治疗药水x1',
+        antidote:             '解毒药剂',
+        strength_potion:      '力量药水',
+        invisibility_potion:  '隐身药水',
+        fire_resist_potion:   '抗火药剂',
+        giant_str_potion:     '巨人力量药水',
+        silver_dagger:        '银匕首',
+        fine_longsword:       '精制长剑',
+        fine_longbow:         '精制长弓',
+        throwing_axe:         '回旋飞斧',
+        poison_dagger:        '淬毒匕首',
+        wooden_shield:        '木盾',
+        fine_scale_mail:      '精制鳞甲',
+        cloak_of_resistance:  '抗性披风',
+        ring_of_vitality:     '生命之戒',
+        scroll_cure:          '卷轴：治疗创伤',
+        scroll_fireball:      '卷轴：火球术',
+        scroll_lightning:     '卷轴：闪电箭',
+        scroll_bless:         '卷轴：祝福术',
+        scroll_teleport:      '卷轴：传送术',
+        arrows_20:            '箭矢x20',
+        bolts_20:             '弩矢x20',
+        torch_5:              '火把x5',
+        rope_50:              '绳索(50尺)',
+        trap_kit:             '陷阱工具包',
+        iron_spikes:          '铁钉x10',
+        holy_water:           '圣水',
+        lucky_coin:           '幸运币',
+        warding_charm:        '驱邪圣符',
+        adventurer_kit:       '冒险者补给包',
     };
     return nameMap[shopItemId] || item.name;
 }
@@ -906,45 +978,67 @@ export function getShopItemName(shopItemId) {
  */
 const ITEM_REGISTRY = [
     // ── Healing ──
-    { pattern: /高等治疗药水/,     type: 'healing', usable: true, consumed: true, icon: 'ph-flask',          label: '使用', effect: { dice: '4D4', bonus: 4 } },
-    { pattern: /治疗药水/,         type: 'healing', usable: true, consumed: true, icon: 'ph-flask',          label: '使用', effect: { dice: '2D4', bonus: 2 } },
+    { pattern: /巨人力量药水/,     type: 'healing', usable: true, consumed: true, icon: 'ph-flask',          category: 'potion', label: '使用', effect: { dice: '0', bonus: 0, description: '力量临时变为21' } },
+    { pattern: /高等治疗药水/,     type: 'healing', usable: true, consumed: true, icon: 'ph-flask',          category: 'potion', label: '使用', effect: { dice: '4D4', bonus: 4 } },
+    { pattern: /治疗药水/,         type: 'healing', usable: true, consumed: true, icon: 'ph-flask',          category: 'potion', label: '使用', effect: { dice: '2D4', bonus: 2 } },
+    { pattern: /力量药水/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-flask',       category: 'potion', label: '使用', effect: { stat: 'damage', bonus: 2, duration: 'combat', description: '下次战斗近战伤害+2' } },
+    { pattern: /隐身药水/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-flask',       category: 'potion', label: '使用', effect: { description: '下次战斗首回合获得隐身效果' } },
+    { pattern: /抗火药剂/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-drop',        category: 'potion', label: '使用', effect: { description: '火焰伤害减半' } },
+    { pattern: /解毒药剂/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-drop',        category: 'potion', label: '使用', effect: { description: '解除中毒状态' } },
 
     // ── Currency / Valuables ──
-    { pattern: /(\d+)\s*gp/,       type: 'currency', usable: true, consumed: true, icon: 'ph-coins',         label: '兑换', effect: { gold: 0 } },  // gold parsed dynamically
-    { pattern: /金币[x×]?(\d+)/,   type: 'currency', usable: true, consumed: true, icon: 'ph-coins',         label: '兑换', effect: { gold: 0 } },
-    { pattern: /灵魂币[x×]?(\d+)/, type: 'currency', usable: true, consumed: true, icon: 'ph-coin',          label: '兑换', effect: { gold: 0 } },
-    { pattern: /宝石/,             type: 'currency', usable: true, consumed: true, icon: 'ph-diamond',        label: '兑换', effect: { gold: 25 } },
+    { pattern: /(\d+)\s*gp/,       type: 'currency', usable: true, consumed: true, icon: 'ph-coins',         category: 'trinket', label: '兑换', effect: { gold: 0 } },  // gold parsed dynamically
+    { pattern: /金币[x×]?(\d+)/,   type: 'currency', usable: true, consumed: true, icon: 'ph-coins',         category: 'trinket', label: '兑换', effect: { gold: 0 } },
+    { pattern: /灵魂币[x×]?(\d+)/, type: 'currency', usable: true, consumed: true, icon: 'ph-coin',          category: 'trinket', label: '兑换', effect: { gold: 0 } },
+    { pattern: /宝石/,             type: 'currency', usable: true, consumed: true, icon: 'ph-diamond',        category: 'trinket', label: '兑换', effect: { gold: 25 } },
 
-    // ── Equipment (kept after use) ──
-    { pattern: /\+1\s*长剑/,       type: 'equipment', usable: true, consumed: false, icon: 'ph-sword',        label: '装备', effect: { stat: 'attack', bonus: 1, desc: '攻击+1' } },
-    { pattern: /太阳之剑/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-sun',          label: '装备', effect: { stat: 'attack', bonus: 2, desc: '攻击+2，对不死生物额外光辉伤害' } },
-    { pattern: /地狱钢铁武器/,     type: 'equipment', usable: true, consumed: false, icon: 'ph-sword',        label: '装备', effect: { stat: 'attack', bonus: 1, desc: '攻击+1，对天界生物额外伤害' } },
-    { pattern: /鳞甲/,             type: 'equipment', usable: true, consumed: false, icon: 'ph-shield',       label: '装备', effect: { stat: 'ac', bonus: 2, desc: 'AC+2' } },
-    { pattern: /隐形斗篷/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-eye-slash',    label: '装备', effect: { stat: 'ac', bonus: 1, desc: 'AC+1，潜行检定优势' } },
+    // ── Equipment — shop weapons (kept after use) ──
+    { pattern: /精制长剑/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-sword',        category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 1, desc: '攻击+1' } },
+    { pattern: /精制长弓/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-arrow-up-right', category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 1, desc: '远程攻击+1' } },
+    { pattern: /淬毒匕首/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-knife',        category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 0, desc: '额外1D4毒素伤害' } },
+    { pattern: /回旋飞斧/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-axe',          category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 0, desc: '可投掷的近战武器' } },
+    { pattern: /银匕首/,           type: 'equipment', usable: true, consumed: false, icon: 'ph-knife',        category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 0, desc: '对狼人/变形生物有效' } },
+
+    // ── Equipment — loot weapons ──
+    { pattern: /\+1\s*长剑/,       type: 'equipment', usable: true, consumed: false, icon: 'ph-sword',        category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 1, desc: '攻击+1' } },
+    { pattern: /太阳之剑/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-sun',          category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 2, desc: '攻击+2，对不死生物额外光辉伤害' } },
+    { pattern: /地狱钢铁武器/,     type: 'equipment', usable: true, consumed: false, icon: 'ph-sword',        category: 'weapon', label: '装备', effect: { stat: 'attack', bonus: 1, desc: '攻击+1，对天界生物额外伤害' } },
+
+    // ── Equipment — armor ──
+    { pattern: /木盾/,             type: 'equipment', usable: true, consumed: false, icon: 'ph-shield',       category: 'armor', label: '装备', effect: { stat: 'ac', bonus: 2, desc: 'AC+2' } },
+    { pattern: /精制鳞甲/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-shield',       category: 'armor', label: '装备', effect: { stat: 'ac', bonus: 1, desc: 'AC+1' } },
+    { pattern: /抗性披风/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-coat-hanger',  category: 'armor', label: '装备', effect: { stat: 'ac', bonus: 0, desc: '豁免检定+1' } },
+    { pattern: /生命之戒/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-ring',         category: 'armor', label: '装备', effect: { stat: 'hp', bonus: 5, desc: '最大HP+5' } },
+    { pattern: /隐形斗篷/,         type: 'equipment', usable: true, consumed: false, icon: 'ph-eye-slash',    category: 'armor', label: '装备', effect: { stat: 'ac', bonus: 1, desc: 'AC+1，潜行检定优势' } },
+    { pattern: /鳞甲/,             type: 'equipment', usable: true, consumed: false, icon: 'ph-shield',       category: 'armor', label: '装备', effect: { stat: 'ac', bonus: 2, desc: 'AC+2' } },
 
     // ── Scrolls (one-time spell) ──
-    { pattern: /卷轴[：:](.+)/,    type: 'scroll', usable: true, consumed: true, icon: 'ph-scroll',          label: '使用', effect: { dice: '3D4+3', description: '释放卷轴中的法术' } },
+    { pattern: /卷轴[：:](.+)/,    type: 'scroll', usable: true, consumed: true, icon: 'ph-scroll',          category: 'scroll', label: '使用', effect: { dice: '3D4+3', description: '释放卷轴中的法术' } },
 
     // ── Consumables with specific effects ──
-    { pattern: /圣水/,             type: 'consumable', usable: true, consumed: true, icon: 'ph-drop',         label: '使用', effect: { dice: '2D6', description: '对不死/邪魔造成2D6光辉伤害' } },
-    { pattern: /解毒药剂/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-drop',         label: '使用', effect: { description: '解除中毒状态' } },
-    { pattern: /银弩矢/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-arrow-up-right', label: '装备', effect: { description: '装备银弩矢，对狼人等变形生物有效' } },
+    { pattern: /圣水/,             type: 'consumable', usable: true, consumed: true, icon: 'ph-drop',         category: 'trinket', label: '使用', effect: { dice: '2D6', description: '对不死/邪魔造成2D6光辉伤害' } },
+    { pattern: /银弩矢/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-arrow-up-right', category: 'supply', label: '装备', effect: { description: '装备银弩矢，对狼人等变形生物有效' } },
+    { pattern: /幸运币/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-coin',         category: 'trinket', label: '使用', effect: { description: '下次检定可重掷一次' } },
+    { pattern: /驱邪圣符/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-shield-star', category: 'trinket', label: '使用', effect: { stat: 'ac', bonus: 1, duration: 'combat', description: '下次战斗AC+1' } },
+    { pattern: /冒险者补给包/,     type: 'consumable', usable: true, consumed: true, icon: 'ph-backpack',    category: 'trinket', label: '使用', effect: { description: '补充背包中的基本物资' } },
 
     // ── Ammo / Supplies ──
-    { pattern: /箭矢/,             type: 'ammo', usable: false, consumed: false, icon: 'ph-arrow-up-right',   label: '' },
-    { pattern: /弩矢/,             type: 'ammo', usable: false, consumed: false, icon: 'ph-arrow-up-right',   label: '' },
-    { pattern: /火把/,             type: 'utility', usable: true, consumed: true, icon: 'ph-flame',           label: '使用', effect: { description: '点燃火把照亮周围' } },
-    { pattern: /绳索/,             type: 'utility', usable: true, consumed: true, icon: 'ph-lasso',           label: '使用', effect: { description: '使用绳索攀爬或捆绑' } },
+    { pattern: /箭矢/,             type: 'ammo', usable: false, consumed: false, icon: 'ph-arrow-up-right',   category: 'supply', label: '' },
+    { pattern: /弩矢/,             type: 'ammo', usable: false, consumed: false, icon: 'ph-arrow-up-right',   category: 'supply', label: '' },
+    { pattern: /火把/,             type: 'utility', usable: true, consumed: true, icon: 'ph-flame',           category: 'supply', label: '使用', effect: { description: '点燃火把照亮周围' } },
+    { pattern: /绳索/,             type: 'utility', usable: true, consumed: true, icon: 'ph-lasso',           category: 'supply', label: '使用', effect: { description: '使用绳索攀爬或捆绑' } },
+    { pattern: /陷阱工具包/,       type: 'utility', usable: true, consumed: true, icon: 'ph-wrench',         category: 'supply', label: '使用', effect: { description: '使用工具拆除或设置陷阱' } },
+    { pattern: /铁钉/,             type: 'utility', usable: true, consumed: true, icon: 'ph-push-pin',       category: 'supply', label: '使用', effect: { description: '用铁钉固定绳索或卡住门' } },
 
-    // ── Protective trinkets (consumable buffs) ──
-    { pattern: /圣符文/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-shield-star',  label: '使用', effect: { stat: 'ac', bonus: 1, duration: 'combat', description: '神圣符文：下次战斗AC+1' } },
-    { pattern: /护身符/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-shield-star',  label: '使用', effect: { description: '护身符散发微光，抵御邪恶侵袭' } },
-    { pattern: /天界护符/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-star',         label: '使用', effect: { stat: 'ac', bonus: 2, duration: 'combat', description: '天界护符：下次战斗AC+2' } },
-    { pattern: /识破宝石/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-eye',          label: '使用', effect: { description: '宝石闪耀，揭示隐藏的魔法和陷阱' } },
+    // ── Protective trinkets (consumable buffs from loot) ──
+    { pattern: /圣符文/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-shield-star',  category: 'trinket', label: '使用', effect: { stat: 'ac', bonus: 1, duration: 'combat', description: '神圣符文：下次战斗AC+1' } },
+    { pattern: /护身符/,           type: 'consumable', usable: true, consumed: true, icon: 'ph-shield-star',  category: 'trinket', label: '使用', effect: { description: '护身符散发微光，抵御邪恶侵袭' } },
+    { pattern: /天界护符/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-star',         category: 'trinket', label: '使用', effect: { stat: 'ac', bonus: 2, duration: 'combat', description: '天界护符：下次战斗AC+2' } },
+    { pattern: /识破宝石/,         type: 'consumable', usable: true, consumed: true, icon: 'ph-eye',          category: 'trinket', label: '使用', effect: { description: '宝石闪耀，揭示隐藏的魔法和陷阱' } },
 
     // ── Quest / Flavor items (no use) ──
-    { pattern: /碎片/,             type: 'quest', usable: false, consumed: false, icon: 'ph-map-trifold',     label: '' },
-    { pattern: /零件/,             type: 'quest', usable: false, consumed: false, icon: 'ph-gear',            label: '' },
+    { pattern: /碎片/,             type: 'quest', usable: false, consumed: false, icon: 'ph-map-trifold',     category: 'trinket', label: '' },
+    { pattern: /零件/,             type: 'quest', usable: false, consumed: false, icon: 'ph-gear',            category: 'supply', label: '' },
 ];
 
 /**
@@ -953,7 +1047,7 @@ const ITEM_REGISTRY = [
  * Falls back to a generic usable item if no rule matches.
  *
  * @param {string} itemName
- * @returns {{ type, usable, consumed, icon, label, effect, match }}
+ * @returns {{ type, usable, consumed, icon, label, effect, match, category }}
  */
 export function getItemInfo(itemName) {
     for (const rule of ITEM_REGISTRY) {
@@ -981,11 +1075,23 @@ export function getItemInfo(itemName) {
 
     // ── Fallback: generic item, usable via LLM narration ──
     // Starting equipment items (weapons/armor/packs) are not usable
-    const isStartingGear = /长剑|短剑|长弓|短弓|弯刀|巨斧|细剑|法杖|钉锤|飞镖|标枪|匕首|盾牌|锁子甲|皮甲|鳞甲|法术书|成分包|圣物|背包|德鲁伊法器|盗贼工具|乐器/.test(itemName);
+    const isStartingGear = /长剑|短剑|长弓|短弓|弯刀|巨斧|细剑|法杖|钉锤|飞镖|标枪|匕首|盾牌|锁子甲|皮甲|法术书|成分包|圣物|背包|德鲁伊法器|盗贼工具|乐器/.test(itemName);
     if (isStartingGear) {
-        return { type: 'gear', usable: false, consumed: false, icon: 'ph-sword', label: '', effect: null, match: null };
+        return { type: 'gear', usable: false, consumed: false, icon: 'ph-sword', label: '', effect: null, match: null, category: 'weapon' };
     }
 
-    return { type: 'misc', usable: true, consumed: true, icon: 'ph-package', label: '使用', effect: { description: '使用此物品' }, match: null };
+    return { type: 'misc', usable: true, consumed: true, icon: 'ph-package', label: '使用', effect: { description: '使用此物品' }, match: null, category: 'trinket' };
+}
+
+/**
+ * Get the display category for an inventory item.
+ * Maps ITEM_REGISTRY types to SHOP_CATEGORIES IDs.
+ * @param {string} itemName
+ * @returns {string} category ID (potion|weapon|armor|scroll|supply|trinket)
+ */
+export function getItemCategory(itemName) {
+    const cleanName = itemName.startsWith('[已装备]') ? itemName.replace('[已装备] ', '') : itemName;
+    const info = getItemInfo(cleanName);
+    return info.category || 'trinket';
 }
 

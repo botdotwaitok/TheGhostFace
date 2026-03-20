@@ -13,14 +13,15 @@ import {
     initDndDataFromServer, resetDndData,
     setCombatState, getCombatState, setInCombat,
     getNarrativeContext, addRoomSummary,
+    addEpilogue, getEpilogues,
 } from './dndStorage.js';
 import {
     RACES, CLASSES, ABILITY_NAMES, ABILITY_ORDER, SKILLS,
     createCharacter, getCharacterDerived, getProficiencyBonus,
     canLevelUp, getXpForNextLevel, levelUp,
     getCombatSpells, getClassSpells, isPreparedCaster, getPreparedSpellCount,
-    SPELL_LIST, SHOP_ITEMS, getShopItemName, consumeSpellSlot,
-    getItemInfo,
+    SPELL_LIST, SHOP_ITEMS, SHOP_CATEGORIES, getShopItemName, consumeSpellSlot,
+    getItemInfo, getItemCategory,
     CLASS_ABILITIES, getAvailableAbilities, getAbilityUsesRemaining,
 } from './dndCharacter.js';
 import {
@@ -41,6 +42,7 @@ import {
     buildNPCEncounterPrompt, buildNPCInteractionResultPrompt,
     buildTreasureRoomPrompt, buildTreasureResultPrompt,
     buildRestRoomPrompt, buildRestSearchResultPrompt,
+    buildEpiloguePrompt,
 } from './dndPromptBuilder.js';
 import {
     initCombat, getCurrentTurnInfo, advanceTurn,
@@ -60,6 +62,7 @@ import {
     showCharacterCard, showInventoryPage, showHistory,
     buildCharCardHtml, buildInventoryGrid,
     refreshInventoryList, bindInventoryUseButtons,
+    showEpiloguePage,
 } from './dndUI.js';
 import {
     showCharacterCreation, showPartnerGeneration,
@@ -90,7 +93,7 @@ window.addEventListener('phone-app-back', (e) => {
         return;
     }
 
-    if (view === 'charCard' || view === 'history' || view === 'inventory') {
+    if (view === 'charCard' || view === 'history' || view === 'inventory' || view === 'epilogue') {
         e.preventDefault();
         if (getCurrentRun()) _showAdventure();
         else _showMainPage();
@@ -116,8 +119,9 @@ window.addEventListener('phone-app-back', (e) => {
 // Entry Point
 // ═══════════════════════════════════════════════════════════════════════
 
-export function openDndApp() {
+export async function openDndApp() {
     console.log('[D&D] Opening D&D App...');
+    await initDndDataFromServer();
     const data = loadDndData();
 
     if (!data.playerCharacter) {
@@ -196,6 +200,9 @@ function _showMainPage() {
             <button class="dnd-bottom-btn" id="dnd_view_char">
                 <i class="ph ph-identification-card"></i> 角色卡
             </button>
+            <button class="dnd-bottom-btn" id="dnd_view_epilogue">
+                <i class="ph ph-notebook"></i> 后日谈
+            </button>
             <button class="dnd-bottom-btn" id="dnd_view_history">
                 <i class="ph ph-scroll"></i> 冒险记录 ${historyCount > 0 ? `(${victories}胜)` : ''}
             </button>
@@ -227,6 +234,10 @@ function _bindMainPageEvents() {
 
     document.getElementById('dnd_view_char')?.addEventListener('click', () => {
         showCharacterCard(_showMainPage, _showAdventure);
+    });
+
+    document.getElementById('dnd_view_epilogue')?.addEventListener('click', () => {
+        showEpiloguePage(_showMainPage);
     });
 
     document.getElementById('dnd_view_history')?.addEventListener('click', () => {
@@ -314,9 +325,16 @@ function _showPreparationPage(campaignId) {
     const shopHtml = `
         <div class="dnd-prep-section">
             <div class="dnd-prep-section-title"><i class="ph ph-storefront"></i> 商店 <span class="dnd-gold-display"><i class="ph ph-coins"></i> ${gold} gp</span></div>
+            <div class="dnd-category-tabs" id="dnd_shop_tabs">
+                ${SHOP_CATEGORIES.map(cat => `
+                    <button class="dnd-category-tab ${cat.id === 'all' ? 'active' : ''}" data-category="${cat.id}">
+                        <i class="ph ${cat.icon}"></i> ${esc(cat.name)}
+                    </button>
+                `).join('')}
+            </div>
             <div class="dnd-shop-list" id="dnd_shop_list">
                 ${SHOP_ITEMS.map(item => `
-                    <div class="dnd-shop-item ${gold < item.price ? 'disabled' : ''}" data-shop="${item.id}" data-price="${item.price}">
+                    <div class="dnd-shop-item ${gold < item.price ? 'disabled' : ''}" data-shop="${item.id}" data-price="${item.price}" data-category="${item.category}">
                         <i class="ph ${item.icon}"></i>
                         <div class="dnd-shop-item-info">
                             <div class="dnd-shop-item-name">${esc(item.name)}</div>
@@ -372,6 +390,18 @@ function _bindPreparationEvents(campaignId) {
             });
         });
     }
+
+    // Shop category tabs
+    document.querySelectorAll('#dnd_shop_tabs .dnd-category-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#dnd_shop_tabs .dnd-category-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const cat = tab.dataset.category;
+            document.querySelectorAll('#dnd_shop_list .dnd-shop-item').forEach(item => {
+                item.style.display = (cat === 'all' || item.dataset.category === cat) ? '' : 'none';
+            });
+        });
+    });
 
     document.querySelectorAll('.dnd-shop-buy-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -1142,30 +1172,119 @@ function _endAdventure(result) {
         appendNarrative('system', `—— 冒险结束 —— ${resultLabel}`);
     } else {
         const lootItem = pickRandomLoot(getCampaignById(run?.campaignId) || CAMPAIGNS[0]);
+        const lootInfo = getItemInfo(lootItem);
+        let lootDisplayName = lootItem;
+
+        // Actually give loot to player (endRun only records it in history)
+        if (lootInfo.type === 'currency') {
+            const goldAmount = lootInfo.effect?.gold || 0;
+            if (goldAmount > 0) {
+                // Gold will be added by endRun (roomsCleared * 25), plus this extra
+                const data = loadDndData();
+                if (data.playerCharacter) {
+                    data.playerCharacter.gold = (data.playerCharacter.gold || 0) + goldAmount;
+                    saveDndData(data);
+                }
+                lootDisplayName = `+${goldAmount} gp`;
+            }
+        } else {
+            addLoot(lootItem);
+        }
+
         endRun(result, highlights, xpGained, [lootItem]);
-        appendNarrative('system', `—— 冒险结束 —— ${resultLabel} | +${xpGained} XP | +${goldGained} gp | 战利品：${lootItem}`);
+        appendNarrative('system', `—— 冒险结束 —— ${resultLabel} | +${xpGained} XP | +${goldGained} gp | 战利品：${lootDisplayName}`);
     }
 
     refreshNarrative();
 
     const data = loadDndData();
     if (data.playerCharacter && canLevelUp(data.playerCharacter)) {
-        _showLevelUpCard();
+        _showLevelUpCard(result);
     } else {
-        _showReturnButton();
+        _showReturnAndEpilogueButtons(result);
     }
 }
 
-function _showReturnButton() {
-    setActions(`<button class="dnd-action-btn" data-type="special" id="dnd_return_main">
-        <i class="ph ph-house"></i> 返回主页
-    </button>`);
+function _showReturnAndEpilogueButtons(adventureResult) {
+    const charName = getPhoneCharInfo()?.name || '角色';
+    const epilogueBtnHtml = adventureResult === 'victory'
+        ? `<button class="dnd-action-btn dnd-epilogue-trigger" id="dnd_write_epilogue">
+            <i class="ph ph-notebook"></i> 让${esc(charName)}写一篇后日谈？
+           </button>`
+        : '';
+
+    setActions(`
+        ${epilogueBtnHtml}
+        <button class="dnd-action-btn" data-type="special" id="dnd_return_main">
+            <i class="ph ph-house"></i> 返回主页
+        </button>
+    `);
+
+    document.getElementById('dnd_write_epilogue')?.addEventListener('click', () => {
+        _generateEpilogue();
+    });
     document.getElementById('dnd_return_main')?.addEventListener('click', () => {
         _showMainPage();
     });
 }
 
-function _showLevelUpCard() {
+async function _generateEpilogue() {
+    setActions('<div class="dnd-loading"><i class="ph ph-notebook"></i> 正在书写后日谈...</div>');
+
+    const data = loadDndData();
+    const lastHistory = data.history[data.history.length - 1];
+    if (!lastHistory) { _showReturnAndEpilogueButtons('victory'); return; }
+
+    const campaignName = lastHistory.campaign || lastHistory.campaignId;
+    const roomSummaries = lastHistory._roomSummaries || [];
+    const highlights = lastHistory.highlights || '';
+    const roomsCleared = lastHistory.roomsCleared || 0;
+    const loot = lastHistory.loot || [];
+
+    try {
+        const { system, user } = buildEpiloguePrompt({
+            campaignName, roomSummaries, highlights, roomsCleared, loot,
+        });
+        const diaryText = await callPhoneLLM(system, user);
+
+        if (diaryText && diaryText.trim()) {
+            const cleanText = diaryText.replace(/\*\*/g, '').trim();
+            addEpilogue({
+                date: new Date().toISOString().split('T')[0],
+                campaignId: lastHistory.campaignId,
+                campaignName,
+                diaryText: cleanText,
+                historyIndex: data.history.length - 1,
+            });
+
+            const charName = getPhoneCharInfo()?.name || '角色';
+            appendNarrative('partner', cleanText);
+            refreshNarrative();
+
+            setActions(`
+                <div class="dnd-epilogue-preview-card">
+                    <div class="dnd-epilogue-preview-title"><i class="ph ph-notebook"></i> ${esc(charName)}的后日谈</div>
+                    <div class="dnd-epilogue-preview-text">${esc(cleanText.substring(0, 120))}${cleanText.length > 120 ? '…' : ''}</div>
+                </div>
+                <button class="dnd-action-btn" data-type="special" id="dnd_return_main">
+                    <i class="ph ph-house"></i> 返回主页
+                </button>
+            `);
+            document.getElementById('dnd_return_main')?.addEventListener('click', () => _showMainPage());
+        } else {
+            appendNarrative('system', '后日谈生成失败……');
+            refreshNarrative();
+            _showReturnAndEpilogueButtons('victory');
+        }
+    } catch (err) {
+        console.error('[D&D] Epilogue generation failed:', err);
+        appendNarrative('system', '后日谈生成失败: ' + err.message);
+        refreshNarrative();
+        _showReturnAndEpilogueButtons('victory');
+    }
+}
+
+function _showLevelUpCard(adventureResult) {
     const data = loadDndData();
     const pc = data.playerCharacter;
     const oldLevel = pc.level;
@@ -1184,6 +1303,13 @@ function _showLevelUpCard() {
         slotsHtml = `<div class="dnd-levelup-detail"><i class="ph ph-magic-wand"></i> 法术位：${Object.entries(result.slotChanges).map(([k, v]) => `${k}: ${v}`).join(' | ')}</div>`;
     }
 
+    const charName = getPhoneCharInfo()?.name || '角色';
+    const epilogueBtnHtml = adventureResult === 'victory'
+        ? `<button class="dnd-action-btn dnd-epilogue-trigger" id="dnd_write_epilogue">
+            <i class="ph ph-notebook"></i> 让${esc(charName)}写一篇后日谈？
+           </button>`
+        : '';
+
     appendNarrative('system', `★ 升级！Lv.${oldLevel} → Lv.${result.newLevel} | HP +${result.hpGain} (D${cls?.hitDie}=${result.hpRoll}+CON) ★`);
     refreshNarrative();
 
@@ -1195,10 +1321,14 @@ function _showLevelUpCard() {
             <div class="dnd-levelup-detail"><i class="ph ph-shield"></i> 熟练加值：+${result.newProfBonus}</div>
             ${slotsHtml}
         </div>
+        ${epilogueBtnHtml}
         <button class="dnd-action-btn" data-type="special" id="dnd_return_main">
             <i class="ph ph-house"></i> 返回主页
         </button>
     `);
+    document.getElementById('dnd_write_epilogue')?.addEventListener('click', () => {
+        _generateEpilogue();
+    });
     document.getElementById('dnd_return_main')?.addEventListener('click', () => {
         _showMainPage();
     });

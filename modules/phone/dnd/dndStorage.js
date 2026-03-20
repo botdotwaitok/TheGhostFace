@@ -45,6 +45,16 @@ function createDefaultData() {
         //     roomsCleared: 4,
         // }
 
+        epilogues: [],
+        // epilogue item shape:
+        // {
+        //     date: '2026-03-20',
+        //     campaignId: 'lost_mine',
+        //     campaignName: '失落的矿坑',
+        //     diaryText: '200-400字日记（搭档第一人称）',
+        //     historyIndex: 3,       // 对应 history[] 的索引
+        // }
+
         _version: 1,
         _updatedAt: '',
     };
@@ -338,6 +348,7 @@ export function endRun(result, highlights, xpGained, loot) {
         xpGained: xpGained || 0,
         loot: loot || [],
         roomsCleared,
+        _roomSummaries: data.currentRun.roomSummaries || [],
     });
 
     // Add XP to player character
@@ -380,6 +391,30 @@ export function endRun(result, highlights, xpGained, loot) {
 
     data.currentRun = null;
     saveDndData(data);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Epilogue (后日谈) Management
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Add an epilogue diary entry.
+ * @param {{ date:string, campaignId:string, campaignName:string, diaryText:string, historyIndex:number }} epilogue
+ */
+export function addEpilogue(epilogue) {
+    const data = loadDndData();
+    if (!data.epilogues) data.epilogues = [];
+    data.epilogues.push(epilogue);
+    saveDndData(data);
+}
+
+/**
+ * Get all epilogues.
+ * @returns {Array}
+ */
+export function getEpilogues() {
+    const data = loadDndData();
+    return data.epilogues || [];
 }
 
 /**

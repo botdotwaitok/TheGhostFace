@@ -32,7 +32,7 @@ import {
     showReactionPicker, dismissReactionPicker, toggleReaction,
 } from './chatReactions.js';
 import { renderBuffBar, renderChatInventory, handleReturnHome, handleManualSummarize } from './chatInventory.js';
-import { beginRecording, clearPendingVoiceData, getPendingVoiceData } from './chatVoice.js';
+import { beginRecording } from './chatVoice.js';
 import { handleImageSelection, showImageLightbox } from './chatImage.js';
 import { handleVoicePlayback } from './chatVoice.js';
 
@@ -103,6 +103,7 @@ export function openChatApp() {
         </button>`;
 
     openAppInViewport(titleHtml, html, () => {
+        resetButtonStateCache();
         bindChatEvents();
 
         // ── Consume pending background result if available ──
@@ -160,10 +161,12 @@ function bindChatEvents() {
 
     if (!input) return;
 
-    // Auto-resize textarea
+    // Auto-resize textarea (batched to avoid double reflow)
     input.addEventListener('input', () => {
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+        requestAnimationFrame(() => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+        });
         updateButtonStates();
     });
 
@@ -701,6 +704,11 @@ export function scrollToBottom(smooth = true) {
     });
 }
 
+// ── Cached state for updateButtonStates() to avoid redundant DOM writes ──
+let _lastBtnMode = null; // 'mic' | 'send' | null
+let _lastBtnDisabled = null;
+let _lastKiwiOpacity = null;
+
 export function updateButtonStates() {
     const input = document.getElementById('chat_input');
     const sendBtn = document.getElementById('chat_send_btn');
@@ -711,35 +719,58 @@ export function updateButtonStates() {
 
     if (sendBtn) {
         if (!hasText && !hasDrafts && !hasImage) {
-            // Mic mode
-            sendBtn.classList.add('mic-mode');
-            sendBtn.disabled = false;
-            if (getPendingVoiceData()) clearPendingVoiceData();
-            sendBtn.innerHTML = `<svg width="20" height="16" viewBox="0 0 20 16" fill="currentColor">
-                <rect x="0" y="5" width="2.5" height="6" rx="1"/>
-                <rect x="4" y="2" width="2.5" height="12" rx="1"/>
-                <rect x="8" y="4" width="2.5" height="8" rx="1"/>
-                <rect x="12" y="1" width="2.5" height="14" rx="1"/>
-                <rect x="16" y="3" width="2.5" height="10" rx="1"/>
-            </svg>`;
+            // Mic mode — only rewrite innerHTML if mode actually changed
+            if (_lastBtnMode !== 'mic') {
+                sendBtn.classList.add('mic-mode');
+                sendBtn.innerHTML = `<svg width="20" height="16" viewBox="0 0 20 16" fill="currentColor">
+                    <rect x="0" y="5" width="2.5" height="6" rx="1"/>
+                    <rect x="4" y="2" width="2.5" height="12" rx="1"/>
+                    <rect x="8" y="4" width="2.5" height="8" rx="1"/>
+                    <rect x="12" y="1" width="2.5" height="14" rx="1"/>
+                    <rect x="16" y="3" width="2.5" height="10" rx="1"/>
+                </svg>`;
+                _lastBtnMode = 'mic';
+            }
+            if (_lastBtnDisabled !== false) {
+                sendBtn.disabled = false;
+                _lastBtnDisabled = false;
+            }
         } else {
-            // Send mode
-            sendBtn.classList.remove('mic-mode');
-            sendBtn.disabled = isGenerating;
-            sendBtn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+            // Send mode — only rewrite innerHTML if mode actually changed
+            if (_lastBtnMode !== 'send') {
+                sendBtn.classList.remove('mic-mode');
+                sendBtn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+                _lastBtnMode = 'send';
+            }
+            const shouldDisable = isGenerating;
+            if (_lastBtnDisabled !== shouldDisable) {
+                sendBtn.disabled = shouldDisable;
+                _lastBtnDisabled = shouldDisable;
+            }
         }
     }
 
     if (kiwiBtn) {
-        kiwiBtn.style.opacity = hasText ? '1' : '0.4';
+        const newOpacity = hasText ? '1' : '0.4';
+        if (_lastKiwiOpacity !== newOpacity) {
+            kiwiBtn.style.opacity = newOpacity;
+            _lastKiwiOpacity = newOpacity;
+        }
     }
 }
 
+/** Reset cached button state (call when re-entering the chat app) */
+export function resetButtonStateCache() {
+    _lastBtnMode = null;
+    _lastBtnDisabled = null;
+    _lastKiwiOpacity = null;
+}
+
+const _escDiv = document.createElement('div');
 export function escHtml(str) {
     if (!str) return '';
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
+    _escDiv.textContent = str;
+    return _escDiv.innerHTML;
 }
 
 export function sleep(ms) {

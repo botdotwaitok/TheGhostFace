@@ -97,7 +97,7 @@ export class GsviTtsProvider {
     // ─── Format 1: GPT-SoVITS Adapter (POST /) ───
     async _synthesizeAdapter(text, endpoint, settings) {
         const voiceId = settings.voiceId || '';
-        const rawEmotion = settings._emotion || null;
+        const rawEmotion = settings._emotion || settings.emotion || null;
 
         // Validate emotion against backend's available list (EntityWhisper pattern)
         const emotion = await this.resolveEmotion(rawEmotion, voiceId, endpoint);
@@ -112,11 +112,13 @@ export class GsviTtsProvider {
             target_voice: targetVoice,
             use_st_adapter: true,
             text_lang: this._normalizeTextLang(settings.textLang),
-            prompt_lang: this._normalizeTextLang(settings.promptLang),
+            // NOTE: Do NOT send prompt_lang — the ST compat layer auto-fills it
+            // from text_lang. Sending 'auto' causes check_params() to reject it
+            // since 'auto' is not a valid GPT-SoVITS language code.
             text_split_method: this._normalizeSplitMethod(settings.textSplitMethod),
             batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
             media_type: 'wav',
-            streaming_mode: 'false',
+            streaming_mode: false,
         };
 
         console.debug(`${LOG_PREFIX} POST ${endpoint}/`);
@@ -305,12 +307,37 @@ export class GsviTtsProvider {
 
                 if (speakerList.length === 0) continue;
 
-                return speakerList.map(s => {
+                // Build basic voice list
+                const voices = speakerList.map(s => {
                     if (typeof s === 'string') {
                         return { id: s, name: s, language: 'auto' };
                     }
                     return { id: s.name || s.id || String(s), name: s.name || s.id || String(s), language: 'auto' };
                 });
+
+                // Enrich each voice with emotions from /character_emotions
+                // (EntityWhisper pattern — the endpoint is provided by _ST_COMPAT_TEMPLATE)
+                // NOTE: bypass _resolveUrl / CORS proxy — ST's /proxy/ strips query params,
+                // causing 400. Direct fetch works for same-machine HTTP→HTTP requests.
+                const enriched = await Promise.all(voices.map(async (voice) => {
+                    try {
+                        const emotionUrl = `${endpoint}/character_emotions?character=${encodeURIComponent(voice.id)}`;
+                        const emoResp = await fetch(emotionUrl);
+                        if (emoResp.ok) {
+                            const emotions = await emoResp.json();
+                            if (Array.isArray(emotions) && emotions.length > 0) {
+                                voice.promptLangs = ['auto'];
+                                voice.emotionsMap = { 'auto': emotions };
+                                voice.emotions = emotions;
+                            }
+                        }
+                    } catch (e) {
+                        console.debug(`${LOG_PREFIX} No emotions for "${voice.id}": ${e.message}`);
+                    }
+                    return voice;
+                }));
+
+                return enriched;
             } catch (err) {
                 console.warn(`⚠️ [TTS] GPT-SoVITS ${path}: ${err.message}`);
             }

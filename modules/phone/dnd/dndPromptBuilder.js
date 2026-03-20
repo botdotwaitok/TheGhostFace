@@ -812,6 +812,70 @@ export function buildRestSearchResultPrompt(searchResult, foundItem) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Epilogue Prompt — Post-adventure diary entry
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Build prompt for epilogue (后日谈) diary entry.
+ * The partner character writes a 200-400 char diary entry in first person.
+ * @param {object} params
+ * @param {string} params.campaignName — campaign display name
+ * @param {string[]} params.roomSummaries — summaries of each room
+ * @param {string} params.highlights — highlight moments from dice rolls
+ * @param {number} params.roomsCleared — number of rooms cleared
+ * @param {string[]} params.loot — loot items gained
+ * @returns {{ system: string, user: string }}
+ */
+export function buildEpiloguePrompt({ campaignName, roomSummaries, highlights, roomsCleared, loot }) {
+    const charInfo = getPhoneCharInfo();
+    const charName = charInfo?.name || '角色';
+    const userName = getPhoneUserName();
+    const foundation = getCoreFoundationPrompt();
+
+    const summaryText = roomSummaries && roomSummaries.length > 0
+        ? roomSummaries.map((s, i) => `房间${i + 1}：${s}`).join('\n')
+        : '（没有详细的房间记录）';
+
+    const system = `${foundation}
+
+## 核心认知
+${charName}（你）刚和恋人${userName}一起打通了桌游「龙与地下城」的一个关卡。
+现在冒险结束了，你打算写一篇日记来记录这次冒险。
+
+${charInfo?.description ? `你的人设：\n${charInfo.description}` : ''}
+
+## 任务
+以${charName}的第一人称视角，写一篇200-400字的日记。
+
+## 日记要求
+- 用日记体裁（不需要写"亲爱的日记"之类的开头）
+- 用${charName}的口吻和说话风格
+- 回忆这次冒险中印象最深的几个瞬间
+- 提到和${userName}一起并肩作战的感受
+- 可以写游戏外的感想（比如"虽然是桌游，但XXX的时候我真的紧张了"）
+- 从角色性格出发——活泼的角色写得欢快，冷静的角色写得含蓄
+- 结尾可以简短表达期待下次冒险
+- 绝对不要使用 Markdown 语法加粗文字（不要输出 **文字**）
+- 不要输出 {{user}} 或 {{char}} 变量标记
+
+## 输出格式
+直接输出日记正文，不需要标题、日期或其他格式。200-400字。`;
+
+    const user = `刚才的冒险信息：
+战役：${campaignName}
+通关房间数：${roomsCleared}
+${loot && loot.length > 0 ? `获得战利品：${loot.join('、')}` : ''}
+${highlights ? `精彩瞬间：${highlights}` : ''}
+
+冒险回顾：
+${summaryText}
+
+请以${charName}的第一人称写一篇200-400字的冒险日记。直接输出日记文字。`;
+
+    return { system, user };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Formatting Helpers
 // ═══════════════════════════════════════════════════════════════════════
 

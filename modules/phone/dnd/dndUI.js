@@ -6,10 +6,12 @@ import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import {
     loadDndData, saveDndData, getCurrentRun,
     getPlayerCharacter, getPartnerCharacter, flushNarrative,
+    getEpilogues,
 } from './dndStorage.js';
 import {
     RACES, CLASSES, ABILITY_NAMES, ABILITY_ORDER,
     getCharacterDerived, getXpForNextLevel, getItemInfo,
+    SHOP_CATEGORIES, getItemCategory,
 } from './dndCharacter.js';
 import { abilityModifier } from './dndDice.js';
 import { getCampaignById } from './dndCampaigns.js';
@@ -511,6 +513,13 @@ export function showInventoryPage(showMainPage, showAdventure, handleUseItemOuts
     const html = `<div class="dnd-page" id="dnd_root"><div class="dnd-creation">
         <div class="dnd-creation-title">背包</div>
         <div class="dnd-inventory-gold"><i class="ph ph-coins"></i> ${gold} gp</div>
+        <div class="dnd-category-tabs" id="dnd_inv_tabs">
+            ${SHOP_CATEGORIES.map(cat => `
+                <button class="dnd-category-tab ${cat.id === 'all' ? 'active' : ''}" data-category="${cat.id}">
+                    <i class="ph ${cat.icon}"></i> ${esc(cat.name)}
+                </button>
+            `).join('')}
+        </div>
         <div class="dnd-inventory-grid" id="dnd_inventory_list">
             ${buildInventoryGrid(playerChar.inventory)}
         </div>
@@ -523,6 +532,7 @@ export function showInventoryPage(showMainPage, showAdventure, handleUseItemOuts
 
     openAppInViewport('D&D - 背包', html, () => {
         bindInventoryUseButtons(showAdventure, handleUseItemOutsideCombat);
+        _bindInventoryTabs();
         document.getElementById('dnd_back_main')?.addEventListener('click', () => {
             if (getCurrentRun()) showAdventure();
             else showMainPage();
@@ -536,19 +546,34 @@ export function buildInventoryGrid(inventory) {
     }
     return inventory.map(item => {
         const info = getItemInfo(item);
+        const category = getItemCategory(item);
         const isEquipped = item.startsWith('[已装备]');
         const displayName = isEquipped ? item.replace('[已装备] ', '') : item;
         const btnHtml = info.usable
             ? `<button class="dnd-grid-use-btn" data-item="${esc(item)}">${isEquipped ? '卸下' : info.label}</button>`
             : '';
         return `
-        <div class="dnd-inventory-card ${isEquipped ? 'equipped' : ''}">
+        <div class="dnd-inventory-card ${isEquipped ? 'equipped' : ''}" data-category="${category}">
             <div class="dnd-inventory-card-icon"><i class="ph ${info.icon}"></i></div>
             <div class="dnd-inventory-card-name">${esc(displayName)}</div>
             ${isEquipped ? '<div class="dnd-inventory-card-tag">已装备</div>' : ''}
             ${btnHtml}
         </div>`;
     }).join('');
+}
+
+/** Bind inventory category tab click handlers. */
+function _bindInventoryTabs() {
+    document.querySelectorAll('#dnd_inv_tabs .dnd-category-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#dnd_inv_tabs .dnd-category-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const cat = tab.dataset.category;
+            document.querySelectorAll('#dnd_inventory_list .dnd-inventory-card').forEach(card => {
+                card.style.display = (cat === 'all' || card.dataset.category === cat) ? '' : 'none';
+            });
+        });
+    });
 }
 
 /** Refresh inventory list in the overlay (if visible). */
@@ -615,5 +640,72 @@ export function showHistory(showMainPage) {
 
     openAppInViewport('D&D - 冒险记录', html, () => {
         document.getElementById('dnd_back_main')?.addEventListener('click', () => showMainPage());
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Epilogue (后日谈) View
+// ═══════════════════════════════════════════════════════════════════════
+
+export function showEpiloguePage(showMainPage) {
+    _currentView = 'epilogue';
+    const epilogues = getEpilogues();
+    const charName = getPhoneCharInfo()?.name || '角色';
+
+    let content;
+    if (epilogues.length === 0) {
+        content = `<div class="dnd-empty">
+            <div class="dnd-empty-icon"><i class="ph ph-notebook"></i></div>
+            <div class="dnd-empty-title">还没有后日谈</div>
+            <div class="dnd-empty-desc">通关一次冒险后，${esc(charName)}会在这里写下日记</div>
+        </div>`;
+    } else {
+        content = `<div class="dnd-epilogue-list">
+            ${epilogues.map((ep, i) => {
+                const preview = ep.diaryText.length > 60 ? ep.diaryText.substring(0, 60) + '…' : ep.diaryText;
+                return `
+                <div class="dnd-epilogue-card" data-index="${i}">
+                    <div class="dnd-epilogue-header">
+                        <div class="dnd-epilogue-campaign"><i class="ph ph-map-trifold"></i> ${esc(ep.campaignName)}</div>
+                        <div class="dnd-epilogue-date">${esc(ep.date)}</div>
+                    </div>
+                    <div class="dnd-epilogue-preview" id="dnd_ep_preview_${i}">${esc(preview)}</div>
+                    <div class="dnd-epilogue-full" id="dnd_ep_full_${i}" style="display:none">${esc(ep.diaryText)}</div>
+                    ${ep.diaryText.length > 60 ? `<button class="dnd-epilogue-toggle" data-index="${i}"><i class="ph ph-caret-down"></i> 展开</button>` : ''}
+                </div>`;
+            }).reverse().join('')}
+        </div>`;
+    }
+
+    const html = `<div class="dnd-page" id="dnd_root">
+        <div style="padding:12px">
+            <div class="dnd-creation-title">后日谈</div>
+            <div class="dnd-creation-subtitle">${esc(charName)}的冒险日记</div>
+        </div>
+        ${content}
+        <div class="dnd-bottom-bar">
+            <button class="dnd-bottom-btn" id="dnd_back_main"><i class="ph ph-arrow-left"></i> 返回</button>
+        </div>
+    </div>`;
+
+    openAppInViewport('D&D - 后日谈', html, () => {
+        document.getElementById('dnd_back_main')?.addEventListener('click', () => showMainPage());
+
+        // Toggle expand/collapse
+        document.querySelectorAll('.dnd-epilogue-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = btn.dataset.index;
+                const preview = document.getElementById(`dnd_ep_preview_${idx}`);
+                const full = document.getElementById(`dnd_ep_full_${idx}`);
+                if (!preview || !full) return;
+
+                const isExpanded = full.style.display !== 'none';
+                preview.style.display = isExpanded ? '' : 'none';
+                full.style.display = isExpanded ? 'none' : '';
+                btn.innerHTML = isExpanded
+                    ? '<i class="ph ph-caret-down"></i> 展开'
+                    : '<i class="ph ph-caret-up"></i> 收起';
+            });
+        });
     });
 }

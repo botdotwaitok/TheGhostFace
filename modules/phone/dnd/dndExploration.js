@@ -32,6 +32,29 @@ import {
 
 const DND_LOG = '[D&D]';
 
+/**
+ * Smart loot: auto-detect currency items and add gold directly,
+ * otherwise add to inventory as usual.
+ * @param {string} item — loot name from pickRandomLoot
+ * @returns {{ isCurrency: boolean, goldAmount: number }}
+ */
+function _addLootSmart(item) {
+    const info = getItemInfo(item);
+    if (info.type === 'currency') {
+        const goldAmount = info.effect?.gold || 0;
+        if (goldAmount > 0) {
+            const data = loadDndData();
+            if (data.playerCharacter) {
+                data.playerCharacter.gold = (data.playerCharacter.gold || 0) + goldAmount;
+                saveDndData(data);
+            }
+            return { isCurrency: true, goldAmount };
+        }
+    }
+    addLoot(item);
+    return { isCurrency: false, goldAmount: 0 };
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Trap Room
 // ═══════════════════════════════════════════════════════════════════════
@@ -383,12 +406,19 @@ export async function handleTreasureRoom(data, campaign, roomNumber, totalRooms,
     // Generate loot
     const lootCount = Math.random() < 0.4 ? 2 : 1;
     const loot = [];
+    const lootMessages = [];
     for (let i = 0; i < lootCount; i++) {
         const item = pickRandomLoot(campaign);
-        loot.push(item);
-        addLoot(item);
+        const result = _addLootSmart(item);
+        if (result.isCurrency) {
+            loot.push(`${result.goldAmount} gp`);
+            lootMessages.push(`+${result.goldAmount} gp`);
+        } else {
+            loot.push(item);
+            lootMessages.push(item);
+        }
     }
-    appendNarrative('system', `获得宝物：${loot.join('、')}`);
+    appendNarrative('system', `获得宝物：${lootMessages.join('、')}`);
 
     // INT check for hidden room
     const intScore = playerChar.stats.INT || 10;
@@ -400,9 +430,14 @@ export async function handleTreasureRoom(data, campaign, roomNumber, totalRooms,
     if (intResult.success) {
         hiddenRoom = true;
         const bonusItem = pickRandomLoot(campaign);
-        addLoot(bonusItem);
-        loot.push(bonusItem);
-        appendNarrative('system', `发现隐藏密室！额外获得：${bonusItem}`);
+        const bonusResult = _addLootSmart(bonusItem);
+        if (bonusResult.isCurrency) {
+            loot.push(`${bonusResult.goldAmount} gp`);
+            appendNarrative('system', `发现隐藏密室！额外获得：+${bonusResult.goldAmount} gp`);
+        } else {
+            loot.push(bonusItem);
+            appendNarrative('system', `发现隐藏密室！额外获得：${bonusItem}`);
+        }
         const freshData = loadDndData();
         freshData.playerCharacter.gold = (freshData.playerCharacter.gold || 0) + 30;
         saveDndData(freshData);
@@ -552,9 +587,15 @@ async function _resolveRestSearch(data, campaign, processCombatNarration, showCo
     let foundItem = null;
     if (searchResult.success) {
         if (Math.random() < 0.6) {
-            foundItem = pickRandomLoot(campaign);
-            addLoot(foundItem);
-            appendNarrative('system', `发现了：${foundItem}`);
+            const rawItem = pickRandomLoot(campaign);
+            const smartResult = _addLootSmart(rawItem);
+            if (smartResult.isCurrency) {
+                foundItem = `${smartResult.goldAmount} gp`;
+                appendNarrative('system', `发现了：+${smartResult.goldAmount} gp`);
+            } else {
+                foundItem = rawItem;
+                appendNarrative('system', `发现了：${rawItem}`);
+            }
         } else {
             const goldFound = 10 + Math.floor(Math.random() * 30);
             const freshData = loadDndData();

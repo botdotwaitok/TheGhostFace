@@ -5,13 +5,14 @@ import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { callPhoneLLM } from '../../api.js';
 import { pushPromptLog } from '../console/consoleApp.js';
 import {
-    loadDndData, getCurrentRun, updateCurrentRun,
+    loadDndData, saveDndData, getCurrentRun, updateCurrentRun,
     appendNarrative, setInCombat, addLoot,
     getCombatState, getNarrativeContext,
 } from './dndStorage.js';
 import {
     CLASSES, getCombatSpells,
     getAvailableAbilities, getAbilityUsesRemaining,
+    getItemInfo,
 } from './dndCharacter.js';
 import {
     advanceTurn, getCurrentTurnInfo,
@@ -919,8 +920,24 @@ async function _checkCombatEnd(combatState, result, endAdventure, enterNextRoom)
         const campaign = getCampaignById(data.currentRun?.campaignId);
         if (campaign) {
             const loot = pickRandomLoot(campaign);
-            addLoot(loot);
-            appendNarrative('system', `获得战利品：${loot}`);
+            const lootInfo = getItemInfo(loot);
+            if (lootInfo.type === 'currency') {
+                const goldAmount = lootInfo.effect?.gold || 0;
+                if (goldAmount > 0) {
+                    const freshData = loadDndData();
+                    if (freshData.playerCharacter) {
+                        freshData.playerCharacter.gold = (freshData.playerCharacter.gold || 0) + goldAmount;
+                        saveDndData(freshData);
+                    }
+                    appendNarrative('system', `获得战利品：+${goldAmount} gp`);
+                } else {
+                    addLoot(loot);
+                    appendNarrative('system', `获得战利品：${loot}`);
+                }
+            } else {
+                addLoot(loot);
+                appendNarrative('system', `获得战利品：${loot}`);
+            }
         }
     } else {
         appendNarrative('system', '—— 全队覆灭…… ——');

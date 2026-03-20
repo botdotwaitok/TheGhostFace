@@ -604,11 +604,24 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         console.debug('已调用自定义API', images?.length ? `(附带${images.length}张图片)` : '');
     }
 
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(requestBody)
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60_000); // 60s timeout
+    let response;
+    try {
+        response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+        });
+    } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+            throw new Error('API请求超时 (60秒)');
+        }
+        throw err;
+    }
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -680,7 +693,10 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
             }
             combinedPrompt += userPrompt;
 
-            const result = await context.generateRaw(combinedPrompt, '', false, false, '');
+            const result = await Promise.race([
+                context.generateRaw(combinedPrompt, '', false, false, ''),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
+            ]);
             return result?.trim() || '';
 
         } catch (err) {

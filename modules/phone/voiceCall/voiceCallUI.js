@@ -733,6 +733,29 @@ function _onSttStateChange(state) {
     }
 }
 
+/**
+ * Explicitly restart STT after TTS playback finishes.
+ * This covers the case where the STT state-change auto-restart was blocked
+ * because _isTtsPlaying was true at the time of the idle transition.
+ */
+function _restartSttAfterTts() {
+    if (!_overlayMounted || !_sttEngine) return;
+    const micBtn = document.getElementById('voice_call_mic_btn');
+    const isMuted = micBtn?.classList.contains('muted');
+    if (isMuted || _isTtsPlaying) return;
+    if (_sttEngine.state !== 'idle') return;
+
+    setTimeout(() => {
+        // Re-check after short delay to avoid race conditions
+        if (_overlayMounted && _sttEngine && _sttEngine.state === 'idle' && !_isTtsPlaying) {
+            console.debug(`${LOG_PREFIX} Restarting STT after TTS finished`);
+            _sttEngine.startListening({ continuous: true }).catch(e => {
+                console.warn(`${LOG_PREFIX} STT restart after TTS failed:`, e);
+            });
+        }
+    }, 300);
+}
+
 export function addSystemSubtitle(text) {
     const subs = document.getElementById('voice_call_subtitles');
     if (subs) {
@@ -883,15 +906,31 @@ async function _sendToLLM(text) {
                 }
             } catch (e) {
                 console.warn(`${LOG_PREFIX} TTS failed, text-only fallback`, e);
-            } finally {
-                _isTtsPlaying = false;
             }
+            // NOTE: _isTtsPlaying stays true — cleared after audio finishes below
         }
+
+        // Run typewriter display concurrently with audio playback.
+        // Schedule STT restart after audio duration (or immediately if no audio).
+        const waitForAudioMs = audioDuration > 0 ? audioDuration * 1000 : 0;
 
         if (charBubble) {
             charBubble.removeAttribute('id');
-            await _typewriterDisplay(charBubble, displayText, audioDuration);
+            // Start typewriter (runs in parallel with audio)
+            const typewriterDone = _typewriterDisplay(charBubble, displayText, audioDuration);
+            // Wait for whichever takes longer: audio playback or typewriter
+            const audioWait = waitForAudioMs > 0
+                ? new Promise(r => setTimeout(r, waitForAudioMs))
+                : Promise.resolve();
+            await Promise.all([typewriterDone, audioWait]);
+        } else if (waitForAudioMs > 0) {
+            // No bubble but audio is playing — wait for it
+            await new Promise(r => setTimeout(r, waitForAudioMs));
         }
+
+        // 🔑 Clear flag and restart STT after audio + typewriter both finish
+        _isTtsPlaying = false;
+        _restartSttAfterTts();
 
     } catch (e) {
         console.error(`${LOG_PREFIX} LLM call failed after retries:`, e);
@@ -903,6 +942,11 @@ async function _sendToLLM(text) {
         }
     } finally {
         _isProcessingLLM = false;
+        // Safety net: ensure TTS flag is always cleared
+        if (_isTtsPlaying) {
+            _isTtsPlaying = false;
+            _restartSttAfterTts();
+        }
     }
 }
 

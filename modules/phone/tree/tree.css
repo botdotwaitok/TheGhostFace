@@ -2294,6 +2294,49 @@
     background: rgba(250, 204, 21, 0.2);
 }
 
+.tree-refill-dismiss {
+    background: none;
+    border: none;
+    color: rgba(31, 41, 55, 0.3);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    flex-shrink: 0;
+    transition: color 0.2s;
+}
+
+.tree-refill-dismiss:hover {
+    color: rgba(31, 41, 55, 0.6);
+}
+
+/* ── Loading Page Skip Button ── */
+.tree-loading-skip-btn {
+    background: rgba(107, 114, 128, 0.08);
+    border: 1px solid rgba(107, 114, 128, 0.18);
+    border-radius: 20px;
+    color: rgba(31, 41, 55, 0.5);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    font-family: inherit;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+}
+
+.tree-loading-skip-btn i {
+    font-size: 13px;
+}
+
+.tree-loading-skip-btn:hover {
+    background: rgba(107, 114, 128, 0.15);
+    color: rgba(31, 41, 55, 0.7);
+}
+
 /* ── Loading Hint ── */
 .tree-loading-hint {
     background: rgba(99, 102, 241, 0.06) !important;
@@ -3255,6 +3298,25 @@
     background: rgba(250, 204, 21, 0.2);
     border-color: rgba(250, 204, 21, 0.3);
     color: #fef08a;
+}
+
+.phone-dark-mode .tree-refill-dismiss {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.phone-dark-mode .tree-refill-dismiss:hover {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.phone-dark-mode .tree-loading-skip-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.phone-dark-mode .tree-loading-skip-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.6);
 }
 
 /* ── Stage Display (Darker Background Filter) ── */

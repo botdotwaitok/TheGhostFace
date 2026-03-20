@@ -48,6 +48,9 @@ const _debugState = {
 // Re-entry guard: prevents _triggerBackgroundRefill → showRefillQCPage → showTreeMainPage → _triggerBackgroundRefill loop
 let _refillInProgress = false;
 
+// Abort controller for LLM generation — allows user to cancel via skip button
+let _generationAbort = null;
+
 // ═══════════════════════════════════════════════════════════════════════
 // Entry Point
 // ═══════════════════════════════════════════════════════════════════════
@@ -296,6 +299,9 @@ function showLoadingPage(treeName) {
                 <div class="tree-loading-progress-text" id="tree_loading_text">准备中…</div>
                 <div class="tree-loading-progress-pct" id="tree_loading_pct">0%</div>
             </div>
+            <button class="tree-loading-skip-btn" id="tree_loading_skip" style="display:none;">
+                <i class="fa-solid fa-forward"></i> 跳过，稍后再生成
+            </button>
         </div>
     </div>`;
 
@@ -308,6 +314,26 @@ async function _runFirstTimeGeneration() {
     const fillEl = document.getElementById('tree_loading_fill');
     const textEl = document.getElementById('tree_loading_text');
     const pctEl = document.getElementById('tree_loading_pct');
+    const skipBtn = document.getElementById('tree_loading_skip');
+
+    // Create abort controller so user can cancel
+    _generationAbort = new AbortController();
+    const signal = _generationAbort.signal;
+    let skipped = false;
+
+    // Show skip button after 8 seconds — gives LLM a fair chance first
+    const skipTimer = setTimeout(() => {
+        if (skipBtn && !signal.aborted) skipBtn.style.display = '';
+    }, 8000);
+
+    // Bind skip button
+    skipBtn?.addEventListener('click', () => {
+        skipped = true;
+        _generationAbort?.abort();
+        console.log(`${TREE_LOG} 用户跳过首次内容生成`);
+        clearTimeout(skipTimer);
+        showTreeMainPage();
+    });
 
     // Temporarily activate keep-alive so iOS won't kill the page during long LLM generation
     const wasAlreadyActive = isKeepAliveActive();
@@ -315,6 +341,7 @@ async function _runFirstTimeGeneration() {
 
     try {
         await generateContentStepByStep({
+            signal,
             onStepStart: ({ step, totalSteps, stepName }) => {
                 const pct = Math.round((step / totalSteps) * 100);
                 if (fillEl) fillEl.style.width = `${pct}%`;
@@ -360,11 +387,18 @@ async function _runFirstTimeGeneration() {
             },
         });
     } catch (e) {
+        if (skipped) return; // User already navigated away
         console.warn(`${TREE_LOG} 首次内容生成出错:`, e.message);
-        if (textEl) textEl.textContent = '生成过程中出错，请重新打开树树';
+        if (textEl) textEl.textContent = '生成出错，点击跳过进入主页';
         if (fillEl) fillEl.style.width = '100%';
-        if (pctEl) pctEl.textContent = '100%';
+        if (pctEl) pctEl.textContent = '';
+        // Show skip button immediately on error
+        if (skipBtn) skipBtn.style.display = '';
+        return; // Don't auto-navigate — let user click skip
     }
+
+    clearTimeout(skipTimer);
+    _generationAbort = null;
 
     // Restore keep-alive state — stop only if we started it ourselves
     if (!wasAlreadyActive) {
@@ -1043,6 +1077,9 @@ function showRefillQCPage({ forceCareLines = false, skipQuiz = false, skipTod = 
                 <div class="tree-loading-progress-text" id="tree_loading_text">准备中…</div>
                 <div class="tree-loading-progress-pct" id="tree_loading_pct">0%</div>
             </div>
+            <button class="tree-loading-skip-btn" id="tree_loading_skip">
+                <i class="fa-solid fa-forward"></i> 跳过，稍后再补充
+            </button>
         </div>
     </div>`;
 
@@ -1055,6 +1092,21 @@ async function _runRefillGeneration(skipCareLines, skipQuiz, skipTod) {
     const fillEl = document.getElementById('tree_loading_fill');
     const textEl = document.getElementById('tree_loading_text');
     const pctEl = document.getElementById('tree_loading_pct');
+    const skipBtn = document.getElementById('tree_loading_skip');
+
+    // Create abort controller so user can cancel
+    _generationAbort = new AbortController();
+    const signal = _generationAbort.signal;
+    let skipped = false;
+
+    // Bind skip button (visible immediately for refill — user chose to be here)
+    skipBtn?.addEventListener('click', () => {
+        skipped = true;
+        _generationAbort?.abort();
+        _refillInProgress = false;
+        console.log(`${TREE_LOG} 用户跳过内容补充`);
+        showTreeMainPage();
+    });
 
     // Temporarily activate keep-alive so iOS won't kill the page during LLM generation
     const wasAlreadyActive = isKeepAliveActive();
@@ -1062,6 +1114,7 @@ async function _runRefillGeneration(skipCareLines, skipQuiz, skipTod) {
 
     try {
         await generateContentStepByStep({
+            signal,
             skipCareLines,
             skipQuiz,
             skipTod,
@@ -1109,11 +1162,15 @@ async function _runRefillGeneration(skipCareLines, skipQuiz, skipTod) {
             },
         });
     } catch (e) {
+        if (skipped) return; // User already navigated away
         console.warn(`${TREE_LOG} 内容补充生成出错:`, e.message);
-        if (textEl) textEl.textContent = '生成过程中出错';
+        if (textEl) textEl.textContent = '生成出错，点击跳过返回主页';
         if (fillEl) fillEl.style.width = '100%';
-        if (pctEl) pctEl.textContent = '100%';
+        if (pctEl) pctEl.textContent = '';
+        return; // Let user click skip
     }
+
+    _generationAbort = null;
 
     // Restore keep-alive state
     if (!wasAlreadyActive) {
@@ -1177,16 +1234,57 @@ function _triggerBackgroundRefill(currentStageId) {
     const needsTod = remaining.tod < TOD_LOW_THRESHOLD;
 
     if (needsCareLines || needsQuiz || needsTod) {
-        console.log(`${TREE_LOG} 内容不足，进入质检补充流程 (台词=${needsCareLines}, 默契=${needsQuiz}, 真心话=${needsTod})`);
+        console.log(`${TREE_LOG} 内容不足，显示补充提示条 (台词=${needsCareLines}, 默契=${needsQuiz}, 真心话=${needsTod})`);
         console.log(`${TREE_LOG}   ↳ 台词诊断: 剩余=${remainingLines}, 缓存阶段="${cachedStage}", 当前阶段="${currentStageId}"`);
+
+        // Show a non-blocking tip bar instead of auto-redirecting
+        _showRefillTipBar(needsCareLines, needsQuiz, needsTod);
+    }
+    // If nothing is low, no refill needed
+}
+
+/**
+ * Show a non-blocking tip bar at the top of the tree main page.
+ * User can choose to start refill or dismiss.
+ */
+function _showRefillTipBar(needsCareLines, needsQuiz, needsTod) {
+    // Remove any existing content-refill bar (distinct from care-lines refill bar)
+    document.getElementById('tree_content_refill_bar')?.remove();
+
+    const parts = [];
+    if (needsCareLines) parts.push('台词');
+    if (needsQuiz) parts.push('默契题目');
+    if (needsTod) parts.push('真心话题目');
+    const label = parts.join('、');
+
+    const bar = document.createElement('div');
+    bar.id = 'tree_content_refill_bar';
+    bar.className = 'tree-refill-bar';
+    bar.innerHTML = `
+        <span>${label}需要补充</span>
+        <button class="tree-refill-btn" id="tree_content_refill_go">去补充</button>
+        <button class="tree-refill-dismiss" id="tree_content_refill_dismiss">
+            <i class="fa-solid fa-xmark"></i>
+        </button>`;
+
+    const mainArea = document.getElementById('tree_main_area');
+    if (mainArea) {
+        mainArea.prepend(bar);
+    }
+
+    document.getElementById('tree_content_refill_go')?.addEventListener('click', () => {
+        if (_refillInProgress) return;
         _refillInProgress = true;
         showRefillQCPage({
             forceCareLines: needsCareLines,
             skipQuiz: !needsQuiz,
             skipTod: !needsTod,
         });
-    }
-    // If nothing is low, no refill needed
+    });
+
+    document.getElementById('tree_content_refill_dismiss')?.addEventListener('click', () => {
+        bar.remove();
+    });
 }
 
 /**
