@@ -157,8 +157,8 @@ export class GsviTtsProvider {
             speed,
             other_params: {
                 app_key: '',
-                text_lang: this._normalizeTextLang(settings.textLang),
-                prompt_lang: this._normalizeTextLang(settings.promptLang),
+                text_lang: settings.textLang || 'auto',
+                prompt_lang: settings.promptLang || '',
                 emotion: emotion || '默认',
                 top_k: 10,
                 top_p: 1,
