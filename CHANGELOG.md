@@ -5,7 +5,7 @@ All notable changes to TheGhostFace will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [4.1.7] — 2026-03-21
 
 ### Added
 - 🎲 D&D App：后日谈系统 — 胜利通关后搭档角色以日记形式写下200-400字冒险回忆
