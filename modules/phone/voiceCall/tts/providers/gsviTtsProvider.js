@@ -145,9 +145,9 @@ export class GsviTtsProvider {
         const voiceId = settings.voiceId || '';
         const model = settings.model || 'GSVI-v4';
         const speed = settings.speed || 1;
-        // Dynamic emotion from <say tone> parsing, validated against backend
-        const rawEmotion = settings._emotion || settings.emotion || '默认';
-        const emotion = await this.resolveEmotion(rawEmotion, voiceId, endpoint);
+        // GSVI: emotions already fetched from /models/{version} in fetchVoices,
+        // no need to call /character_emotions (that's an Adapter-only endpoint).
+        const emotion = settings._emotion || settings.emotion || '默认';
 
         const requestBody = {
             model,
