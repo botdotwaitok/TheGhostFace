@@ -317,11 +317,11 @@ export class GsviTtsProvider {
 
                 // Enrich each voice with emotions from /character_emotions
                 // (EntityWhisper pattern — the endpoint is provided by _ST_COMPAT_TEMPLATE)
-                // NOTE: bypass _resolveUrl / CORS proxy — ST's /proxy/ strips query params,
-                // causing 400. Direct fetch works for same-machine HTTP→HTTP requests.
                 const enriched = await Promise.all(voices.map(async (voice) => {
                     try {
-                        const emotionUrl = `${endpoint}/character_emotions?character=${encodeURIComponent(voice.id)}`;
+                        const emotionUrl = this._resolveUrl(
+                            `${endpoint}/character_emotions?character=${encodeURIComponent(voice.id)}`
+                        );
                         const emoResp = await fetch(emotionUrl);
                         if (emoResp.ok) {
                             const emotions = await emoResp.json();

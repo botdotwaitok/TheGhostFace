@@ -13,7 +13,7 @@ import { buildVcSystemPrompt, buildVcUserPrompt, generateCallSummary } from './v
 import { saveCallLog, generateCallId } from './vcStorage.js';
 import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { playRingtone, stopRingtone, getCurrentRingtone } from './ringtoneManager.js';
-import { initAmbient, startAmbient, stopAmbient, stopAmbientImmediate } from './ambientManager.js';
+import { initAmbient, startAmbient, stopAmbient, stopAmbientImmediate, warmUpAmbient } from './ambientManager.js';
 
 const LOG_PREFIX = '[VoiceCallUI]';
 
@@ -262,6 +262,10 @@ async function _acceptIncomingCall() {
     console.log(`${LOG_PREFIX} Incoming call accepted!`);
     stopRingtone();
 
+    // 🔊 Warm up AudioContext during user gesture (tap) to unlock mobile audio
+    if (_ttsEngine) await _ttsEngine.warmUp();
+    warmUpAmbient();
+
     // Transition to active call UI
     _transitionToActiveCall();
     _startTimer();
@@ -405,6 +409,10 @@ export async function openVoiceCall({ chatContext = false, incoming = false, gre
     _mountIfNeeded();
     _initDOM();
     _bindEvents();
+
+    // 🔊 Warm up AudioContext during user gesture (tap) to unlock mobile audio
+    if (_ttsEngine) await _ttsEngine.warmUp();
+    warmUpAmbient();
 
     addSystemSubtitle('正在建立加密通话...');
 

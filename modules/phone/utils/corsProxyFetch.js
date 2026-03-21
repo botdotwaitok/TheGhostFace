@@ -14,6 +14,17 @@
  */
 export function resolveProxyUrl(url) {
     if (window.isSecureContext && url.startsWith('http://')) {
+        // ST's CORS proxy uses Express req.params.url which only captures the
+        // path portion — the browser/Express strips everything after '?' into
+        // req.query, so query params never reach the proxy handler.
+        // Fix: encode '?' and '&' so they stay inside the path segment.
+        const qIndex = url.indexOf('?');
+        if (qIndex !== -1) {
+            const base = url.slice(0, qIndex);
+            const qs = url.slice(qIndex); // includes '?'
+            const encoded = qs.replace(/\?/g, '%3F').replace(/&/g, '%26');
+            return `/proxy/${base}${encoded}`;
+        }
         return `/proxy/${url}`;
     }
     return url;

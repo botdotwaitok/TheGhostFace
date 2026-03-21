@@ -19,6 +19,8 @@ All notable changes to TheGhostFace will be documented in this file.
 ### Fixed
 - 📞 语音通话：修复 STT 在 TTS 播放结束后不自动恢复的问题
 - 📞 语音通话：修复 TTS 合成 400 错误（ref_audio 时长不足3秒）
+- 📞 语音通话：修复手机端 GSVI TTS `fetchEmotion HTTP 400` — ST CORS Proxy 丢失 URL query params（`?character=xxx`），改为编码 `?`→`%3F` 保留参数
+- 📞 语音通话：修复手机端 TTS 和氛围音无法播放 — 移动浏览器 AudioContext 自动播放策略限制，在用户点击拨号/接听时预热 AudioContext 和 HTMLAudioElement
 - 🎲 D&D App：小屏幕 UI 响应式适配（`@media` queries）
 - 🎲 D&D App：修复宝箱/战斗/探索中金币类战利品不入账的 bug（物品被当作字符串塞背包，现在自动转为 gold 字段）
 - 🌳 树树：修复生成默契/真心话题目时界面卡死的问题 — LLM 调用增加 60s/90s 超时，生成页面新增"跳过"按钮，自动补充改为非阻塞提示条

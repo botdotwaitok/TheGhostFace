@@ -157,15 +157,19 @@ export function startAmbient() {
     if (_audioEl && !_audioEl.paused) return true;
 
     _clearFade();
-    stopAmbientImmediate(); // Clean up any previous
 
-    const path = info.audioPath.startsWith('/') ? info.audioPath : `/${info.audioPath}`;
-    _audioEl = new Audio(path);
-    _audioEl.loop = true;
+    // Reuse pre-warmed audio element if available (mobile gesture unlock).
+    // Only create a new element if none exists.
+    if (!_audioEl) {
+        const path = info.audioPath.startsWith('/') ? info.audioPath : `/${info.audioPath}`;
+        _audioEl = new Audio(path);
+        _audioEl.loop = true;
+    }
+
     _audioEl.volume = 0;
-
     _audioEl.play().catch(e => {
-        console.warn(`${LOG} Playback failed:`, e);
+        // On mobile this may fail if warmUpAmbient() was not called during user gesture
+        console.warn(`${LOG} Playback failed (mobile autoplay policy?):`, e);
     });
 
     // Fade in
@@ -173,6 +177,34 @@ export function startAmbient() {
 
     console.log(`${LOG} Ambient started: ${info.name}`);
     return true;
+}
+
+/**
+ * Pre-unlock HTMLAudioElement for mobile browsers.
+ * MUST be called from a user gesture (click/tap) context.
+ * Mobile browsers require the first play() to originate from a gesture;
+ * calling play()+pause() on a silent element "unlocks" future playback.
+ */
+export function warmUpAmbient() {
+    if (!isAmbientEnabled()) return;
+    const info = getAmbientInfo();
+    if (!info.audioPath) return;
+
+    const path = info.audioPath.startsWith('/') ? info.audioPath : `/${info.audioPath}`;
+    _audioEl = new Audio(path);
+    _audioEl.loop = true;
+    _audioEl.volume = 0;
+    // The play() call during user gesture unlocks autoplay for this element
+    const p = _audioEl.play();
+    if (p && p.then) {
+        p.then(() => {
+            _audioEl.pause();
+            _audioEl.currentTime = 0;
+            console.debug(`${LOG} Ambient audio unlocked for mobile`);
+        }).catch(() => {
+            console.debug(`${LOG} Ambient warm-up play failed (no audio file yet?)`);
+        });
+    }
 }
 
 /**

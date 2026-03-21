@@ -58,6 +58,25 @@ export class TtsEngine {
     get currentProvider() { return this._activeProvider; }
     get isPlaying() { return this._isPlaying; }
 
+    /**
+     * Pre-create and resume AudioContext. MUST be called from a user gesture
+     * (click/tap) handler to unlock audio playback on mobile browsers.
+     * iOS Safari and Chrome for Android keep AudioContext in "suspended" state
+     * until resume() is called within a user gesture call stack.
+     * Without this, any later async TTS playback (e.g. from STT→LLM→TTS chain)
+     * will silently fail because resume() has no effect outside gesture context.
+     */
+    async warmUp() {
+        if (!this._audioContext) {
+            this._audioContext = new AudioContext();
+            console.debug(`${LOG_PREFIX} AudioContext created (state: ${this._audioContext.state})`);
+        }
+        if (this._audioContext.state === 'suspended') {
+            await this._audioContext.resume();
+            console.debug(`${LOG_PREFIX} AudioContext resumed → ${this._audioContext.state}`);
+        }
+    }
+
     getAvailableProviders() {
         return Array.from(this._providers.keys()).map(name => ({ name }));
     }
