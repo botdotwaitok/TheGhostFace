@@ -163,7 +163,7 @@ export class GsviTtsProvider {
                 top_k: 10,
                 top_p: 1,
                 temperature: 1,
-                text_split_method: this._normalizeSplitMethod(settings.textSplitMethod),
+                text_split_method: settings.textSplitMethod || '按标点符号切',
                 batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
                 batch_threshold: 0.75,
                 split_bucket: true,
