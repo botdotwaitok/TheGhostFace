@@ -605,7 +605,7 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60_000); // 60s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s timeout（大 prompt 需要更多时间）
     let response;
     try {
         response = await fetch(apiUrl, {
@@ -617,7 +617,7 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
     } catch (err) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') {
-            throw new Error('API请求超时 (60秒)');
+            throw new Error('API请求超时 (120秒)');
         }
         throw err;
     }

@@ -231,16 +231,7 @@ ${recentPart}
  * @returns {Promise<string>} LLM 返回的文本
  */
 async function callLLM(prompt, maxTokens = 2048) {
-    const MAX_RETRIES = 3;
-    const RETRY_BASE_DELAY = 3000; // 3s → 6s → 12s
-
-    let lastError;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (attempt > 0) {
-            const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
-            logger.warn(`[时间线] ⚠️ LLM 调用失败 (${lastError.message})，${delay / 1000}秒后重试 (${attempt}/${MAX_RETRIES})...`);
-            await new Promise(r => setTimeout(r, delay));
-        }
+    while (true) {
         try {
             const timeout = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('[时间线] LLM 调用超时 (90秒)')), 90000)
@@ -263,19 +254,19 @@ async function callLLM(prompt, maxTokens = 2048) {
                 timeout,
             ]);
         } catch (err) {
-            lastError = err;
-            // 上下文过长不走通用重试，跳出让调用方减半处理
+            // 上下文过长不走用户重试，直接抛出让调用方减半处理
             const isContextError = err.code === 'CONTENT_EMPTY_LENGTH' ||
                 err.message?.includes('finish_reason=length') ||
                 err.message?.includes('context_length_exceeded');
             if (isContextError) {
-                logger.warn('[时间线] ⚠️ 检测到上下文过长，停止重试，交给调用方处理');
+                logger.warn('[时间线] ⚠️ 检测到上下文过长，交给调用方处理');
                 throw err;
             }
-            if (attempt === MAX_RETRIES) {
-                logger.error(`[时间线] ❌ ${MAX_RETRIES}次重试全部失败`);
-                throw lastError;
-            }
+
+            logger.error(`[时间线] ❌ LLM 调用失败: ${err.message}`);
+            const retry = confirm(`❌ 时间线生成失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过`);
+            if (!retry) throw err;
+            logger.info('[时间线] 🔄 用户选择重试...');
         }
     }
 }
@@ -451,28 +442,85 @@ export async function compressTimeline(timeline) {
 export async function appendToTimeline(messages) {
     logger.info(`[时间线] 📝 开始追加时间线 (${messages.length} 条消息)...`);
 
-    // 1. 从消息中生成新的时间线片段
-    const newSegment = await generateTimelineSegment(messages);
-    if (!newSegment) {
+    // ── 按 token 预切割消息，避免单次 prompt 过长导致输出截断 ──
+    const TIMELINE_CHUNK_TOKENS = 15_000; // 每个 chunk 目标 ~15k tokens
+    const textExtractor = (msg) => {
+        const speaker = msg.is_user ? '{{user}}' : (msg.name || '{{char}}');
+        const content = msg.parsedContent || msg.mes || msg.message || '';
+        return `${speaker}: ${content}`;
+    };
+
+    // 简单按 token 切割
+    const msgTokens = messages.map(m => estimateTokens(textExtractor(m)));
+    const totalTokens = msgTokens.reduce((sum, t) => sum + t, 0);
+
+    let chunks;
+    if (totalTokens <= TIMELINE_CHUNK_TOKENS) {
+        chunks = [messages];
+    } else {
+        chunks = [];
+        let currentChunk = [];
+        let currentTokens = 0;
+        for (let i = 0; i < messages.length; i++) {
+            const t = msgTokens[i];
+            if (currentChunk.length > 0 && currentTokens + t > TIMELINE_CHUNK_TOKENS) {
+                chunks.push(currentChunk);
+                currentChunk = [];
+                currentTokens = 0;
+            }
+            currentChunk.push(messages[i]);
+            currentTokens += t;
+        }
+        if (currentChunk.length > 0) chunks.push(currentChunk);
+        logger.info(`[时间线] 📊 消息总计 ${totalTokens} tokens → 切割为 ${chunks.length} 个 chunk`);
+    }
+
+    // 1. 为每个 chunk 生成时间线片段
+    const newSegments = [];
+    for (let ci = 0; ci < chunks.length; ci++) {
+        if (chunks.length > 1) {
+            logger.info(`[时间线] 📦 chunk ${ci + 1}/${chunks.length} (${chunks[ci].length} 条消息)`);
+        }
+        try {
+            const seg = await generateTimelineSegment(chunks[ci]);
+            if (seg) newSegments.push(seg);
+        } catch (err) {
+            logger.warn(`[时间线] ⚠️ chunk ${ci + 1} 片段生成失败，跳过: ${err.message}`);
+        }
+        // chunk 之间延迟 1s
+        if (ci < chunks.length - 1) {
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    if (newSegments.length === 0) {
         logger.info('[时间线] 未提取到新事件，跳过追加');
         return await readTimelineFromWorldbook() || '';
     }
 
-    // 2. 读取现有时间线
+    // 2. 合并新片段
+    let newTimeline;
+    if (newSegments.length === 1) {
+        newTimeline = newSegments[0];
+    } else {
+        newTimeline = await mergeTimelineSegments(newSegments);
+    }
+
+    // 3. 读取现有时间线并拼接
     const existing = await readTimelineFromWorldbook();
 
     let updated;
     if (existing && existing.trim()) {
         // 拼接到末尾
-        updated = existing.trim() + '\n' + newSegment;
+        updated = existing.trim() + '\n' + newTimeline;
     } else {
-        updated = newSegment;
+        updated = newTimeline;
     }
 
-    // 3. 如果超出 token 限制，压缩
+    // 4. 如果超出 token 限制，压缩
     updated = await compressTimeline(updated);
 
-    // 4. 写回世界书
+    // 5. 写回世界书
     await writeTimelineToWorldbook(updated);
 
     logger.success(`[时间线] ✅ 时间线追加完成`);

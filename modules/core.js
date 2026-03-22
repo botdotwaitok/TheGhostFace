@@ -203,15 +203,25 @@ async function executeAutoSummarization(triggerReason) {
             let end = Math.max(-1, total - 1 - KEEP_MESSAGES);
 
             if (end >= start) {
-                // 📅 时间线追加
-                try {
-                    const msgs = await summarizer.getGhostContextMessages(false, start, end);
-                    if (msgs && msgs.length > 0) {
-                        await timeline.appendToTimeline(msgs);
-                        logger.info('📅 自动时间线更新完成');
+                // 📅 时间线处理（从合并调用结果中提取，不再单独调用 API）
+                if (smallResult.timelineSegments && smallResult.timelineSegments.length > 0) {
+                    try {
+                        const mergedTimeline = await timeline.mergeTimelineSegments(smallResult.timelineSegments);
+                        if (mergedTimeline) {
+                            const existing = await timeline.readTimelineFromWorldbook();
+                            let finalTimeline;
+                            if (existing && existing.trim()) {
+                                finalTimeline = existing.trim() + '\n' + mergedTimeline;
+                            } else {
+                                finalTimeline = mergedTimeline;
+                            }
+                            finalTimeline = await timeline.compressTimeline(finalTimeline);
+                            await timeline.writeTimelineToWorldbook(finalTimeline);
+                            logger.info('📅 自动时间线更新完成（从合并结果提取）');
+                        }
+                    } catch (e) {
+                        logger.warn('📅 自动时间线更新失败，继续大总结', e);
                     }
-                } catch (e) {
-                    logger.warn('📅 自动时间线更新失败，继续大总结', e);
                 }
 
                 let bigOk = false;
@@ -408,7 +418,9 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
 
         updateProgress(30, `第2步: 记录中 (${messages.length}条消息)...`);
 
-        const summaryContent = await summarizer.generateSummary(messages);
+        const summaryResult = await summarizer.generateSummary(messages);
+        const summaryContent = summaryResult?.entries;
+        const timelineSegments = summaryResult?.timelineSegments || [];
 
         if (!summaryContent || !Array.isArray(summaryContent) || summaryContent.length === 0) {
             updateProgress(100, '没有新信息需要记录');
@@ -417,7 +429,8 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
                 "没有新信息，跳过总结" :
                 "没有新信息，鬼面很满意现有记录";
             toastr.info(infoText);
-            return null;
+            // 即使没有新记忆碎片，也返回时间线片段
+            return timelineSegments.length > 0 ? { created: 0, updated: 0, timelineSegments } : null;
         }
 
         updateProgress(60, '第3步: 保存到世界书...');
@@ -463,7 +476,8 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
         hideProgress();
         toastr.success(successText);
 
-        return updateResult;
+        // 返回时附带时间线片段
+        return { ...updateResult, timelineSegments };
 
     } catch (err) {
         updateProgress(100, `❌ 总结失败`);
