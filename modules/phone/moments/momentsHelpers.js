@@ -26,6 +26,15 @@ export function getMyAuthorIds() {
 }
 
 /**
+ * Returns only the character's authorId (e.g. "char_42").
+ * Use this when checking character-specific interactions
+ * without conflating with user interactions.
+ */
+export function getCharAuthorId() {
+    return getCharacterId();
+}
+
+/**
  * Get the ST user's display name (name1), with fallback.
  * Previously duplicated in: persistence.js, notifications.js, momentsWorldInfo.js
  */

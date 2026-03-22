@@ -43,7 +43,7 @@ export { syncFeed, startSync, stopSync } from './sync.js';
 export { updateMomentsWorldInfo, getMomentsSystemPrompt, handleMainChatOutput } from './momentsWorldInfo.js';
 
 // shared helpers
-export { getMyAuthorIds, getUserNameFallback, getCharNameFallback, getCharacterInfo, getUserName, getBase64FromUrl, showToast } from './momentsHelpers.js';
+export { getMyAuthorIds, getCharAuthorId, getUserNameFallback, getCharNameFallback, getCharacterInfo, getUserName, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Character Switch Handling

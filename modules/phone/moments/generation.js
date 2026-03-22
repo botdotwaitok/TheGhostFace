@@ -9,7 +9,7 @@ import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPer
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { loadChatHistory } from '../chat/chatStorage.js';
 import { addComment, toggleLike } from './apiClient.js';
-import { getMyAuthorIds, getBase64FromUrl, showToast } from './momentsHelpers.js';
+import { getMyAuthorIds, getCharAuthorId, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Pending Interactions Queue
@@ -116,15 +116,17 @@ export async function queueComment(post) {
     if (!charInfo) return;
 
     // ── 防重复：如果角色已评论过此帖且无新外部活动，则不再评论 ──
-    const myAuthorIds = getMyAuthorIds();
+    // 注意：只检查角色自身的 authorId，不包含用户 ID，
+    // 否则用户评论会被误判为角色已互动。
+    const charAuthorId = getCharAuthorId();
     if (post.comments && post.comments.length > 0) {
         const myCommentTimes = post.comments
-            .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+            .filter(c => c.authorId === charAuthorId && !c.replyToId)
             .map(c => new Date(c.createdAt).getTime());
         const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
         if (myLastCommentTime > 0) {
             const hasNewExternalActivity = post.comments.some(c =>
-                !myAuthorIds.has(c.authorId) &&
+                c.authorId !== charAuthorId &&
                 new Date(c.createdAt).getTime() > myLastCommentTime
             );
             if (!hasNewExternalActivity) {
@@ -171,11 +173,12 @@ export async function queueReply(post, comment) {
 
     if (_isMyContent(comment)) return;
 
-    // ── 防重复：如果已回复过此条评论，不再回复 ──
-    const myAuthorIds = getMyAuthorIds();
+    // ── 防重复：如果角色已回复过此条评论，不再回复 ──
+    // 同样只检查角色自身的 authorId
+    const charAuthorId = getCharAuthorId();
     if (post.comments) {
         const alreadyReplied = post.comments.some(c =>
-            myAuthorIds.has(c.authorId) && c.replyToId === comment.id
+            c.authorId === charAuthorId && c.replyToId === comment.id
         );
         if (alreadyReplied) return;
     }

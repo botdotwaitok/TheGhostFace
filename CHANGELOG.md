@@ -11,6 +11,7 @@ All notable changes to TheGhostFace will be documented in this file.
 - 🔧 总结器优化：记忆碎片+时间线合并为单次 LLM 调用（~11次 API → ~4-5次），TOKEN_CHUNK_SIZE 30k→50k
 
 ### Fixed
+- 📸 朋友圈身份混淆 bug — 用户评论后角色被误判为已互动，不再自动评论；WorldInfo 标签也误标 `[你已评论]`。根因：`getMyAuthorIds()` 混合了用户+角色 ID，改为仅匹配角色 `charAuthorId`（涉及 `generation.js` + `momentsWorldInfo.js`）
 - 🐛 总结器多 chunk 超时 bug 修复 — `timeoutPromise` 从全局共享改为每个 chunk 独立计时，防止后续 chunk 立即超时；`callCustomOpenAI` fetch timeout 从 60s → 120s
 - 🐛 大总结"我们的故事"多 chunk 合并失败时增加详细错误日志和 toastr 提示，方便诊断
 - 🐛 时间线截断修复 — `appendToTimeline` 新增按 token 切割（~15k tokens/chunk），避免单次 prompt 过长导致模型输出截断（仅91 tokens）

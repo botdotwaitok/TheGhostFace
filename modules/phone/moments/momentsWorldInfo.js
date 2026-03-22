@@ -8,7 +8,7 @@ import { createLocalPost } from './persistence.js';
 import { useMomentCustomApi } from '../../api.js';
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { getContext } from '../../../../../../extensions.js';
-import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getBase64FromUrl, showToast } from './momentsHelpers.js';
+import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getCharAuthorId, getBase64FromUrl, showToast } from './momentsHelpers.js';
 // (Helpers moved to momentsHelpers.js)
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -50,16 +50,18 @@ export async function updateMomentsWorldInfo() {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const shortId = p.id.split('_').pop().slice(-5);
 
-            let postReplied = p.comments?.some(c => myAuthorIds.has(c.authorId) && !c.replyToId);
+            // 只检查角色自身是否评论过（不混入用户 ID）
+            const charAuthorId = getCharAuthorId();
+            let postReplied = p.comments?.some(c => c.authorId === charAuthorId && !c.replyToId);
             // 检测帖子是否有新的外部活动（自角色上次评论后）
             let noNewActivity = false;
             if (postReplied && p.comments) {
                 const myCommentTimes = p.comments
-                    .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+                    .filter(c => c.authorId === charAuthorId && !c.replyToId)
                     .map(c => new Date(c.createdAt).getTime());
                 const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
                 noNewActivity = myLastCommentTime > 0 && !p.comments.some(c =>
-                    !myAuthorIds.has(c.authorId) &&
+                    c.authorId !== charAuthorId &&
                     new Date(c.createdAt).getTime() > myLastCommentTime
                 );
             }
@@ -79,7 +81,7 @@ export async function updateMomentsWorldInfo() {
                 const recentComments = p.comments.slice(-5).map(c => {
                     const cShortId = c.id.split('_').pop().slice(-5);
                     const replyStr = c.replyToName ? ` 回复 ${c.replyToName}` : '';
-                    let commentReplied = p.comments.some(replyC => myAuthorIds.has(replyC.authorId) && replyC.replyToId === c.id);
+                    let commentReplied = p.comments.some(replyC => replyC.authorId === charAuthorId && replyC.replyToId === c.id);
                     return `  - 【评论】[ID:${cShortId}] ${c.authorName}${replyStr}: ${c.content}${commentReplied ? ' [你已回复]' : ''}`;
                 }).join('\n');
                 text += '\n' + recentComments;
@@ -255,24 +257,25 @@ export async function handleMainChatOutput(content) {
                     const charInfo = getCharacterInfo();
 
                     if (charInfo && charInfo.name && targetPost.comments) {
-                        const myAuthorIds = getMyAuthorIds();
+                        // 只检查角色自身的 authorId，避免用户评论被误判为角色已互动
+                        const charAuthorId = getCharAuthorId();
                         let isDuplicate = false;
                         if (targetComment) {
-                            isDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && c.replyToId === targetComment.id);
+                            isDuplicate = targetPost.comments.some(c => c.authorId === charAuthorId && c.replyToId === targetComment.id);
                         } else {
-                            isDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && !c.replyToId);
+                            isDuplicate = targetPost.comments.some(c => c.authorId === charAuthorId && !c.replyToId);
                         }
-                        let exactTextDuplicate = targetPost.comments.some(c => myAuthorIds.has(c.authorId) && c.content === text);
+                        let exactTextDuplicate = targetPost.comments.some(c => c.authorId === charAuthorId && c.content === text);
 
                         // ── 防重复：帖子无新外部活动时阻止评论 ──
                         if (!isDuplicate && !targetComment) {
                             const myCommentTimes = targetPost.comments
-                                .filter(c => myAuthorIds.has(c.authorId) && !c.replyToId)
+                                .filter(c => c.authorId === charAuthorId && !c.replyToId)
                                 .map(c => new Date(c.createdAt).getTime());
                             const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
                             if (myLastCommentTime > 0) {
                                 const hasNewExternalActivity = targetPost.comments.some(c =>
-                                    !myAuthorIds.has(c.authorId) &&
+                                    c.authorId !== charAuthorId &&
                                     new Date(c.createdAt).getTime() > myLastCommentTime
                                 );
                                 if (!hasNewExternalActivity) {
