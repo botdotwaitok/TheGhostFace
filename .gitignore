@@ -1,3 +1,6 @@
+# Agent configuration
+.agents/
+
 # Server secrets and database
 server/.env
 server/data.db
