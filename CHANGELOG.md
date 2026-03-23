@@ -8,9 +8,12 @@ All notable changes to TheGhostFace will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- 🔧 总结器日志 emoji 清理 — 移除 `summarizer.js` 中所有 logger/toastr/confirm/注释里的装饰性 emoji（📊📦🔄❌🔒📝🙈🎉🚀等），仅保留 ✅ 成功对号；LLM prompt 模板中的 emoji 不受影响
+- 🔮 **三合一总结重构为统一单次调用** — `handleManualRangeSummary` 改用 `generateUnifiedSummary`，大总结+记忆碎片+时间线合并为一次 LLM 调用（原来需要 2-6 次 API 调用），超长对话自动 fallback 到 chunking
 - 🔧 总结器优化：记忆碎片+时间线合并为单次 LLM 调用（~11次 API → ~4-5次），TOKEN_CHUNK_SIZE 30k→50k
 - 🔧 记忆碎片解析增强：`parseModelOutput` 正则更宽松（允许前导空白/多等号/markdown格式），新增全面诊断日志（原始输出、近似标记检测、裸标签检测）
 - 🔧 记忆碎片解析修复：修复模型将 `[标题]` 写在 `===ENTRY===` 同行时内容被 regex group2 吞掉的 bug；块边界计算改用 `markerStart` 替代硬编码偏移
+- 🔇 **总结器日志精简** — ~30 个 `logger.info` 降级为 `logger.debug`（chunk 细节、解析诊断、子步骤等），删除 10 个冗余 `toastr.info`/`toastr.success`（已有 progress bar 或按钮文字时不再重复弹窗），保留所有错误/警告/关键节点日志
 
 ### Fixed
 - 📸 朋友圈身份混淆 bug — 用户评论后角色被误判为已互动，不再自动评论；WorldInfo 标签也误标 `[你已评论]`。根因：`getMyAuthorIds()` 混合了用户+角色 ID，改为仅匹配角色 `charAuthorId`（涉及 `generation.js` + `momentsWorldInfo.js`）

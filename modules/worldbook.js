@@ -10,7 +10,7 @@ import { logger } from './utils.js';
 export const GHOST_SUMMARY_PREFIX = "鬼面总结-";
 export const GHOST_TRACKING_COMMENT = "鬼面楼层追踪记录";
 
-// 🔄 宏替换：将 {{user}}/{{char}} 替换为真实角色名
+//宏替换：将 {{user}}/{{char}} 替换为真实角色名
 function replaceMacros(text) {
     if (!text || typeof text !== 'string') return text;
     try {
@@ -347,7 +347,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                 const newKeywords = [...new Set([...labelParts, ...aiKeywords])];
 
                 // ============================================================
-                // 🔄 路径A: AI 明确指定了 updateTarget（===UPDATE=== 块）
+                //路径A: AI 明确指定了 updateTarget（===UPDATE=== 块）
                 // ============================================================
                 if (fragment.updateTarget) {
                     const targetTitle = fragment.updateTarget.trim();
@@ -366,7 +366,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                         matchEntry.content = matchEntry.entryRef.content;
 
                         updatedCount++;
-                        logger.info(`[鬼面] 🔄 精确合并更新: [${targetTitle}] (Keywords: ${mergedKeys.join(', ')})`);
+                        logger.info(`[鬼面] 合并更新: [${targetTitle}] (Keywords: ${mergedKeys.join(', ')})`);
                         continue;
                     } else {
                         logger.warn(`[鬼面] ⚠️ UPDATE 目标 "${targetTitle}" 未找到匹配条目，将作为新条目创建`);
@@ -375,7 +375,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                 }
 
                 // ============================================================
-                // 🔄 路径B: 模糊去重 — 标题 + 内容双重检查
+                //路径B: 模糊去重 — 标题 + 内容双重检查
                 // ============================================================
                 let mergedWithExisting = false;
 
@@ -392,7 +392,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
 
                             updatedCount++;
                             mergedWithExisting = true;
-                            logger.info(`[鬼面] 🔄 标题模糊合并: [${fragment.label}] → 旧条目 [${existing.label}] (Keywords: ${mergedKeys.join(', ')})`);
+                            logger.info(`[鬼面]标题模糊合并: [${fragment.label}] → 旧条目 [${existing.label}] (Keywords: ${mergedKeys.join(', ')})`);
                             break;
                         }
                     }
@@ -494,7 +494,7 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         let worldBookName = await utils.findActiveWorldBook();
 
         if (!worldBookName) {
-            console.log('🔍 未检测到绑定的世界书');
+            console.log('未检测到绑定的世界书');
             return -1;
         }
 
@@ -502,7 +502,7 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         const worldBookData = await loadWorldInfo(worldBookName);
 
         if (!worldBookData || !worldBookData.entries) {
-            logger.debug('🔍 世界书数据为空');
+            logger.debug('世界书数据为空');
             return -1;
         }
 
@@ -510,27 +510,24 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         let foundTrackingEntry = false;
         let foundSummaryEntries = 0;
 
-        // 🥇 优先方法1：查找追踪条目（必须匹配当前聊天标识）
         Object.values(worldBookData.entries).forEach(entry => {
             if (entry.comment === GHOST_TRACKING_COMMENT) {
                 foundTrackingEntry = true;
                 const content = entry.content || '';
-                // 🔧 校验聊天标识：只有属于当前聊天的追踪条目才可信
                 const chatMatch = content.match(/聊天标识:\s*(.+)/);
                 if (chatMatch && chatMatch[1].trim() !== currentChatIdentifier) {
-                    logger.debug(`🔍 追踪条目属于其他聊天 (${chatMatch[1].trim()})，跳过`);
+                    logger.debug(`追踪条目属于其他聊天 (${chatMatch[1].trim()})，跳过`);
                     return; // 跳过，让备用方法接管
                 }
                 const match = content.match(/最后总结楼层:\s*(\d+)/);
                 if (match) {
                     const floorNum = parseInt(match[1]) - 1; // 转为0-based
                     maxFloor = Math.max(maxFloor, floorNum);
-                    logger.debug(`🔍 从追踪条目找到楼层: ${floorNum + 1}`);
+                    logger.debug(`从追踪条目找到楼层: ${floorNum + 1}`);
                 }
             }
         });
 
-        // 🥈 备用方法2：从鬼面总结条目解析
         if (maxFloor === -1) {
             Object.values(worldBookData.entries).forEach(entry => {
                 if (entry.comment &&
@@ -543,7 +540,7 @@ export async function getMaxSummarizedFloorFromWorldBook() {
                     if (match) {
                         const endFloor = parseInt(match[2]) - 1; // 转为0-based
                         maxFloor = Math.max(maxFloor, endFloor);
-                        logger.debug(`🔍 从总结条目找到楼层: ${endFloor + 1} (条目: ${entry.comment})`);
+                        logger.debug(`从总结条目找到楼层: ${endFloor + 1} (条目: ${entry.comment})`);
                     }
                 }
             });
@@ -552,7 +549,7 @@ export async function getMaxSummarizedFloorFromWorldBook() {
         return maxFloor;
 
     } catch (error) {
-        logger.error('🔍 从世界书获取总结状态失败:', error);
+        logger.error('从世界书获取总结状态失败:', error);
         return -1;
     }
 }
