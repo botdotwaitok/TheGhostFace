@@ -1136,6 +1136,10 @@ export function parseCombinedOutput(rawOutput) {
         rawOutput = String(rawOutput || '');
     }
 
+    // 🔍 诊断日志：查看原始输出
+    logger.info(`[鬼面] 🔍 parseCombinedOutput 原始输出长度: ${rawOutput.length} 字符`);
+    logger.debug(`[鬼面] 🔍 原始输出前800字符:\n${rawOutput.substring(0, 800)}`);
+
     let entriesPart = rawOutput;
     let timelinePart = null;
 
@@ -1146,6 +1150,14 @@ export function parseCombinedOutput(rawOutput) {
         // 从原文中移除时间线部分，只留记忆碎片
         entriesPart = rawOutput.substring(0, rawOutput.indexOf('===TIMELINE===')).trim();
         logger.info(`[鬼面] 📅 已从合并输出中提取时间线 (${timelinePart ? timelinePart.split('\n').length + ' 行' : '空'})`);
+    }
+
+    // 🔍 诊断日志：查看用于解析记忆碎片的文本
+    logger.info(`[鬼面] 🔍 记忆碎片部分长度: ${entriesPart.length} 字符`);
+    if (entriesPart.length > 0) {
+        logger.debug(`[鬼面] 🔍 记忆碎片部分前500字符:\n${entriesPart.substring(0, 500)}`);
+    } else {
+        logger.warn(`[鬼面] ⚠️ 记忆碎片部分为空！模型可能只返回了时间线`);
     }
 
     // 用现有的 parseModelOutput 解析记忆碎片部分
@@ -1168,7 +1180,8 @@ export function parseModelOutput(rawOutput) {
 
         // 🆕 统一分割：同时处理 ===ENTRY=== 和 ===UPDATE=== 块
         // 使用正则捕获块类型和可选的更新目标
-        const blockPattern = /===(ENTRY|UPDATE)===\s*(.*?)(?:\r?\n|$)/g;
+        // 🔧 更宽松的匹配：允许 === 前有空白，允许更多等号变体
+        const blockPattern = /^\s*={3,}\s*(ENTRY|UPDATE)\s*={3,}\s*(.*?)(?:\r?\n|$)/gm;
         let match;
         const blocks = [];
 
@@ -1176,23 +1189,58 @@ export function parseModelOutput(rawOutput) {
             blocks.push({
                 type: match[1],           // 'ENTRY' or 'UPDATE'
                 updateTarget: match[2]?.trim() || null,  // 旧标题（仅 UPDATE 有）
-                startPos: match.index + match[0].length
+                startPos: match.index + match[0].length,
+                markerStart: match.index  // 🔧 记录标记起始位置，用于精确计算块边界
             });
+        }
+
+        // 🔍 诊断日志
+        logger.info(`[鬼面] 🔍 blockPattern 找到 ${blocks.length} 个 ===ENTRY/UPDATE=== 块`);
+        if (blocks.length === 0 && rawOutput.length > 0) {
+            const approxMarkers = rawOutput.match(/={2,}.*?(ENTRY|UPDATE|entry|update).*?={2,}/gi) || [];
+            if (approxMarkers.length > 0) {
+                logger.info(`[鬼面] ⚠️ 未找到标准 ===ENTRY=== 但发现近似标记: ${approxMarkers.slice(0, 3).join(', ')}`);
+            }
+            const nakedLabels = rawOutput.match(/^\[.+?\][：:]/gm) || [];
+            if (nakedLabels.length > 0) {
+                logger.info(`[鬼面] ⚠️ 发现 ${nakedLabels.length} 个裸标签（无 ===ENTRY=== 包裹）: ${nakedLabels.slice(0, 3).join(', ')}`);
+            }
+            logger.info(`[鬼面] 🔍 原始输出前300字符: ${rawOutput.substring(0, 300).replace(/\n/g, '\\n')}`);
         }
 
         for (let b = 0; b < blocks.length; b++) {
             const block = blocks[b];
-            // 找到这个块的结束位置（下一个块的开始 或 ===END===）
-            const nextBlockStart = b + 1 < blocks.length ? blocks[b + 1].startPos - blocks[b + 1].type.length - 7 : rawOutput.length;
+            // 🔧 精确计算块边界：使用下一个块的 markerStart 而非硬编码偏移
+            const nextBlockStart = b + 1 < blocks.length ? blocks[b + 1].markerStart : rawOutput.length;
             const rawBlock = rawOutput.substring(block.startPos, nextBlockStart);
-            const endIdx = rawBlock.indexOf('===END===');
+            // 🔧 更宽松的 ===END=== 匹配
+            const endMatch = rawBlock.match(/={3,}\s*END\s*={3,}/);
+            const endIdx = endMatch ? endMatch.index : -1;
             const content = endIdx !== -1 ? rawBlock.substring(0, endIdx).trim() : rawBlock.trim();
 
-            if (!content) continue;
+            if (!content) {
+                logger.info(`[鬼面] 🔍 块 ${b + 1}/${blocks.length} 内容为空，跳过 (rawBlock长度: ${rawBlock.length}, endIdx: ${endIdx})`);
+                continue;
+            }
 
-            // Parse the content line: [LABEL]: text
-            const contentMatch = content.match(/^\[(.+?)\][：:]\s*(.+)/s);
-            if (!contentMatch) continue;
+            // 🔧 修复：模型可能将 [标题] 写在 ===ENTRY=== 同一行，被 regex group2 吞掉
+            let fullContent = content;
+            if (block.updateTarget && /\[.+?\][：:]/.test(block.updateTarget)) {
+                fullContent = block.updateTarget + '\n' + content;
+                logger.info(`[鬼面] 🔧 块 ${b + 1}: [标题] 写在 ===${block.type}=== 同行，已合并回内容`);
+                if (block.type === 'ENTRY') block.updateTarget = null;
+                else if (block.type === 'UPDATE') {
+                    const upM = block.updateTarget.match(/^(.+?)\s*\[/);
+                    block.updateTarget = upM ? upM[1].trim() || null : null;
+                }
+            }
+            const cleanContent = fullContent.replace(/^\s+/, '');
+            const contentMatch = cleanContent.match(/^(?:\*\*)?\[(.+?)\](?:\*\*)?[：:]\s*(.+)/s);
+            if (!contentMatch) {
+                logger.info(`[鬼面] ⚠️ 块 ${b + 1}/${blocks.length} (${block.type}) 无法匹配 [标题]: 格式`);
+                logger.info(`[鬼面] 🔍 块 ${b + 1} 内容前150字符: ${cleanContent.substring(0, 150).replace(/\n/g, '\\n')}`);
+                continue;
+            }
 
             const label = contentMatch[1].trim();
             const bodyAndKeywords = contentMatch[2].trim();

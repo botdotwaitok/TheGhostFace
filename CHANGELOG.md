@@ -9,6 +9,8 @@ All notable changes to TheGhostFace will be documented in this file.
 
 ### Changed
 - 🔧 总结器优化：记忆碎片+时间线合并为单次 LLM 调用（~11次 API → ~4-5次），TOKEN_CHUNK_SIZE 30k→50k
+- 🔧 记忆碎片解析增强：`parseModelOutput` 正则更宽松（允许前导空白/多等号/markdown格式），新增全面诊断日志（原始输出、近似标记检测、裸标签检测）
+- 🔧 记忆碎片解析修复：修复模型将 `[标题]` 写在 `===ENTRY===` 同行时内容被 regex group2 吞掉的 bug；块边界计算改用 `markerStart` 替代硬编码偏移
 
 ### Fixed
 - 📸 朋友圈身份混淆 bug — 用户评论后角色被误判为已互动，不再自动评论；WorldInfo 标签也误标 `[你已评论]`。根因：`getMyAuthorIds()` 混合了用户+角色 ID，改为仅匹配角色 `charAuthorId`（涉及 `generation.js` + `momentsWorldInfo.js`）
