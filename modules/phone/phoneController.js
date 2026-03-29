@@ -20,6 +20,7 @@ import { openVcApp } from './voiceCall/vcApp.js';
 import { openMusicApp } from './music/musicApp.js';
 import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
+import { openHandbookApp, isHandbookEnabled } from './handbook/handbookApp.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -330,6 +331,22 @@ export function initPhone() {
         glow: 'rgba(212, 164, 76, 0.4)',
         onOpen: () => openDndApp(),
     });
+
+    // ── 手账本 (HandBook) — gated by Settings toggle ──
+    if (isHandbookEnabled()) {
+        registerApp({
+            id: 'handbook',
+            name: '手账本',
+            icon: 'ph ph-notebook',
+            color: '#d4a76a',
+            glow: 'rgba(212, 167, 106, 0.4)',
+            onOpen: () => {
+                // Close phone first, then open standalone window
+                closePhone();
+                setTimeout(() => openHandbookApp(), 150);
+            },
+        });
+    }
 
     // ── Console (调试) — always visible, but requires enable in Settings to function ──
     registerApp({

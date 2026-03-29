@@ -887,53 +887,82 @@ async function _sendToLLM(text) {
         };
         _callMessages.push(charMessageEntry);
 
-        // 🔊 TTS: synthesize with emotion + play + capture blob for persistence
+        // 🔊 TTS: synthesize each <say> segment individually with its own emotion.
+        // Previously all segments were merged into one string, causing GPT-SoVITS
+        // to silently truncate long text. Now each segment is sent separately.
         // Stop ambient before TTS plays
         stopAmbient();
 
-        let audioDuration = 0;
-        let audioPath = null;
+        let totalAudioDuration = 0;
+        const audioBlobs = [];   // Collect blobs from each segment for merged upload
         if (_ttsEngine) {
             _isTtsPlaying = true;
             // Stop STT during TTS to prevent capturing speaker output
             if (_sttEngine && _sttEngine.state === 'listening') {
                 _sttEngine.stopListening();
             }
-            try {
-                const ttsResult = await _ttsEngine.speakAndCapture(displayText, emotion);
-                if (ttsResult) {
-                    audioDuration = ttsResult.duration || 0;
-                    // Upload audio to ST file system for persistence
+
+            // Start typewriter in parallel — it will run across all segments
+            let typewriterDone = Promise.resolve();
+            if (charBubble) {
+                charBubble.removeAttribute('id');
+                // Estimate total duration for typewriter (will be approximate for first pass)
+                // We use a generous estimate — actual sync comes from awaiting each segment
+                typewriterDone = _typewriterDisplay(charBubble, displayText, 0);
+            }
+
+            // Play each segment sequentially, splitting into individual sentences
+            // to prevent GPT-SoVITS from truncating long text within a single segment.
+            for (let i = 0; i < parsed.segments.length; i++) {
+                const seg = parsed.segments[i];
+                if (!seg.text || seg.text.trim().length === 0) continue;
+
+                // Split segment into individual sentences for reliable TTS
+                const sentences = _splitIntoSentences(seg.text);
+                console.log(`${LOG_PREFIX} TTS segment ${i + 1}/${parsed.segments.length}: tone="${seg.tone}", ${sentences.length} sentence(s)`);
+
+                for (let j = 0; j < sentences.length; j++) {
+                    const sentence = sentences[j];
+                    console.debug(`${LOG_PREFIX}   sentence ${j + 1}/${sentences.length}: "${sentence.substring(0, 50)}..."`);
                     try {
-                        audioPath = await uploadAudioToST(ttsResult.audioBlob, 'voice_call');
-                        charMessageEntry.audioPath = audioPath;
-                        console.log(`${LOG_PREFIX} TTS audio saved: ${audioPath}`);
-                    } catch (uploadErr) {
-                        console.warn(`${LOG_PREFIX} TTS audio upload failed:`, uploadErr);
+                        const ttsResult = await _ttsEngine.speakAndCapture(sentence, seg.tone);
+                        if (ttsResult) {
+                            const segDuration = ttsResult.duration || 0;
+                            totalAudioDuration += segDuration;
+                            if (ttsResult.audioBlob) {
+                                audioBlobs.push(ttsResult.audioBlob);
+                            }
+                            // Wait for this sentence's audio to finish before playing next
+                            if (segDuration > 0) {
+                                await new Promise(r => setTimeout(r, segDuration * 1000));
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`${LOG_PREFIX} TTS sentence ${j + 1} failed, skipping:`, e);
                     }
                 }
-            } catch (e) {
-                console.warn(`${LOG_PREFIX} TTS failed, text-only fallback`, e);
             }
-            // NOTE: _isTtsPlaying stays true — cleared after audio finishes below
-        }
 
-        // Run typewriter display concurrently with audio playback.
-        // Schedule STT restart after audio duration (or immediately if no audio).
-        const waitForAudioMs = audioDuration > 0 ? audioDuration * 1000 : 0;
+            // Upload merged audio for persistence
+            if (audioBlobs.length > 0) {
+                try {
+                    const mergedBlob = new Blob(audioBlobs, { type: 'audio/mpeg' });
+                    const audioPath = await uploadAudioToST(mergedBlob, 'voice_call');
+                    charMessageEntry.audioPath = audioPath;
+                    console.log(`${LOG_PREFIX} TTS audio saved (${audioBlobs.length} segments merged): ${audioPath}`);
+                } catch (uploadErr) {
+                    console.warn(`${LOG_PREFIX} TTS audio upload failed:`, uploadErr);
+                }
+            }
 
-        if (charBubble) {
-            charBubble.removeAttribute('id');
-            // Start typewriter (runs in parallel with audio)
-            const typewriterDone = _typewriterDisplay(charBubble, displayText, audioDuration);
-            // Wait for whichever takes longer: audio playback or typewriter
-            const audioWait = waitForAudioMs > 0
-                ? new Promise(r => setTimeout(r, waitForAudioMs))
-                : Promise.resolve();
-            await Promise.all([typewriterDone, audioWait]);
-        } else if (waitForAudioMs > 0) {
-            // No bubble but audio is playing — wait for it
-            await new Promise(r => setTimeout(r, waitForAudioMs));
+            // Wait for typewriter to finish (it may still be running)
+            await typewriterDone;
+        } else {
+            // No TTS engine — just show typewriter
+            if (charBubble) {
+                charBubble.removeAttribute('id');
+                await _typewriterDisplay(charBubble, displayText, 0);
+            }
         }
 
         // 🔑 Clear flag and restart STT after audio + typewriter both finish
@@ -956,6 +985,26 @@ async function _sendToLLM(text) {
             _restartSttAfterTts();
         }
     }
+}
+
+/**
+ * Split text into individual sentences for TTS synthesis.
+ * GPT-SoVITS tends to silently truncate audio for long text (3+ sentences).
+ * Splitting into 1-sentence chunks ensures complete synthesis.
+ * @param {string} text
+ * @returns {string[]} Array of sentences (never empty — returns [text] if no split points found)
+ */
+function _splitIntoSentences(text) {
+    if (!text || text.trim().length === 0) return [];
+
+    // Split on sentence-ending punctuation followed by whitespace.
+    // Covers: . ? ! (English) and 。？！(Chinese)
+    // Uses lookbehind to keep the punctuation attached to its sentence.
+    const sentences = text.split(/(?<=[.!?。！？])\s+/);
+    const result = sentences.map(s => s.trim()).filter(s => s.length > 0);
+
+    // If no split points found, return the whole text as a single chunk
+    return result.length > 0 ? result : [text.trim()];
 }
 
 /**

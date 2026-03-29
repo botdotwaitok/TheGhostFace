@@ -119,6 +119,12 @@ export class GsviTtsProvider {
             batch_size: settings.batchSize !== undefined ? parseInt(settings.batchSize, 10) : 1,
             media_type: 'wav',
             streaming_mode: false,
+            // Inference parameters — aligned with EntityWhisper defaults
+            speed_factor: settings.speed ?? 1.0,
+            top_k: 15,
+            top_p: 1.0,
+            temperature: 1.0,
+            repetition_penalty: 1.35,
         };
 
         console.debug(`${LOG_PREFIX} POST ${endpoint}/`);

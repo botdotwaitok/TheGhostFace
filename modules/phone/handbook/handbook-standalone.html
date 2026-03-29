@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="color-scheme" content="light only">
+    <title>手账本 — Loading...</title>
+
+    <!-- Google Fonts: Handwriting styles -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Long+Cang&family=Dancing+Script:wght@400;700&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+
+    <!-- Handbook Styles -->
+    <link rel="stylesheet" href="handbook.css">
+
+    <style>
+        /* Prevent any flash of unstyled content */
+        body { opacity: 0; transition: opacity 0.3s ease; }
+        body.loaded { opacity: 1; }
+    </style>
+</head>
+<body class="hb-body">
+    <div id="hb-app"></div>
+
+    <script type="module">
+        import { boot } from './handbookEngine.js';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('loaded');
+            boot().catch(err => {
+                console.error('[HandBook] Boot failed:', err);
+                const app = document.getElementById('hb-app');
+                if (app) {
+                    app.innerHTML = `
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;">
+                            <div style="font-size:48px;margin-bottom:16px;opacity:0.3;"><i class="ph ph-warning-circle"></i></div>
+                            <div style="font-size:18px;font-weight:600;margin-bottom:8px;">启动失败</div>
+                            <div style="font-size:14px;opacity:0.6;">${err.message}</div>
+                        </div>
+                    `;
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>

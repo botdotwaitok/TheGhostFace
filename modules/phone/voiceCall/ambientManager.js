@@ -146,11 +146,12 @@ export function startAmbient() {
         return false;
     }
 
-    // If fading out from a previous stop, cancel fade and force cleanup
+    // If fading out from a previous stop, cancel the fade and let it resume
     if (_isFadingOut) {
         _clearFade();
         _isFadingOut = false;
-        _destroyAudio();
+        // Don't destroy — the element is still valid, just reset volume
+        if (_audioEl) _audioEl.volume = 0;
     }
 
     // Already playing
@@ -209,6 +210,8 @@ export function warmUpAmbient() {
 
 /**
  * Stop ambient audio with fade-out.
+ * Keeps the Audio element alive (paused) so it can be reused by startAmbient()
+ * without losing the mobile gesture unlock from warmUpAmbient().
  */
 export function stopAmbient() {
     if (!_audioEl) return;
@@ -216,16 +219,20 @@ export function stopAmbient() {
     _clearFade();
 
     if (_audioEl.paused) {
-        _destroyAudio();
+        // Already paused — just reset position for next play
+        _audioEl.currentTime = 0;
         return;
     }
 
-    // Fade out then destroy
+    // Fade out then pause (do NOT destroy — keep element for reuse)
     _isFadingOut = true;
     _fadeToVolume(0, FADE_DURATION, () => {
         _isFadingOut = false;
-        _destroyAudio();
-        console.log(`${LOG} Ambient stopped`);
+        if (_audioEl) {
+            _audioEl.pause();
+            _audioEl.currentTime = 0;
+        }
+        console.log(`${LOG} Ambient stopped (paused, element kept for reuse)`);
     });
 }
 

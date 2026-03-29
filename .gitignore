@@ -6,3 +6,4 @@ server/.env
 server/data.db
 server/node_modules/
 server/package-lock.json
+CHANGELOG.md

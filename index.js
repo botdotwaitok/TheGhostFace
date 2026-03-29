@@ -160,6 +160,14 @@ async function initializeGhostFace() {
         console.warn('[鬼面] Phone settings init skipped:', e);
     }
 
+    // HandBook BroadcastChannel bridge (must init before handbook window opens)
+    try {
+        const { initHandbookBridge } = await import('./modules/phone/handbook/handbookBridge.js');
+        initHandbookBridge();
+    } catch (e) {
+        console.warn('[鬼面] HandBook bridge init skipped:', e);
+    }
+
     try {
         // 第1步：设置全局导出
         const exportSuccess = setupGlobalExports();

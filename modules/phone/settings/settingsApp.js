@@ -8,6 +8,7 @@ import { openAppInViewport } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
 import { isConsoleEnabled, setConsoleEnabled, openConsoleApp } from '../console/consoleApp.js';
+import { isHandbookEnabled, setHandbookEnabled } from '../handbook/handbookApp.js';
 import { getConfig as getAutoMsgConfig, saveConfig as saveAutoMsgConfig, startAutoMessageTimer, stopAutoMessageTimer, formatIntervalLabel } from '../chat/autoMessage.js';
 import { isDiaryEnabled, getDiaryMode, setDiaryEnabled, setDiaryMode } from '../diary/diaryApp.js';
 import {
@@ -1290,6 +1291,18 @@ export function openSettingsApp() {
                     开启后 Console App 可正常使用，实时查看模块日志和发出的提示词。
                 </div>
 
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">手账本</span>
+                        <button id="${P}_handbook_enable_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    开启后桌面出现手账本图标，在独立窗口中写手账、收角色回应。需要刷新桌面生效。
+                </div>
+
             </div>
         </details>
     </div>
@@ -2200,6 +2213,22 @@ export function openSettingsApp() {
                 consoleToggle.classList.toggle('active', newState);
                 setConsoleEnabled(newState);
                 showToast(newState ? 'Console 已启用' : 'Console 已关闭');
+            });
+        }
+
+        // ═══ HandBook: Enable Toggle ═══
+        const handbookToggle = document.getElementById(`${P}_handbook_enable_toggle`);
+        const handbookOn = isHandbookEnabled();
+        if (handbookToggle) {
+            handbookToggle.setAttribute('aria-checked', String(handbookOn));
+            if (handbookOn) handbookToggle.classList.add('active');
+            handbookToggle.addEventListener('click', () => {
+                const wasOn = handbookToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                handbookToggle.setAttribute('aria-checked', String(newState));
+                handbookToggle.classList.toggle('active', newState);
+                setHandbookEnabled(newState);
+                showToast(newState ? '手账本已启用，返回桌面即可看到图标' : '手账本已关闭');
             });
         }
 
