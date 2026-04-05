@@ -5,6 +5,53 @@ All notable changes to TheGhostFace will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+---
+
+## [4.2.1] — 2026-04-04
+
+### Added
+- 🏠 **社区 App 用户签名动态注入** — 成员管理界面开放用户对其个人签名/状态的自由修改；修改后底层会静默生成系统提示钩子，在下一次聊天时自然注入 Prompt，让群成员（包括恋人）能够察觉并可能顺理成章地互动。
+- 🏠 **社区 App 设定智能提炼** — 在编辑非主角成员时，新增「智能优化 (恶灵提炼)」工具：移除并放开原始性格描述框的字数上限，允许用户粘贴海量原始设定素材（如角色卡、维基资料）；LLM 解析这些素材并针对群聊场景提炼出极简（<200字）且聚焦于"核心背景+说话口癖"的人设重点；自带带深色模式适配和发光动画的实时预览框，支持微调和一键采用，极大净化 LLM 群聊提示词上下文。
+- 🏠 **社区 App (Discord Community) Phase 1** — 全新 Discord 风格社区群聊 App 骨架上线：localStorage 数据层（服务器配置/成员/身份组/频道消息/表情包/滚动总结 CRUD）、双模初始化（LLM 智能创建 vs 手动创建）、频道列表渲染（分类折叠/展开 + 最新消息预览）、phoneController 注册
+- 🏠 **社区 App Phase 2** — 成员系统 + 身份组 + 服务器设置：`discordMembers.js`（成员列表按身份组分组展示、手动创建/编辑/删除成员、LLM 智能批量生成 + 预览确认、头像颜色选择器/图片上传）、`discordServerSettings.js`（服务器信息编辑、成员管理入口、身份组 CRUD + 颜色选择器弹窗、频道/分类增删重命名、自动群聊开关 + 频率滑块、危险区域），服务器首页头部点击导航到设置页
+- 🏠 **社区 App Phase 3** — 群聊核心逻辑：`discordPromptBuilder.js`（多角色群聊 Prompt 工程：Core Foundation + 角色卡人设 + 用户人设 + 世界书 + NPC 简洁人设 + 群聊行为规则 + JSON 输出格式；频道消息压缩总结 Prompt；自动群聊 Prompt）、`discordMessageHandler.js`（用户消息发送 → 回复成员智能选择 → LLM 调用 → JSON 解析 + name-to-ID fallback → delay 逐条投递 + jitter → Reaction 处理 → 频道滚动压缩；解耦回调系统 onMessageReceived/onTypingStateChange 供 UI 层接入）
+- 🏠 **社区 App Phase 4** — 频道聊天 UI + 表情系统：`discordChannel.js`（Discord 风格消息列表（非气泡，avatar+用户名布局）、5 分钟内同用户消息合并、身份组颜色标注、@mention 高亮、Reaction 胶囊显示/切换、长按上下文菜单（快速 Reaction + 删除）、底部输入区 + @成员下拉选择、emoji 面板按钮、正在输入指示器、右侧成员抽屉滑出、实时消息追加动画、自动滚动）；`discordEmoji.js`（6 分类 Unicode 表情面板 + Tab 切换、自定义表情管理 CRUD + 上传 UI、快速 Reaction 集、自动 Reaction 概率工具）；`discord.css` 新增 800+ 行样式覆盖消息/Reaction/输入/抽屉/菜单/表情面板
+- 🏠 **社区 App Phase 5** — 自动群聊 + 消息压缩 + 收尾：`discordAutoChat.js`（定时器驱动的自动群聊系统：随机频道+随机2-4成员→LLM生成自然群聊→逐条延迟投递；±30%随机抖动间隔；未读频道计数追踪+标记已读；频道列表未读红色徽章；设置页toggle/slider实时启停定时器）；消息压缩系统完善（>300条自动触发LLM滚动总结→保留最近30条→旧消息删除）；`project_architecture.md`更新目录结构+App表格+版本号
+- 🏠 **社区 App 多消息发送系统** — Discord 频道输入栏新增🥝 Kiwi 草稿按钮（`ph-plus-circle`）+ 待发草稿区（横向滚动气泡列表，hover 变红可点击删除）；Enter 键添加到草稿队列，发送按钮一次性发送所有草稿；`discordMessageHandler.sendUserMessages()` 支持批量用户消息存储+逐条通知 UI；Prompt Builder 接受 `string[]` 在 user prompt 中展示多条消息上下文；群聊规则增加「同一成员可连续发送多条消息」鼓励真实 Discord 对话节奏
+- 🏠 **社区 App 初始化提示词重构** — LLM 初始化 prompt 重写：将角色定位为「Discord 社区 Owner（服务器主）」，基于角色性格/兴趣/职业构建长期运营的兴趣爱好社区（非一次性工具）；移除对最近聊天记录的依赖；新增 `rules`（社区规则）和 `announcement`（公告/欢迎消息）字段生成，初始化后自动以角色身份将规则和公告 seed 到对应频道作为首条消息
+- 🏠 **社区 App 频道历史消息 seed** — LLM 初始化时同步生成每个非规则/非公告频道的 5-10 条历史聊天消息（`channelHistory`），内容匹配频道主题、成员之间有对话互动、时间戳按 `minutesAgo` 递减；规则和公告内容支持 Discord Markdown 排版（标题、加粗、列表等），让新创建的服务器一打开就有活跃社区的真实感
+- 🏠 **社区 App Markdown 渲染扩展** — `_processMessageContent` 新增 Discord 风格标题渲染（`#`/`##`/`###` → h1/h2/h3）、小字注释（`-# text`）、剧透遮罩（`||text||`，点击揭示）、无序列表（`- item`）；配套 CSS 样式（h1=22px/h2=18px/h3=15px 加粗、subtext 灰色小字、spoiler 遮罩+点击切换动画、列表项缩进圆点）；群聊规则 prompt 新增第11条：鼓励 LLM 在合适时使用 markdown 语法
+- 🏠 **社区 App 频道菜单系统** — 频道页面右上角的成员列表图标替换为 Chat App 风格的 "⋯" 菜单按钮（iOS action sheet 弹出）；菜单包含四项：「重新生成」（删除频道尾部 NPC 消息后重新调用 LLM）、「编辑消息」（进入编辑模式 → 消息高亮 → 点击弹出底部编辑面板 → 保存后实时更新 storage 并重渲染）、「删除消息」（进入批量选择模式 → 圆形复选框 + 底部工具栏计数/全选/取消/确认）、「成员列表」（保留原有右侧抽屉功能）；所有样式使用 Discord CSS 变量，完整支持浅色/深色模式
+- 🏠 **社区 App「让她们聊聊」** — 频道菜单新增「让她们聊聊」按钮，手动触发一次 NPC 之间的自然群聊（随机选取 2-4 个成员 → 调用 `generateAutoConversation` → 逐条带延迟投递到当前频道），无需等待定时器，随时按一下就能看到成员们互动
+- 🏠 **社区 App 图片发送 + 输入栏重构** — 频道聊天支持发送图片：新建 `discordImage.js` 图片处理模块（文件读取/Canvas 压缩/Lightbox 全屏查看）；输入栏重构为 Chat App 风格（左侧 `+` 按钮打开底部 action sheet → 表情/图片，🥝 kiwi emoji 替代加号图标用于草稿添加）；图片 base64 通过 `callPhoneLLM` vision API 传给 LLM 实现多模态回应；配套 CSS 样式含 draft 缩略图预览、消息内图片渲染、全屏 lightbox、深色模式适配
+- 🏠 **社区 App NPC 图片描述卡** — NPC 成员可以通过 `<图片>描述</图片>` 标签「发送图片」，渲染为浅灰色圆角卡片 + Phosphor 相机图标 + 斜体描述文字；群聊规则新增第12条告知 LLM 可偶尔使用此标签
+- 🏠 **社区 App 引用回复系统** — 完整的 Discord 风格消息引用回复：用户左滑消息触发 swipe 手势（方向锁定 + 60px 阈值 + 弹回动画）→ 输入栏上方显示引用预览条（被引用者名字+内容截断+关闭按钮）；LLM 回复也支持引用（chat_history 添加 `[N]` 序号 → LLM 用 `replyToIndex` 引用 → 解析时映射回真实 msgId）；消息渲染中有 `replyTo` 的消息显示彩色左竖条+作者名+内容的引用卡片；群聊规则新增第13条
+- 🏠 **社区 App 输入区域布局调整 + 保活按钮** — ① 发送按钮移到 `.dc-input-wrap` 外部，与真实 Discord 布局一致（`+` 输入框 发送三个独立元素水平排列）② `+` 面板新增「保活」按钮（`ph-broadcast` 图标），复用 Chat App 的 `keepAlive.js` 模块实现 iOS 静默音频防杀后台，带 active 状态高亮（绿色渐变）和 toastr 提示
+- 🏠 **社区 App 频道列表字体放大** — 为了提升可读性，调大了主页频道列表的各类字体：频道分类组标题（`11px → 12px`）、井号图标（`18px → 20px`）、频道名称（`15px → 16px`）
+- 🏠 **社区 App 移除主页消息预览** — 优化服务器主页的频道列表使其更加整洁，移除了频道名称下方的最后一条消息缩略预览，同时清除了配套的 CSS 样式
+- 🏠 **社区 App 服务器 Banner 图片** — 主页移除了页头的默认缩写/首字母 Server Icon。作为替代，在频道列表顶部新增了可自定义的服务器 Banner 图片。用户可以在「服务器设置」页面上传或移除该图片（图片通过 ST `/api/files/upload` 本地化处理，确保跨端访问和数据体积健康）。
+
+### Fixed
+- 🏠 **社区 App 多个体验 Bug 修复** — 包括自动群聊中冗余 summarized 的拦截过滤；重生成(Reroll)消息时图片和引用信息的补全；清理 Emoji 面板多余废弃函数。
+- 🏠 **社区 App 长按菜单无法关闭 bug 修复** — 频道消息长按/右键弹出的上下文菜单（快速 Reaction + 回复 + 删除）无法通过点击空白处关闭：旧逻辑检查 `!e.target.closest('.dc-message')` 但消息元素占满整个视口导致条件永远不满足。修复：① 新增透明全屏 backdrop 层（z-index 99，低于菜单的 100）拦截首次外部点击后自动关闭菜单 ② 菜单打开时设置 `_contextMenuOpen` 标志阻止 pointerdown 重复触发长按计时器 ③ 新增 `contextmenu` 事件 `preventDefault()` 抑制浏览器原生右键菜单冲突
+- 🏠 **社区 App 表情包面板无法关闭 bug 修复** — 点击左下角 `+` → 表情包按钮后弹出的表情包选择面板缺少关闭机制（无 backdrop、无关闭按钮、无外部点击处理），面板打开后无法消失。修复：① 表情包面板 header 右侧新增关闭按钮（`ph-x`）② 面板打开时创建透明全屏 backdrop（z-index 59）拦截外部点击自动关闭 ③ `closeStickerPanel()` 同步销毁 backdrop
+- 🏠 **社区 App 输入框被 ST 主题变量接管修复** — 频道聊天输入框的背景色和文字颜色被 SillyTavern 的 SmartTheme CSS 变量（`input[type=text]` 全局规则）强制覆盖，导致输入框颜色与 Discord 主题不匹配。修复：将 `.dc-chat-input` 单一类选择器提升为高优先级复合选择器（`.dc-channel-page .dc-input-wrap .dc-chat-input` + `#dc_chat_input.dc-chat-input`），与 Chat App 的 `!important` 防御模式对齐；`:focus` 状态同步补充 `border/outline/background` 重置；深色模式选择器同步升级
+- 🏠 **社区 App 头像同步修复** — 角色（protagonist）和用户头像在 Discord 频道消息、成员列表、@mention 下拉、成员抽屉、服务器设置预览中始终显示为首字母占位符（member.avatar 默认为 null）。新增 `getMemberAvatarUrl()` 统一头像解析器：protagonist 自动回退到 ST 角色卡头像（`/characters/{avatar}`），用户自动回退到 ST 当前 Persona 头像（`User Avatars/{user_avatar}`），手动上传的自定义头像优先级最高；涉及 `discordStorage.js`（新增解析器 + import `user_avatar`）、`discordChannel.js`（消息/mention/drawer 三处）、`discordMembers.js`（列表）、`discordServerSettings.js`（预览）
+- 🏠 **社区 App 体检修复** — `_isUserViewingChannel()` 不检查 channelId 导致 auto-chat 未读通知被错误跳过（改为 `data-channel-id` 属性精确匹配）；移除 `discordApp.js` 和 `discordPromptBuilder.js` 中未使用的 `buildPhoneChatForWI` import；`_processReaction()` 消除重复 `loadChannelMessages` 调用；`_processMessageContent()` 改为接受预加载的 members 参数避免每条消息都 JSON.parse localStorage；未接入的存根函数（`maybeAutoReaction`/`onUnreadChange`/`getTotalUnread`）添加 TODO 标记
+- 🏠 **社区 App 自动群聊定时器重复 bug 修复** — 自动群聊定时器在控制台中连续打印多条 "Timer started" 日志（几秒内启动 3-4 个并行定时器链）。根因：① `openDiscordApp()` 每次打开 app 都无条件调用 `startAutoChatTimer()`，多次快速打开导致多条定时器链并行 ② 定时器 async 回调完成后递归调用 `startAutoChatTimer()`，但期间 `_timer` 已被新调用覆盖，旧回调仍会创建新定时器。修复：引入 `_generation` 计数器，每次 start 递增，async 回调完成后检查 generation 是否匹配再决定是否递归调度；`discordApp.js` 中改为 `if (!isTimerRunning())` 条件启动；顺带移除 `discordAutoChat.js` 中未使用的 `onMessageReceived` import
+- 🏠 **社区 App 浅色/深色模式修复** — Discord CSS 原本硬编码深色主题为默认，导致手机浅色模式下 Discord 仍显示深色背景。重构 `discord.css`：`:root` 改为 Discord 浅色调色板（白色背景 + 深色文字 + 柔和分隔线/阴影），新增 `.phone-dark-mode` 覆写块恢复完整深色主题（深色背景 + 浅色文字 + 重阴影）；同步修复浮层组件（dialog/context menu/emoji panel/mention dropdown/member drawer）在浅色模式下阴影过重的问题，添加 `border` 定义增强浅色背景对比度
+- 🏠 **社区 App 表情包正方形缩略图** — 表情包展示栏和聊天中发送的表情包统一改为正方形小图标显示（`object-fit: cover` + 固定宽高），不再以原始尺寸展示变形图片；新增 sticker panel 浮层完整 CSS（4列网格 + 空状态 + header + dark mode）；emoji picker 和设置页自定义表情预览同步改为 `cover` 裁切
+- 🏠 **社区 App iOS 保活缺失修复** — Discord App 的用户发消息（`sendUserMessages`）和自动群聊定时器（`startAutoChatTimer`）均未调用 `tryAutoStartKeepAlive()`，导致在 iOS 上 Discord 后台活动（自动群聊等）无法像 Chat App 一样激活静默音频保活，切后台后被系统杀死。修复：在 `discordMessageHandler.js` 和 `discordAutoChat.js` 中引入 `keepAlive.js` 并在关键路径调用保活
+- 🏠 **社区 App 引用回复错乱修复** — LLM 在 Discord 群聊中引用回复时经常引用到错误的消息内容。双重根因：① **索引污染**：用户新发送的消息在 `appendMessage` 后被包含在 `chat_history` 的 `[N]` 索引中，同时又在 user prompt 底部重复出现，LLM 看到两份导致索引认知混乱。修复：`buildGroupChatUserPrompt` 新增 `excludeLastN` 参数从 chat_history 尾部排除用户新消息；`_deliverMessagesWithDelay` 同步使用相同的排除逻辑确保 `replyToIndex → msgId` 映射与 prompt 精确一致 ② **线程上下文缺失**：`[回复]` 标记没有告知 LLM 被引用的是哪条 `[N]`，LLM 无法理解消息线程关系。修复：改为 `[回复→N]` 格式并添加说明行
+### Changed
+- 🔧 **社区 App 生成红线** — 增加核心红线提示词，强制要求在初始化服务器和生成新成员时必须为全女/多元女性友好的社区氛围（Herstory）。如果由于缺乏世界设定而需要原创配角配角，默认生成强壮聪明的原创女性角色，绝对禁止代入常规父权视角的男性凝视和“称兄道弟”的直男聊天语境。
+- 🔧 **Core Foundation Prompt 语言风味降频** — `<REALM_CORE>` 重命名为 `<REALM_FLAVOR>`，解决标签名中的 "CORE" 暗示 LLM 将世界观用词视为「核心必用词汇」的问题；重写指导语从"内化为世界物理法则"改为"调味品式的稀有文化风味"，明确标注"每 20-30 条消息才偶尔出现一次"、"说话不自然就别用"，防止社区群聊成员每句话都饱和使用专用词汇
+- 🏠 **社区 App 存储迁移：localStorage → chat_metadata + ST 文件系统** — `discordStorage.js` 底层全面重写：所有结构化数据（server config / members / roles / messages / summaries / emojis / auto-chat config）从 `localStorage` 迁移到 `chat_metadata.gf_discord` 命名空间（持久化在 ST `.jsonl` 聊天文件中，实现跨设备同步）；二进制资产（emoji 图片、频道消息图片、成员头像）通过新增的 `uploadFileToST()` 函数上传到 ST 服务器文件系统 `/api/files/upload`，只在 `chat_metadata` 中存储 web path 引用；URL 类型 emoji 新增 `localStorage` 浏览器缓存机制（首次访问后缓存 base64 到本地，后续加载直接使用缓存，删除时清理）；不做旧数据自动迁移
+
+---
+
 ## [4.2.0] — 2026-03-29
 
 ### Added

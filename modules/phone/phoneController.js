@@ -21,6 +21,7 @@ import { openMusicApp } from './music/musicApp.js';
 import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
 import { openHandbookApp, isHandbookEnabled } from './handbook/handbookApp.js';
+import { openDiscordApp } from './discord/discordApp.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -127,6 +128,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link12.rel = 'stylesheet';
         link12.href = `${baseDir}/dnd/dnd.css`;
         document.head.appendChild(link12);
+    }
+    // Discord CSS
+    if (!document.getElementById('gf-discord-styles')) {
+        const link13 = document.createElement('link');
+        link13.id = 'gf-discord-styles';
+        link13.rel = 'stylesheet';
+        link13.href = `${baseDir}/discord/discord.css`;
+        document.head.appendChild(link13);
     }
 })();
 
@@ -320,6 +329,16 @@ export function initPhone() {
         color: '#fc3c44',
         glow: 'rgba(252, 60, 68, 0.4)',
         onOpen: () => openMusicApp(),
+    });
+
+    // ── 社区 (Discord Community) ──
+    registerApp({
+        id: 'discord',
+        name: '社区',
+        icon: 'fa-brands fa-discord',
+        color: '#5865f2',
+        glow: 'rgba(88, 101, 242, 0.4)',
+        onOpen: () => openDiscordApp(),
     });
 
     // ── D&D (龙与地下城) ──
