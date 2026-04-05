@@ -548,14 +548,21 @@ _headerStyle.textContent = `
         gap: 8px;
         cursor: pointer;
         user-select: none;
+        max-width: 100%;
+        min-width: 0;
     }
     .dc-server-name-inline {
         font-weight: 600;
         font-size: 15px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
     }
     .dc-chevron-inline {
         font-size: 12px;
         color: var(--dc-text-secondary, #949ba4);
+        flex-shrink: 0;
     }
 `;
 document.head.appendChild(_headerStyle);

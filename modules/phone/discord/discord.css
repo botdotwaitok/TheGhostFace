@@ -188,6 +188,9 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     background: var(--dc-bg-secondary);
     color: var(--dc-text-primary);
 }
@@ -1503,6 +1506,9 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     background: var(--dc-bg-primary);
     color: var(--dc-text-primary);
     position: relative;
@@ -1518,6 +1524,8 @@
     justify-content: center;
     gap: 2px;
     width: 100%;
+    min-width: 0;
+    flex: 1;
     text-align: left;
 }
 
@@ -1525,23 +1533,31 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .dc-channel-hash {
     font-size: 20px;
     font-weight: 700;
     color: var(--dc-channel-default);
+    flex-shrink: 0;
 }
 
 .dc-channel-name {
     font-size: 16px;
     font-weight: 700;
     color: var(--dc-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 .dc-channel-caret {
     font-size: 14px;
     color: var(--dc-text-muted);
+    flex-shrink: 0;
 }
 
 .dc-channel-header-bottom {
@@ -2134,12 +2150,15 @@
     padding: 4px 6px 4px 14px;
     min-height: 40px;
     gap: 4px;
+    min-width: 0;
 }
 
 /* Use compound selector to beat SillyTavern's smart var overrides on input[type="text"] */
 .dc-channel-page .dc-input-wrap .dc-chat-input,
 #dc_chat_input.dc-chat-input {
     flex: 1;
+    min-width: 0;
+    width: 100%;
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
