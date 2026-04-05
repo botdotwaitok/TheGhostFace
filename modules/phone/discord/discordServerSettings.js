@@ -206,16 +206,23 @@ function _buildChannelsSection(config) {
     const categories = config.categories || [];
 
     const catItems = categories.map(cat => {
-        const channelItems = (cat.channels || []).map(ch => `
+        const channelItems = (cat.channels || []).map(ch => {
+            const topicHint = ch.topic
+                ? `<div class="dc-channel-manage-topic">${escapeHtml(ch.topic)}</div>`
+                : `<div class="dc-channel-manage-topic dc-text-placeholder">未设置主题</div>`;
+            return `
             <div class="dc-channel-manage-item" data-channel-id="${ch.id}" data-cat-id="${cat.id}">
                 <span class="dc-channel-manage-hash">#</span>
-                <span class="dc-channel-manage-name">${escapeHtml(ch.name)}</span>
-                ${(ch.allowedRoles && ch.allowedRoles.length > 0) ? '<i class="ph ph-lock-simple dc-ch-perm-badge"></i>' : ''}
+                <div class="dc-channel-manage-info">
+                    <span class="dc-channel-manage-name">${escapeHtml(ch.name)}</span>
+                    ${(ch.allowedRoles && ch.allowedRoles.length > 0) ? '<i class="ph ph-lock-simple dc-ch-perm-badge"></i>' : ''}
+                    ${topicHint}
+                </div>
                 <div class="dc-channel-manage-actions">
                     <button class="dc-icon-btn dc-ch-perm-btn" data-channel-id="${ch.id}" title="发言权限">
                         <i class="ph ph-shield-check"></i>
                     </button>
-                    <button class="dc-icon-btn dc-ch-rename-btn" data-channel-id="${ch.id}" title="重命名">
+                    <button class="dc-icon-btn dc-ch-edit-btn" data-channel-id="${ch.id}" title="编辑频道">
                         <i class="ph ph-pencil-simple"></i>
                     </button>
                     <button class="dc-icon-btn dc-ch-delete-btn" data-channel-id="${ch.id}" title="删除">
@@ -223,7 +230,7 @@ function _buildChannelsSection(config) {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
 
         return `
             <div class="dc-category-manage" data-cat-id="${cat.id}">
@@ -474,10 +481,10 @@ function _showRoleDialog(roleId) {
         </div>
     `;
 
-    const page = document.getElementById('dc_settings_page');
-    if (!page) return;
-    page.style.position = 'relative';
-    page.appendChild(overlay);
+    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
+    if (!mountTarget) return;
+    mountTarget.style.position = 'relative';
+    mountTarget.appendChild(overlay);
 
     let selectedColor = color;
 
@@ -575,25 +582,12 @@ function _bindChannelEvents() {
         });
     });
 
-    // Rename channel
-    document.querySelectorAll('.dc-ch-rename-btn').forEach(btn => {
+    // Rename channel → now opens edit dialog
+    document.querySelectorAll('.dc-ch-edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const chId = btn.dataset.channelId;
-            const config = loadServerConfig();
-            if (!config) return;
-            for (const cat of config.categories) {
-                const ch = cat.channels?.find(c => c.id === chId);
-                if (ch) {
-                    const name = prompt('新频道名称：', ch.name);
-                    if (!name?.trim()) return;
-                    ch.name = name.trim();
-                    saveServerConfig(config);
-                    if (typeof toastr !== 'undefined') toastr.success('频道已重命名');
-                    _renderSettingsPage();
-                    return;
-                }
-            }
+            _showChannelEditDialog(chId);
         });
     });
 
@@ -673,10 +667,10 @@ function _showChannelPermissionDialog(channelId) {
         </div>
     `;
 
-    const page = document.getElementById('dc_settings_page');
-    if (!page) return;
-    page.style.position = 'relative';
-    page.appendChild(overlay);
+    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
+    if (!mountTarget) return;
+    mountTarget.style.position = 'relative';
+    mountTarget.appendChild(overlay);
 
     // Cancel
     document.getElementById('dc_perm_cancel')?.addEventListener('click', () => overlay.remove());
@@ -699,6 +693,89 @@ function _showChannelPermissionDialog(channelId) {
                 toastr.success(`已设置权限：仅 ${roleNames.join('、')} 可发言`);
             } else {
                 toastr.success('已移除权限限制，所有人可发言');
+            }
+        }
+        overlay.remove();
+        _renderSettingsPage();
+    });
+}
+
+// ─── Channel Edit Dialog (name + topic) ───
+
+function _showChannelEditDialog(channelId) {
+    const config = loadServerConfig();
+    if (!config) return;
+
+    // Find the channel
+    let targetChannel = null;
+    for (const cat of config.categories) {
+        const ch = (cat.channels || []).find(c => c.id === channelId);
+        if (ch) { targetChannel = ch; break; }
+    }
+    if (!targetChannel) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dc-dialog-overlay dc-fade-in';
+    overlay.innerHTML = `
+        <div class="dc-dialog">
+            <div class="dc-dialog-title">
+                <i class="ph ph-hash" style="margin-right:6px;"></i>
+                编辑频道
+            </div>
+            <div class="dc-form-section">
+                <div class="dc-form-label">频道名称</div>
+                <input type="text" class="dc-input" id="dc_ch_edit_name"
+                       value="${escapeHtml(targetChannel.name)}" placeholder="频道名称" maxlength="30" />
+            </div>
+            <div class="dc-form-section">
+                <div class="dc-form-label">频道主题</div>
+                <input type="text" class="dc-input" id="dc_ch_edit_topic"
+                       value="${escapeHtml(targetChannel.topic || '')}"
+                       placeholder="描述此频道的话题方向，如「日常闲聊吐槽」" maxlength="80" />
+                <div class="dc-form-note" style="margin-top:4px;">
+                    <i class="ph ph-info"></i>
+                    频道主题会引导成员在此频道聊相关话题
+                </div>
+            </div>
+            <div class="dc-dialog-actions">
+                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="dc_ch_edit_cancel">取消</button>
+                <button class="dc-btn dc-btn-primary dc-btn-sm" id="dc_ch_edit_save">保存</button>
+            </div>
+        </div>
+    `;
+
+    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
+    if (!mountTarget) return;
+    mountTarget.style.position = 'relative';
+    mountTarget.appendChild(overlay);
+
+    // Cancel
+    document.getElementById('dc_ch_edit_cancel')?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    // Save
+    document.getElementById('dc_ch_edit_save')?.addEventListener('click', () => {
+        const nameVal = document.getElementById('dc_ch_edit_name')?.value?.trim();
+        const topicVal = document.getElementById('dc_ch_edit_topic')?.value?.trim() || '';
+        if (!nameVal) {
+            if (typeof toastr !== 'undefined') toastr.warning('频道名称不能为空');
+            return;
+        }
+
+        // Re-read config to avoid stale state
+        const freshConfig = loadServerConfig();
+        if (freshConfig) {
+            for (const cat of freshConfig.categories) {
+                const ch = (cat.channels || []).find(c => c.id === channelId);
+                if (ch) {
+                    ch.name = nameVal;
+                    ch.topic = topicVal;
+                    saveServerConfig(freshConfig);
+                    if (typeof toastr !== 'undefined') toastr.success('频道已更新');
+                    break;
+                }
             }
         }
         overlay.remove();

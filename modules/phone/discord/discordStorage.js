@@ -169,7 +169,7 @@ export function addCategory(name) {
 }
 
 /** Add a channel to a category */
-export function addChannel(categoryId, name) {
+export function addChannel(categoryId, name, topic = '') {
     const config = loadServerConfig();
     if (!config) return null;
     const cat = config.categories.find(c => c.id === categoryId);
@@ -177,6 +177,7 @@ export function addChannel(categoryId, name) {
     const ch = {
         id: generateId('ch'),
         name,
+        topic: topic || '',
         order: cat.channels.length,
     };
     cat.channels.push(ch);
@@ -636,9 +637,9 @@ export function initDefaultServer() {
                 name: '📢 公告区',
                 order: 0,
                 channels: [
-                    { id: 'ch_welcome', name: '欢迎', order: 0 },
-                    { id: 'ch_rules', name: '规则', order: 1 },
-                    { id: 'ch_announce', name: '公告', order: 2 },
+                    { id: 'ch_welcome', name: '欢迎', topic: '新人入群须知', order: 0 },
+                    { id: 'ch_rules', name: '规则', topic: '社区规则与行为准则', order: 1 },
+                    { id: 'ch_announce', name: '公告', topic: '管理员公告与重要通知', order: 2 },
                 ],
             },
             {
@@ -646,7 +647,7 @@ export function initDefaultServer() {
                 name: '💬 聊天区',
                 order: 1,
                 channels: [
-                    { id: 'ch_general', name: '日常闲聊', order: 0 },
+                    { id: 'ch_general', name: '日常闲聊', topic: '日常聊天、分享生活、随便聊聊', order: 0 },
                 ],
             },
         ],
@@ -726,6 +727,7 @@ export function initFromLLMResult(llmResult) {
             channels: (cat.channels || []).map((ch, j) => ({
                 id: generateId('ch'),
                 name: ch.name || ch,
+                topic: ch.topic || '',
                 order: j,
             })),
         })),

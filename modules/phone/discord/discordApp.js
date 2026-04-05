@@ -298,12 +298,13 @@ async function _generateServerWithLLM() {
 1. 服务器名要简洁、有辨识度，贴合主题（像真实 DC 服务器名那样）
 2. 频道分类和频道名要模拟真实 Discord 社区（如 "公告" / "闲聊" / "话题" 等）
 3. 必须包含一个 "规则" 频道和一个 "公告" 频道
-4. 每个成员的 personality 字段保持简洁：3-5 句话概括说话风格和性格特点（只描述群聊中的表现，不涉及私生活）
-5. 身份组要符合社区定位（如 管理组/活跃成员/新人 等）
-6. 使用世界观中的语言/风格来命名一切
-7. 生成的 rules（社区规则）应该使用 Discord Markdown 排版——用 **加粗** 标记规则标题，用列表格式分条，至少十条规则，模拟 ${charName} 的语气
-8. 生成一条公告/欢迎消息，使用 Discord Markdown 排版（标题、加粗、列表等），模拟服务器主 ${charName} 的语气和说话风格
-9. 为每个**非规则/非公告**频道生成 5-10 条历史聊天消息（channelHistory），让服务器看起来已经有一段时间的活跃讨论
+4. 每个频道必须有一个 topic 字段，简要描述该频道的主题方向（如“分享游戏截图和战绩”“日常闲聊吐槽”“分享美食和吃吃喝喝”等），这将帮助成员们在对应频道聊相关话题
+5. 每个成员的 personality 字段保持简洁：3-5 句话概括说话风格和性格特点（只描述群聊中的表现，不涉及私生活）
+6. 身份组要符合社区定位（如 管理组/活跃成员/新人 等）
+7. 使用世界观中的语言/风格来命名一切
+8. 生成的 rules（社区规则）应该使用 Discord Markdown 排版——用 **加粗** 标记规则标题，用列表格式分条，至少十条规则，模拟 ${charName} 的语气
+9. 生成一条公告/欢迎消息，使用 Discord Markdown 排版（标题、加粗、列表等），模拟服务器主 ${charName} 的语气和说话风格
+10. 为每个**非规则/非公告**频道生成 5-10 条历史聊天消息（channelHistory），让服务器看起来已经有一段时间的活跃讨论
 
 channelHistory 规则：
 - 每条消息的 authorName 必须是 members 数组中的成员名字
@@ -324,7 +325,7 @@ ${!hasWorldInfo ? '⚠️ 注意：当前没有可用的世界设定信息，请
     {
       "name": "分类名（根据${charName} 的性格决定，允许带 emoji）",
       "channels": [
-        { "name": "频道名" }
+        { "name": "频道名", "topic": "简短描述该频道的主题方向，如‘分享日常生活、吃吃喝喝玩玩’" }
       ]
     }
   ],
@@ -476,11 +477,17 @@ function _buildChannelItemHtml(channel) {
         ? '<i class="ph ph-lock-simple dc-channel-lock"></i>'
         : '';
 
+    // Show channel topic if available
+    const topicHtml = channel.topic
+        ? `<div class="dc-channel-topic-hint">${escapeHtml(channel.topic)}</div>`
+        : '';
+
     return `
         <div class="dc-channel-item${unread > 0 ? ' dc-channel-unread-item' : ''}" data-channel-id="${channel.id}" data-channel-name="${escapeHtml(channel.name)}">
             <span class="dc-channel-hash">#</span>
             <div class="dc-channel-info">
                 <div class="dc-channel-name">${escapeHtml(channel.name)}${lockIcon}</div>
+                ${topicHtml}
             </div>
             ${unreadHtml}
         </div>

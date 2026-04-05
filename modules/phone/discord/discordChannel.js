@@ -260,11 +260,25 @@ function _buildPermissionNoticeHtml() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function _buildWelcomeHtml() {
+    // Get channel topic from config
+    const config = loadServerConfig();
+    let channelTopic = '';
+    if (config?.categories) {
+        for (const cat of config.categories) {
+            const ch = (cat.channels || []).find(c => c.id === _currentChannelId);
+            if (ch) { channelTopic = ch.topic || ''; break; }
+        }
+    }
+    const topicHtml = channelTopic
+        ? `<div class="dc-welcome-topic">${escapeHtml(channelTopic)}</div>`
+        : '';
+
     return `
         <div class="dc-channel-welcome">
             <div class="dc-welcome-hash">#</div>
             <div class="dc-welcome-title">欢迎来到 #${escapeHtml(_currentChannelName)}！</div>
             <div class="dc-welcome-subtitle">这是 #${escapeHtml(_currentChannelName)} 频道的开始。</div>
+            ${topicHtml}
         </div>
     `;
 }

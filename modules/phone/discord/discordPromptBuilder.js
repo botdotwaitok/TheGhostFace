@@ -36,6 +36,7 @@ export async function buildGroupChatSystemPrompt(channelId, respondingMembers) {
     const serverConfig = loadServerConfig();
     const serverName = serverConfig?.name || '社区';
     const channelName = _getChannelName(channelId, serverConfig);
+    const channelTopic = _getChannelTopic(channelId, serverConfig);
 
     // ─── Character Profile (主角角色卡) ───
     const charDesc = charInfo?.description
@@ -64,7 +65,7 @@ export async function buildGroupChatSystemPrompt(channelId, respondingMembers) {
     const emojisBlock = _buildEmojisBlock();
 
     // ─── Group Chat Rules ───
-    const rulesBlock = _buildGroupChatRules(charName, userName, respondingMembers);
+    const rulesBlock = _buildGroupChatRules(charName, userName, respondingMembers, channelName, channelTopic);
 
     // ─── Output Format ───
     const outputFormat = _buildOutputFormat(respondingMembers);
@@ -81,12 +82,16 @@ export async function buildGroupChatSystemPrompt(channelId, respondingMembers) {
     }
 
     // ─── Assemble ───
+    const topicLine = channelTopic
+        ? `\n本频道的主题/话题方向：「${channelTopic}」\n成员在此频道的聊天应围绕这个主题方向展开。偶尔的闲聊串场自然可以，但主线话题必须与频道主题相关。`
+        : '';
+
     const result = `${foundation}
 
 <discord_channel>
 你现在处于 Discord 社区服务器「${serverName}」的「#${channelName}」频道中。
 这是由 ${userName} 和 ${charName} 共同管理的社区。
-你需要同时扮演多位社区成员，在群聊中自然地回复。${permBlock}
+你需要同时扮演多位社区成员，在群聊中自然地回复。${permBlock}${topicLine}
 </discord_channel>
 
 ${charDesc}
@@ -306,11 +311,17 @@ export function buildAutoConversationUserPrompt(channelId) {
     const minute = new Date().getMinutes();
     parts.push(`<time_context>\nCurrent time: ${hour}:${String(minute).padStart(2, '0')}\n</time_context>`);
 
-    // ─── Auto-chat instruction ───
+    // ─── Auto-chat instruction (with channel topic awareness) ───
+    const serverConfig = loadServerConfig();
+    const channelTopic = _getChannelTopic(channelId, serverConfig);
+    const topicGuidance = channelTopic
+        ? `\n\n【频道话题方向】本频道的主题是「${channelTopic}」。成员们的聊天内容应与频道主题相关或自然衍生，不要在本频道讨论完全无关的话题。`
+        : '';
+
     parts.push(`社区成员们正在自由聊天。请生成一段自然的群聊对话。
 成员们应该聊自己感兴趣的话题——分享日常、吐槽工作/学习、讨论兴趣爱好、接续之前的话题等。
 每个成员都有自己的生活和关注点，不要让所有人围绕同一个话题或同一个人。
-保持对话轻松自然，像真实的 Discord 群聊一样。`);
+保持对话轻松自然，像真实的 Discord 群聊一样。${topicGuidance}`);
 
     return parts.join('\n\n');
 }
@@ -391,8 +402,13 @@ function _buildEmojisBlock() {
 /**
  * Build the group chat behavior rules.
  */
-function _buildGroupChatRules(charName, userName, respondingMembers) {
+function _buildGroupChatRules(charName, userName, respondingMembers, channelName = '', channelTopic = '') {
     const memberCount = respondingMembers.filter(m => !m.isUser).length;
+
+    // Build topic anchor rule if channel has a topic
+    const topicAnchorRule = channelTopic
+        ? `\n16. 【话题锚点】当前频道「#${channelName}」的主题方向是「${channelTopic}」。所有成员的聊天内容必须与此频道主题相关或自然衍生。不要在本频道讨论与主题完全无关的话题——这是分频道存在的意义。偶尔一两句闲聊串场是自然的，但不应该偏离主线太远`
+        : '';
 
     return `<group_chat_rules>
 1. 每个成员的回复必须符合各自的人设和说话风格
@@ -409,7 +425,7 @@ function _buildGroupChatRules(charName, userName, respondingMembers) {
 12. 成员可以用 <图片>图片内容描述</图片> 来「发送图片」——在消息文本中用此标签包裹对图片的详细描述（如自拍、美食、风景、宠物等）。偶尔使用即可，不要每条消息都发图
 13. 可以使用 replyToIndex 引用 chat_history 中带 [N] 序号的消息进行回复（就像 Discord 中引用某条消息回复一样），不用每条都引用，只在明确回应某条消息时使用。不要引用没有序号的旧消息
 14. 【社交距离红线】普通成员不得对 ${userName} 的家庭细节、住所环境、私人行程等发表评论或提出问题——大家只是网友，不了解彼此的线下生活
-15. 【独立灵魂】至少一部分成员的回复应该围绕 ta 们自己的话题或与其她成员的互动，而不是全部集中回应 ${userName}——真实群聊不会所有人同时围着一个人转
+15. 【独立灵魂】至少一部分成员的回复应该围绕 ta 们自己的话题或与其她成员的互动，而不是全部集中回应 ${userName}——真实群聊不会所有人同时围着一个人转${topicAnchorRule}
 </group_chat_rules>`;
 }
 
@@ -470,6 +486,22 @@ function _getChannelName(channelId, serverConfig) {
         }
     }
     return '未知频道';
+}
+
+/**
+ * Get channel topic from server config.
+ * @param {string} channelId
+ * @param {Object} serverConfig
+ * @returns {string} Channel topic, or empty string if not set
+ */
+function _getChannelTopic(channelId, serverConfig) {
+    if (!serverConfig?.categories) return '';
+    for (const cat of serverConfig.categories) {
+        for (const ch of (cat.channels || [])) {
+            if (ch.id === channelId) return ch.topic || '';
+        }
+    }
+    return '';
 }
 
 /**
