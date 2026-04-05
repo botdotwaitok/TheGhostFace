@@ -4,6 +4,7 @@
 
 import { escapeHtml } from '../utils/helpers.js';
 import { loadCustomEmojis, addCustomEmoji, removeCustomEmoji, uploadFileToST } from './discordStorage.js';
+import { showDiscordDialog, showDiscordPrompt } from './discordDialog.js';
 
 const LOG = '[Discord Emoji]';
 
@@ -342,52 +343,95 @@ export function bindStickerManagementEvents(onRefresh) {
             return;
         }
 
-        const name = prompt('表情名称（用于 :名称: 引用）：');
-        if (!name?.trim()) return;
+        showDiscordPrompt({
+            title: '添加表情包',
+            placeholder: '表情名称（用于 :名称: 引用）',
+            onConfirm: async (name, close) => {
+                if (!name) {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入表情名称');
+                    return false;
+                }
 
-        try {
-            // Read file as base64
-            const base64 = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = () => reject(reader.error);
-                reader.readAsDataURL(file);
-            });
+                try {
+                    // Read file as base64
+                    const base64 = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = () => reject(reader.error);
+                        reader.readAsDataURL(file);
+                    });
 
-            // Upload to ST file system
-            if (typeof toastr !== 'undefined') toastr.info('正在上传表情包...');
-            const webPath = await uploadFileToST(base64, 'discord_emoji');
+                    // Upload to ST file system
+                    if (typeof toastr !== 'undefined') toastr.info('正在上传表情包...');
+                    const webPath = await uploadFileToST(base64, 'discord_emoji');
 
-            // Store with web path (not base64)
-            addCustomEmoji(name.trim(), webPath);
-            if (typeof toastr !== 'undefined') toastr.success(`表情 :${name.trim()}: 已添加`);
-            if (onRefresh) onRefresh();
-        } catch (err) {
-            console.error(`${LOG} Emoji upload failed:`, err);
-            if (typeof toastr !== 'undefined') toastr.error('表情包上传失败');
-        }
+                    // Store with web path (not base64)
+                    addCustomEmoji(name, webPath);
+                    if (typeof toastr !== 'undefined') toastr.success(`表情 :${name}: 已添加`);
+                    if (onRefresh) onRefresh();
+                    close();
+                } catch (err) {
+                    console.error(`${LOG} Emoji upload failed:`, err);
+                    if (typeof toastr !== 'undefined') toastr.error('表情包上传失败');
+                    close();
+                }
+            }
+        });
     });
 
     // Add from URL
     const urlBtn = document.getElementById('dc_emoji_url_btn');
     urlBtn?.addEventListener('click', () => {
-        const name = prompt('表情名称（用于 :名称: 引用）：');
-        if (!name?.trim()) return;
+        showDiscordDialog({
+            title: '从URL添加表情包',
+            contentHtml: `
+                <div class="dc-form-section">
+                    <div class="dc-form-label">表情名称</div>
+                    <input type="text" class="dc-input" id="dc_emoji_url_name" placeholder="用于 :名称: 引用" maxlength="30" autocomplete="off" />
+                </div>
+                <div class="dc-form-section" style="margin-bottom:0;">
+                    <div class="dc-form-label">图片URL</div>
+                    <input type="text" class="dc-input" id="dc_emoji_url_link" placeholder="支持 catbox、imgur 等图床" autocomplete="off" />
+                    <div class="dc-form-note" style="margin-top:4px;">
+                        <i class="ph ph-info"></i>
+                        请确保链接以图片格式结尾（.png/.jpg等）
+                    </div>
+                </div>
+            `,
+            onRender: (overlay) => {
+                const input = overlay.querySelector('#dc_emoji_url_name');
+                if (input) {
+                    setTimeout(() => input.focus(), 100);
+                }
+            },
+            onSave: (close) => {
+                const name = document.getElementById('dc_emoji_url_name')?.value?.trim();
+                const url = document.getElementById('dc_emoji_url_link')?.value?.trim();
 
-        const url = prompt('表情包图片URL（支持 catbox、imgur 等图床）：');
-        if (!url?.trim()) return;
+                if (!name) {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入表情名称');
+                    return false;
+                }
 
-        // Validate URL format
-        try {
-            new URL(url.trim());
-        } catch {
-            if (typeof toastr !== 'undefined') toastr.warning('请输入有效的URL');
-            return;
-        }
+                if (!url) {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入图片URL');
+                    return false;
+                }
 
-        addCustomEmoji(name.trim(), null, url.trim());
-        if (typeof toastr !== 'undefined') toastr.success(`表情 :${name.trim()}: 已添加`);
-        if (onRefresh) onRefresh();
+                // Validate URL format
+                try {
+                    new URL(url);
+                } catch {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入有效的URL');
+                    return false;
+                }
+
+                addCustomEmoji(name, null, url);
+                if (typeof toastr !== 'undefined') toastr.success(`表情 :${name}: 已添加`);
+                if (onRefresh) onRefresh();
+                close();
+            }
+        });
     });
 
     // Remove

@@ -15,6 +15,7 @@ import {
 import { openMembersPage } from './discordMembers.js';
 import { startAutoChatTimer, stopAutoChatTimer } from './discordAutoChat.js';
 import { buildStickerManagementHtml, bindStickerManagementEvents } from './discordEmoji.js';
+import { showDiscordDialog, showDiscordPrompt } from './discordDialog.js';
 
 const LOG = '[Discord Settings]';
 
@@ -455,76 +456,63 @@ function _showRoleDialog(roleId) {
         return `<div class="dc-color-dot ${selected}" data-color="${c}" style="background:${c}"></div>`;
     }).join('');
 
-    // Create inline dialog overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'dc-dialog-overlay dc-fade-in';
-    overlay.innerHTML = `
-        <div class="dc-dialog">
-            <div class="dc-dialog-title">${isEdit ? '编辑身份组' : '添加身份组'}</div>
+    let selectedColor = color;
+
+    showDiscordDialog({
+        title: isEdit ? '编辑身份组' : '添加身份组',
+        saveText: isEdit ? '保存' : '添加',
+        contentHtml: `
             <div class="dc-form-section">
                 <div class="dc-form-label">名称</div>
                 <input type="text" class="dc-input" id="dc_role_dialog_name"
-                       value="${escapeHtml(name)}" placeholder="身份组名称" maxlength="20" />
+                       value="${escapeHtml(name)}" placeholder="身份组名称" maxlength="20" autocomplete="off" />
             </div>
-            <div class="dc-form-section">
+            <div class="dc-form-section" style="margin-bottom:0;">
                 <div class="dc-form-label">颜色</div>
                 <div class="dc-color-palette" id="dc_role_dialog_colors">
                     ${colorOptions}
                 </div>
             </div>
-            <div class="dc-dialog-actions">
-                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="dc_role_dialog_cancel">取消</button>
-                <button class="dc-btn dc-btn-primary dc-btn-sm" id="dc_role_dialog_save">
-                    ${isEdit ? '保存' : '添加'}
-                </button>
-            </div>
-        </div>
-    `;
+        `,
+        onRender: (overlay) => {
+            // Color picker events
+            overlay.querySelectorAll('.dc-color-dot').forEach(dot => {
+                dot.addEventListener('click', () => {
+                    overlay.querySelectorAll('.dc-color-dot').forEach(d => d.classList.remove('dc-color-selected'));
+                    dot.classList.add('dc-color-selected');
+                    selectedColor = dot.dataset.color;
+                });
+            });
 
-    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
-    if (!mountTarget) return;
-    mountTarget.style.position = 'relative';
-    mountTarget.appendChild(overlay);
+            // Focus
+            const input = overlay.querySelector('#dc_role_dialog_name');
+            if (input) {
+                setTimeout(() => {
+                    input.focus();
+                    if (input.value) {
+                        input.setSelectionRange(input.value.length, input.value.length);
+                    }
+                }, 100);
+            }
+        },
+        onSave: (close) => {
+            const nameVal = document.getElementById('dc_role_dialog_name')?.value?.trim();
+            if (!nameVal) {
+                if (typeof toastr !== 'undefined') toastr.warning('请输入身份组名称');
+                return false;
+            }
 
-    let selectedColor = color;
+            if (isEdit) {
+                updateRole(roleId, { name: nameVal, color: selectedColor });
+                if (typeof toastr !== 'undefined') toastr.success('身份组已更新');
+            } else {
+                addRole(nameVal, selectedColor);
+                if (typeof toastr !== 'undefined') toastr.success('身份组已添加');
+            }
 
-    // Color picker events
-    overlay.querySelectorAll('.dc-color-dot').forEach(dot => {
-        dot.addEventListener('click', () => {
-            overlay.querySelectorAll('.dc-color-dot').forEach(d => d.classList.remove('dc-color-selected'));
-            dot.classList.add('dc-color-selected');
-            selectedColor = dot.dataset.color;
-        });
-    });
-
-    // Cancel
-    document.getElementById('dc_role_dialog_cancel')?.addEventListener('click', () => {
-        overlay.remove();
-    });
-
-    // Clicking overlay background closes it
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-
-    // Save
-    document.getElementById('dc_role_dialog_save')?.addEventListener('click', () => {
-        const nameVal = document.getElementById('dc_role_dialog_name')?.value?.trim();
-        if (!nameVal) {
-            if (typeof toastr !== 'undefined') toastr.warning('请输入身份组名称');
-            return;
+            close();
+            _renderSettingsPage();
         }
-
-        if (isEdit) {
-            updateRole(roleId, { name: nameVal, color: selectedColor });
-            if (typeof toastr !== 'undefined') toastr.success('身份组已更新');
-        } else {
-            addRole(nameVal, selectedColor);
-            if (typeof toastr !== 'undefined') toastr.success('身份组已添加');
-        }
-
-        overlay.remove();
-        _renderSettingsPage();
     });
 }
 
@@ -533,11 +521,20 @@ function _showRoleDialog(roleId) {
 function _bindChannelEvents() {
     // Add category
     document.getElementById('dc_cat_add_btn')?.addEventListener('click', () => {
-        const name = prompt('分类名称：');
-        if (!name?.trim()) return;
-        addCategory(name.trim());
-        if (typeof toastr !== 'undefined') toastr.success('分类已添加');
-        _renderSettingsPage();
+        showDiscordPrompt({
+            title: '添加分类',
+            placeholder: '分类名称',
+            onConfirm: (name, close) => {
+                if (!name) {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入分类名称');
+                    return false;
+                }
+                addCategory(name);
+                if (typeof toastr !== 'undefined') toastr.success('分类已添加');
+                _renderSettingsPage();
+                close();
+            }
+        });
     });
 
     // Add channel to category
@@ -545,11 +542,20 @@ function _bindChannelEvents() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const catId = btn.dataset.catId;
-            const name = prompt('频道名称：');
-            if (!name?.trim()) return;
-            addChannel(catId, name.trim());
-            if (typeof toastr !== 'undefined') toastr.success('频道已添加');
-            _renderSettingsPage();
+            showDiscordPrompt({
+                title: '添加频道',
+                placeholder: '频道名称',
+                onConfirm: (name, close) => {
+                    if (!name) {
+                        if (typeof toastr !== 'undefined') toastr.warning('请输入频道名称');
+                        return false;
+                    }
+                    addChannel(catId, name);
+                    if (typeof toastr !== 'undefined') toastr.success('频道已添加');
+                    _renderSettingsPage();
+                    close();
+                }
+            });
         });
     });
 
@@ -561,12 +567,22 @@ function _bindChannelEvents() {
             const config = loadServerConfig();
             const cat = config?.categories?.find(c => c.id === catId);
             if (!cat) return;
-            const name = prompt('新分类名称：', cat.name);
-            if (!name?.trim()) return;
-            cat.name = name.trim();
-            saveServerConfig(config);
-            if (typeof toastr !== 'undefined') toastr.success('分类已重命名');
-            _renderSettingsPage();
+            showDiscordPrompt({
+                title: '重命名分类',
+                defaultValue: cat.name,
+                placeholder: '新分类名称',
+                onConfirm: (name, close) => {
+                    if (!name) {
+                        if (typeof toastr !== 'undefined') toastr.warning('请输入分类名称');
+                        return false;
+                    }
+                    cat.name = name;
+                    saveServerConfig(config);
+                    if (typeof toastr !== 'undefined') toastr.success('分类已重命名');
+                    _renderSettingsPage();
+                    close();
+                }
+            });
         });
     });
 
@@ -641,14 +657,9 @@ function _showChannelPermissionDialog(channelId) {
         `;
     }).join('');
 
-    const overlay = document.createElement('div');
-    overlay.className = 'dc-dialog-overlay dc-fade-in';
-    overlay.innerHTML = `
-        <div class="dc-dialog">
-            <div class="dc-dialog-title">
-                <i class="ph ph-shield-check" style="margin-right:6px;"></i>
-                #${escapeHtml(channelName)} 发言权限
-            </div>
+    showDiscordDialog({
+        title: `<i class="ph ph-shield-check" style="margin-right:6px;"></i>#${escapeHtml(channelName)} 发言权限`,
+        contentHtml: `
             <div class="dc-perm-desc">
                 勾选允许在此频道发言的身份组。
                 不勾选任何身份组 = 所有人都可发言。
@@ -656,47 +667,31 @@ function _showChannelPermissionDialog(channelId) {
             <div class="dc-perm-roles-list" id="dc_perm_roles_list">
                 ${roleCheckboxes}
             </div>
-            <div class="dc-perm-hint">
+            <div class="dc-perm-hint" style="margin-top: 8px;">
                 <i class="ph ph-info"></i>
                 你（用户）始终可以发言，不受权限限制
             </div>
-            <div class="dc-dialog-actions">
-                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="dc_perm_cancel">取消</button>
-                <button class="dc-btn dc-btn-primary dc-btn-sm" id="dc_perm_save">保存</button>
-            </div>
-        </div>
-    `;
-
-    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
-    if (!mountTarget) return;
-    mountTarget.style.position = 'relative';
-    mountTarget.appendChild(overlay);
-
-    // Cancel
-    document.getElementById('dc_perm_cancel')?.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-
-    // Save
-    document.getElementById('dc_perm_save')?.addEventListener('click', () => {
-        const selected = [];
-        overlay.querySelectorAll('.dc-perm-role-checkbox').forEach(cb => {
-            if (cb.checked) selected.push(cb.dataset.roleId);
-        });
-        setChannelPermissions(channelId, selected);
-        if (typeof toastr !== 'undefined') {
-            if (selected.length > 0) {
-                const roleNames = selected
-                    .map(rid => roles.find(r => r.id === rid)?.name)
-                    .filter(Boolean);
-                toastr.success(`已设置权限：仅 ${roleNames.join('、')} 可发言`);
-            } else {
-                toastr.success('已移除权限限制，所有人可发言');
+        `,
+        onSave: (close) => {
+            const selected = [];
+            // Target only checkboxes inside the dialog overlay
+            document.querySelectorAll('.dc-dialog-overlay .dc-perm-role-checkbox').forEach(cb => {
+                if (cb.checked) selected.push(cb.dataset.roleId);
+            });
+            setChannelPermissions(channelId, selected);
+            if (typeof toastr !== 'undefined') {
+                if (selected.length > 0) {
+                    const roleNames = selected
+                        .map(rid => roles.find(r => r.id === rid)?.name)
+                        .filter(Boolean);
+                    toastr.success(`已设置权限：仅 ${roleNames.join('、')} 可发言`);
+                } else {
+                    toastr.success('已移除权限限制，所有人可发言');
+                }
             }
+            close();
+            _renderSettingsPage();
         }
-        overlay.remove();
-        _renderSettingsPage();
     });
 }
 
@@ -714,72 +709,61 @@ function _showChannelEditDialog(channelId) {
     }
     if (!targetChannel) return;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'dc-dialog-overlay dc-fade-in';
-    overlay.innerHTML = `
-        <div class="dc-dialog">
-            <div class="dc-dialog-title">
-                <i class="ph ph-hash" style="margin-right:6px;"></i>
-                编辑频道
-            </div>
+    showDiscordDialog({
+        title: `<i class="ph ph-hash" style="margin-right:6px;"></i>编辑频道`,
+        contentHtml: `
             <div class="dc-form-section">
                 <div class="dc-form-label">频道名称</div>
                 <input type="text" class="dc-input" id="dc_ch_edit_name"
-                       value="${escapeHtml(targetChannel.name)}" placeholder="频道名称" maxlength="30" />
+                       value="${escapeHtml(targetChannel.name)}" placeholder="频道名称" maxlength="30" autocomplete="off" />
             </div>
-            <div class="dc-form-section">
+            <div class="dc-form-section" style="margin-bottom:0;">
                 <div class="dc-form-label">频道主题</div>
                 <input type="text" class="dc-input" id="dc_ch_edit_topic"
                        value="${escapeHtml(targetChannel.topic || '')}"
-                       placeholder="描述此频道的话题方向，如「日常闲聊吐槽」" maxlength="80" />
+                       placeholder="描述此频道的话题方向，如「日常闲聊吐槽」" maxlength="80" autocomplete="off" />
                 <div class="dc-form-note" style="margin-top:4px;">
                     <i class="ph ph-info"></i>
                     频道主题会引导成员在此频道聊相关话题
                 </div>
             </div>
-            <div class="dc-dialog-actions">
-                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="dc_ch_edit_cancel">取消</button>
-                <button class="dc-btn dc-btn-primary dc-btn-sm" id="dc_ch_edit_save">保存</button>
-            </div>
-        </div>
-    `;
+        `,
+        onRender: (overlay) => {
+            const input = overlay.querySelector('#dc_ch_edit_name');
+            if (input) {
+                setTimeout(() => {
+                    input.focus();
+                    if (input.value) {
+                        input.setSelectionRange(input.value.length, input.value.length);
+                    }
+                }, 100);
+            }
+        },
+        onSave: (close) => {
+            const nameVal = document.getElementById('dc_ch_edit_name')?.value?.trim();
+            const topicVal = document.getElementById('dc_ch_edit_topic')?.value?.trim() || '';
+            if (!nameVal) {
+                if (typeof toastr !== 'undefined') toastr.warning('频道名称不能为空');
+                return false;
+            }
 
-    const mountTarget = document.getElementById('phone_app_viewport_body') || document.getElementById('dc_settings_page');
-    if (!mountTarget) return;
-    mountTarget.style.position = 'relative';
-    mountTarget.appendChild(overlay);
-
-    // Cancel
-    document.getElementById('dc_ch_edit_cancel')?.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-
-    // Save
-    document.getElementById('dc_ch_edit_save')?.addEventListener('click', () => {
-        const nameVal = document.getElementById('dc_ch_edit_name')?.value?.trim();
-        const topicVal = document.getElementById('dc_ch_edit_topic')?.value?.trim() || '';
-        if (!nameVal) {
-            if (typeof toastr !== 'undefined') toastr.warning('频道名称不能为空');
-            return;
-        }
-
-        // Re-read config to avoid stale state
-        const freshConfig = loadServerConfig();
-        if (freshConfig) {
-            for (const cat of freshConfig.categories) {
-                const ch = (cat.channels || []).find(c => c.id === channelId);
-                if (ch) {
-                    ch.name = nameVal;
-                    ch.topic = topicVal;
-                    saveServerConfig(freshConfig);
-                    if (typeof toastr !== 'undefined') toastr.success('频道已更新');
-                    break;
+            // Re-read config to avoid stale state
+            const freshConfig = loadServerConfig();
+            if (freshConfig) {
+                for (const cat of freshConfig.categories) {
+                    const ch = (cat.channels || []).find(c => c.id === channelId);
+                    if (ch) {
+                        ch.name = nameVal;
+                        ch.topic = topicVal;
+                        saveServerConfig(freshConfig);
+                        if (typeof toastr !== 'undefined') toastr.success('频道已更新');
+                        break;
+                    }
                 }
             }
+            close();
+            _renderSettingsPage();
         }
-        overlay.remove();
-        _renderSettingsPage();
     });
 }
 
