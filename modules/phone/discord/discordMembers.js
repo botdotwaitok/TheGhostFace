@@ -484,7 +484,7 @@ function _bindMemberFormEvents(memberId, initialColor) {
 2. 提取关键说话方式、口癖、语气
 3. 提取标志性性格特征
 4. 完全忽略无意义的信息，如：具体血型、准确身高体重、普通的瞳色发色描写、流水账经历
-5. 结果必须保持在 200 字符以内（1-2句短语即可）
+5. 结果必须保持在 200 字符以内（3-5句短语即可）
 
 输出格式：直接输出精炼后的纯文本，没有任何额外的格式标记、Markdown 或引号包裹。
 示例：
@@ -594,15 +594,75 @@ function _bindMemberFormEvents(memberId, initialColor) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// LLM Member Generation
+// LLM Member Generation — Prompt Input → Generate → Preview
 // ═══════════════════════════════════════════════════════════════════════
 
-async function _handleLLMGenerate() {
-    const page = document.getElementById('dc_members_page');
-    if (!page) return;
+function _handleLLMGenerate() {
+    _showGenerateInputPage();
+}
 
-    // Show loading in the actions area
-    const actionsEl = document.querySelector('.dc-members-actions');
+/**
+ * Show the custom requirement input page before generation.
+ */
+function _showGenerateInputPage() {
+    const html = `
+        <div class="dc-server-page dc-fade-in" id="dc_generate_input_page">
+            <div class="dc-form-scroll">
+                <div class="dc-generated-header">
+                    <i class="ph ph-sparkle" style="color:var(--dc-brand);"></i>
+                    <span>自动生成社区成员</span>
+                </div>
+                <div class="dc-generated-subtitle">描述你想生成的成员类型，留空则根据角色世界自动创建</div>
+
+                <div class="dc-form-section">
+                    <div class="dc-form-label">生成需求（可选）</div>
+                    <textarea class="dc-input dc-textarea" id="dc_gen_requirement"
+                              placeholder="例如：生成几个黎明杀机玩家、生成几个女权主义者、生成几个老太太..."
+                              maxlength="300" rows="3"></textarea>
+                </div>
+
+                <div class="dc-form-actions" id="dc_gen_input_actions">
+                    <button class="dc-btn dc-btn-primary dc-btn-full" id="dc_gen_start">
+                        <i class="ph ph-sparkle"></i> 开始生成
+                    </button>
+                    <button class="dc-btn dc-btn-secondary dc-btn-full" id="dc_gen_input_cancel">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const titleHtml = `<span style="font-weight:600;">生成设置</span>`;
+
+    openAppInViewport(titleHtml, html, () => {
+        // Start generation
+        document.getElementById('dc_gen_start')?.addEventListener('click', () => {
+            const requirement = document.getElementById('dc_gen_requirement')?.value?.trim() || '';
+            _executeGeneration(requirement);
+        });
+
+        // Cancel
+        document.getElementById('dc_gen_input_cancel')?.addEventListener('click', () => {
+            _renderMemberList();
+        });
+
+        // Back → return to member list
+        const backHandler = (e) => {
+            e.preventDefault();
+            window.removeEventListener('phone-app-back', backHandler);
+            _renderMemberList();
+        };
+        window.addEventListener('phone-app-back', backHandler);
+    });
+}
+
+/**
+ * Execute the LLM generation with optional custom requirement.
+ */
+async function _executeGeneration(customRequirement = '') {
+    // Replace the actions area with loading spinner
+    const actionsEl = document.getElementById('dc_gen_input_actions');
     if (actionsEl) {
         actionsEl.innerHTML = `
             <div class="dc-init-loading" style="padding:16px;">
@@ -613,7 +673,7 @@ async function _handleLLMGenerate() {
     }
 
     try {
-        const result = await _generateMembersWithLLM();
+        const result = await _generateMembersWithLLM(customRequirement);
         if (result && result.length > 0) {
             _showGeneratedMembersPreview(result);
         } else {
@@ -627,7 +687,7 @@ async function _handleLLMGenerate() {
     }
 }
 
-async function _generateMembersWithLLM() {
+async function _generateMembersWithLLM(customRequirement = '') {
     const charInfo = getPhoneCharInfo();
     const charName = charInfo?.name || '角色';
     const userName = getPhoneUserName();
@@ -637,20 +697,26 @@ async function _generateMembersWithLLM() {
     const existingNames = existingMembers.map(m => m.name);
 
     const hasWorldInfo = !!(charDesc || worldBookText);
+    const hasCustomReq = !!customRequirement;
 
     const systemPrompt = `${getCoreFoundationPrompt()}
 
-你需要根据角色信息和世界观设定，为这个 Discord 社区生成新的 NPC 成员。
+你需要为这个 Discord 社区生成新的 NPC 成员。
+
+${hasCustomReq ? `🎯 用户特别要求：${customRequirement}
+请以用户的需求为最高优先级来设计成员！如果用户指定了特定主题/游戏/作品，生成的成员应围绕该主题展开人设。` : '根据角色信息和世界观设定来生成相关人物（来自同一作品/世界观的配角/NPC）。'}
 
 要求：
-1. 生成的成员应该是角色世界中的相关人物（来自同一作品/世界观的配角/NPC）
-2. 每个成员的 personality 字段保持简洁：1-2 句话概括说话风格和性格特点
+1. ${hasCustomReq ? '围绕用户指定的主题/方向来设计成员' : '生成的成员应该是角色世界中的相关人物'}
+2. 每个成员的 personality 字段保持简洁：3-5句话概括说话风格和性格特点（只描述群聊表现，不涉及私生活）
 3. 名字不能和已有成员重复
 4. 生成 3-5 个新成员
 5. 使用世界观中的语言/风格
-6. 【核心红线】如果背景设定里没有合适的原始角色，则以强壮聪明的原创女性角色为主，绝对禁止代入常规的父权视角或生成典型男性化形象（如称兄道弟的“老哥”、“哥们”等）。
+6. 【核心红线】如果背景设定里没有合适的原始角色，则以强壮聪明的原创女性角色为主，绝对禁止代入常规的父权视角或生成典型男性化形象（如称兄道弟的"老哥"、"哥们"等）。
+7. 每个成员必须有自己独立的兴趣、话题和社交动机——她们加入社区是因为对主题感兴趣，不是围着某个人打转
+8. 成员之间的关系是网友/群友——大家只在这个线上社区认识，不了解彼此的现实私生活
 
-${!hasWorldInfo ? '⚠️ 注意：当前没有可用的世界设定信息，请根据角色名和你的创意进行合理创作。' : ''}
+${!hasWorldInfo && !hasCustomReq ? '⚠️ 注意：当前没有可用的世界设定信息，请根据角色名和你的创意进行合理创作。' : ''}
 
 已有成员：${existingNames.join(', ')}
 
@@ -659,16 +725,20 @@ ${!hasWorldInfo ? '⚠️ 注意：当前没有可用的世界设定信息，请
   {
     "name": "成员名",
     "bio": "简短的个性签名或当前状态",
-    "personality": "1-2句性格和说话风格描述",
+    "personality": "3-5句性格和说话风格描述",
     "suggestedRole": "建议的身份组名（可选）"
   }
 ]`;
 
-    let userPrompt = `请为以下角色的社区生成新成员：\n\n`;
+    let userPrompt = '';
+    if (hasCustomReq) {
+        userPrompt += `用户需求：${customRequirement}\n\n`;
+    }
+    userPrompt += `请为以下角色的社区生成新成员：\n\n`;
     userPrompt += `角色名: ${charName}\n`;
     if (charDesc) userPrompt += `角色设定:\n${charDesc.substring(0, 2000)}\n\n`;
     if (worldBookText) userPrompt += `世界观:\n${worldBookText.substring(0, 3000)}\n\n`;
-    if (!hasWorldInfo) userPrompt += `（没有找到角色设定和世界书信息，请发挥创意生成。）\n\n`;
+    if (!hasWorldInfo && !hasCustomReq) userPrompt += `（没有找到角色设定和世界书信息，请发挥创意生成。）\n\n`;
     userPrompt += `请生成 JSON 数组。`;
 
     console.log(`${LOG} Generating members with LLM...`);

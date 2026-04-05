@@ -57,7 +57,7 @@ export async function buildGroupChatSystemPrompt(channelId, respondingMembers) {
         : '';
 
     // ─── Community Members (参与回复的成员人设) ───
-    const membersBlock = _buildMembersBlock(respondingMembers, charName);
+    const membersBlock = _buildMembersBlock(respondingMembers, charName, userName);
 
     // ─── Custom Emojis ───
     const emojisBlock = _buildEmojisBlock();
@@ -280,7 +280,8 @@ export function buildAutoConversationUserPrompt(channelId) {
 
     // ─── Auto-chat instruction ───
     parts.push(`社区成员们正在自由聊天。请生成一段自然的群聊对话。
-话题可以是日常闲聊、分享趣事、讨论近况，或者接续之前的话题。
+成员们应该聊自己感兴趣的话题——分享日常、吐槽工作/学习、讨论兴趣爱好、接续之前的话题等。
+每个成员都有自己的生活和关注点，不要让所有人围绕同一个话题或同一个人。
 保持对话轻松自然，像真实的 Discord 群聊一样。`);
 
     return parts.join('\n\n');
@@ -293,7 +294,7 @@ export function buildAutoConversationUserPrompt(channelId) {
 /**
  * Build the <community_members> prompt block for responding members.
  */
-function _buildMembersBlock(respondingMembers, charName) {
+function _buildMembersBlock(respondingMembers, charName, userName) {
     if (!respondingMembers || respondingMembers.length === 0) return '';
 
     const roles = loadRoles();
@@ -327,6 +328,21 @@ ${memberLines.join('\n')}
 
 注意：${charName} 的完整人设已在 <char_profile> 中提供，无需重复。
 其她成员的回复应符合各自的简洁人设描述。
+</community_members>
+
+<community_context>
+社交距离设定——这是一个线上兴趣社区，成员之间的关系是「网友/群友」：
+- 成员们不了解 ${userName} 的现实生活细节（住哪里、家里什么样、日常行程等），除非 ${userName} 自己在聊天中主动提及
+- 成员们不会主动询问或评论 ${userName} 的家庭、住所、私人生活等隐私话题
+- 成员之间的了解程度仅限于在社区群聊中自然产生的互动和信息
+- 只有 ${charName} 作为 ${userName} 的恋人，才了解 ${userName} 的私人生活
+
+独立灵魂设定——每个成员都有自己的生活、兴趣和话题：
+- 成员们有自己的日常生活、工作、学习、爱好，不只是围着 ${userName} 打转
+- 成员们会主动发起自己感兴趣的话题（吐槽工作、分享日常、聊兴趣爱好、讨论新闻热点等）
+- 成员之间可以形成独立于 ${userName} 的社交关系和互动（比如两个成员之间的对话）
+- 群聊不应该总是以 ${userName} 为中心——有时候成员们在聊自己的事，${userName} 是旁观者或偶尔插话
+- 当 ${userName} 没说话时，成员们该继续自己的话题，而不是反复@或等待 ${userName}
 </community_members>`;
 }
 
@@ -364,6 +380,8 @@ function _buildGroupChatRules(charName, userName, respondingMembers) {
 11. 在合适的时候可以使用 Discord markdown 语法来丰富消息表达（如加粗、斜体、代码块、引用等）
 12. 成员可以用 <图片>图片内容描述</图片> 来「发送图片」——在消息文本中用此标签包裹对图片的详细描述（如自拍、美食、风景、宠物等）。偶尔使用即可，不要每条消息都发图
 13. 可以使用 replyToIndex 引用历史消息进行回复（就像 Discord 中引用某条消息回复一样），不用每条都引用，只在明确回应某条消息时使用
+14. 【社交距离红线】普通成员不得对 ${userName} 的家庭细节、住所环境、私人行程等发表评论或提出问题——大家只是网友，不了解彼此的线下生活
+15. 【独立灵魂】至少一部分成员的回复应该围绕 ta 们自己的话题或与其她成员的互动，而不是全部集中回应 ${userName}——真实群聊不会所有人同时围着一个人转
 </group_chat_rules>`;
 }
 
