@@ -390,7 +390,7 @@ function _buildSingleMessageHtml(msg, member, members, roleMap, isConsecutive, i
                     <div class="dc-reply-spine"></div>
                     <div class="dc-reply-ref-avatar" style="background:${repliedColor}">${repliedAvatarContent}</div>
                     <span class="dc-reply-ref-name" style="color:${repliedColor}">@${escapeHtml(repliedName)}</span>
-                    <span class="dc-reply-ref-text">${escapeHtml(repliedText)}</span>
+                    <span class="dc-reply-ref-text">${renderStickersInText(escapeHtml(repliedText))}</span>
                 </div>
             `;
         }
@@ -536,9 +536,14 @@ function _buildReactionsHtml(msg) {
         const count = r.users?.length || 0;
         const isMine = r.users?.includes(userId);
         const mineClass = isMine ? 'dc-reaction-mine' : '';
+        
+        // Escape emoji first, then apply sticker rendering so custom stickers become <img> elements
+        const escapedEmoji = escapeHtml(r.emoji);
+        const renderedEmoji = renderStickersInText(escapedEmoji);
+
         return `
-            <div class="dc-reaction-pill ${mineClass}" data-msg-id="${msg.id}" data-emoji="${escapeHtml(r.emoji)}">
-                <span class="dc-reaction-emoji">${r.emoji}</span>
+            <div class="dc-reaction-pill ${mineClass}" data-msg-id="${msg.id}" data-emoji="${escapedEmoji}">
+                <span class="dc-reaction-emoji">${renderedEmoji}</span>
                 <span class="dc-reaction-count">${count}</span>
             </div>
         `;
@@ -1049,9 +1054,10 @@ function _setReplyTo(msgId) {
     const textEl = document.getElementById('dc_reply_bar_text');
     if (bar && nameEl && textEl) {
         nameEl.textContent = _replyToMsg.authorName;
-        textEl.textContent = _replyToMsg.content.length > 50
+        const shortContent = _replyToMsg.content.length > 50
             ? _replyToMsg.content.substring(0, 50) + '…'
             : _replyToMsg.content;
+        textEl.innerHTML = renderStickersInText(escapeHtml(shortContent));
         bar.style.display = 'flex';
     }
 
@@ -1377,7 +1383,12 @@ function _showContextMenu(msgEl, event) {
     ).join('');
 
     let menuItems = `
-        <div class="dc-ctx-reactions-row">${quickReactionHtml}</div>
+        <div class="dc-ctx-reactions-row">
+            ${quickReactionHtml}
+            <div class="dc-ctx-reaction dc-ctx-reaction-more" data-action="reaction-more" data-msg-id="${msgId}">
+                <i class="ph ph-sticker"></i>
+            </div>
+        </div>
         <div class="dc-ctx-divider"></div>
         <div class="dc-ctx-item" data-action="reply" data-msg-id="${msgId}">
             <i class="ph ph-arrow-bend-up-left"></i>
@@ -1446,12 +1457,28 @@ function _showContextMenu(msgEl, event) {
     });
 
     // Quick reaction
-    menu.querySelectorAll('.dc-ctx-reaction').forEach(el => {
+    menu.querySelectorAll('.dc-ctx-reaction:not(.dc-ctx-reaction-more)').forEach(el => {
         el.addEventListener('click', () => {
             const emoji = el.dataset.emoji;
             _addReactionToMessage(msgId, emoji);
             _hideContextMenu();
         });
+    });
+
+    // Custom sticker reaction
+    menu.querySelector('[data-action="reaction-more"]')?.addEventListener('click', () => {
+        _hideContextMenu();
+        openStickerPanel(
+            (sticker) => {
+                _addReactionToMessage(msgId, sticker);
+            },
+            () => {
+                _cleanup();
+                openServerSettings(() => {
+                    if (typeof openChannel !== 'undefined') openChannel(_currentChannelId, _currentChannelName, _onReturn);
+                });
+            }
+        );
     });
 
     // Delete

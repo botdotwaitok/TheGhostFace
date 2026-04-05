@@ -2004,6 +2004,25 @@
 .dc-reaction-emoji {
     font-size: 16px;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dc-reaction-emoji .dc-inline-sticker {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border-radius: 2px;
+}
+
+.dc-reply-ref-text .dc-inline-sticker,
+.dc-reply-bar-text .dc-inline-sticker {
+    width: 14px;
+    height: 14px;
+    margin: 0 2px;
+    border-radius: 2px;
+    vertical-align: -2px;
 }
 
 .dc-reaction-count {
@@ -2843,6 +2862,17 @@
 .dc-ctx-reaction:hover {
     background: var(--dc-hover);
     transform: scale(1.2);
+}
+
+.dc-ctx-reaction-more {
+    font-size: 18px;
+    color: var(--dc-text-muted);
+}
+
+.dc-ctx-reaction-more:hover {
+    background: var(--dc-hover);
+    transform: scale(1.2);
+    color: var(--dc-text-primary);
 }
 
 .dc-ctx-reaction:active {

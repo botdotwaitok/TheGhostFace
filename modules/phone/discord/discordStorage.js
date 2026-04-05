@@ -825,10 +825,14 @@ export function initFromLLMResult(llmResult) {
 /**
  * Reset everything — delete all Discord data.
  */
-export function resetAllData() {
+export function resetAllData(preserveEmojis = true) {
     try {
-        if (chat_metadata) {
+        if (chat_metadata && chat_metadata[META_KEY]) {
+            const emojis = chat_metadata[META_KEY].emojis || [];
             delete chat_metadata[META_KEY];
+            if (preserveEmojis) {
+                chat_metadata[META_KEY] = { emojis };
+            }
             saveMetadataDebounced();
         }
     } catch (e) {

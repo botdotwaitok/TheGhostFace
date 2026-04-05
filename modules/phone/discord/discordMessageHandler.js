@@ -391,6 +391,14 @@ function _parseGroupResponse(rawResponse, respondingMembers) {
             const reaction = item.reaction || null;
             if (!text && !reaction) continue;
 
+            // Normalize Discord custom emoji format <:name:id> or <a:name:id> to :name:
+            if (reaction && typeof reaction.emoji === 'string') {
+                const match = reaction.emoji.match(/<a?:([^:]+):\d*>/);
+                if (match) {
+                    reaction.emoji = `:${match[1]}:`;
+                }
+            }
+
             validated.push({
                 authorId,
                 text,
