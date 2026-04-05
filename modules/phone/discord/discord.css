@@ -1509,6 +1509,57 @@
     overflow: hidden;
 }
 
+/* ── Header Title ── */
+
+.dc-channel-header-title {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    text-align: left;
+}
+
+.dc-channel-header-top {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dc-channel-hash {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--dc-channel-default);
+}
+
+.dc-channel-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--dc-text-primary);
+}
+
+.dc-channel-caret {
+    font-size: 14px;
+    color: var(--dc-text-muted);
+}
+
+.dc-channel-header-bottom {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--dc-text-secondary);
+    font-weight: 500;
+}
+
+.dc-online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #23a559;
+}
+
 /* ── Welcome Message ── */
 
 .dc-channel-welcome {
@@ -1630,6 +1681,10 @@
     user-select: none;
 }
 
+.dc-message.dc-message-has-reply .dc-msg-avatar {
+    margin-top: 18px; /* Push avatar down to align with message header instead of quoted text */
+}
+
 .dc-msg-avatar img {
     width: 100%;
     height: 100%;
@@ -1678,30 +1733,57 @@
 /* ── Reply Reference (quoted message above content) ── */
 
 .dc-reply-ref {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 2px 0 4px;
-    font-size: 12px;
+    padding: 0 0 2px 0;
+    font-size: 13px;
     cursor: pointer;
     margin-bottom: 2px;
 }
 
-.dc-reply-ref-bar {
-    width: 2px;
-    height: 14px;
-    border-radius: 1px;
+.dc-reply-spine {
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    height: 12px;
+    width: 12px;
+    margin-right: 4px;
+    border: 2px solid var(--dc-text-muted);
+    border-right: none;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    opacity: 0.5;
+}
+
+.dc-reply-ref-avatar {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    overflow: hidden;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: white;
+}
+
+.dc-reply-ref-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .dc-reply-ref-name {
     font-weight: 600;
-    font-size: 12px;
+    font-size: 13px;
     flex-shrink: 0;
 }
 
 .dc-reply-ref-text {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--dc-text-muted);
     overflow: hidden;
     text-overflow: ellipsis;

@@ -697,7 +697,7 @@ function _showChannelPermissionDialog(channelId) {
 
 // ─── Channel Edit Dialog (name + topic) ───
 
-function _showChannelEditDialog(channelId) {
+export function showChannelEditDialogCore(channelId, onComplete) {
     const config = loadServerConfig();
     if (!config) return;
 
@@ -762,9 +762,13 @@ function _showChannelEditDialog(channelId) {
                 }
             }
             close();
-            _renderSettingsPage();
+            if (onComplete) onComplete();
         }
     });
+}
+
+function _showChannelEditDialog(channelId) {
+    showChannelEditDialogCore(channelId, () => _renderSettingsPage());
 }
 
 // ─── Auto-Chat Events ───

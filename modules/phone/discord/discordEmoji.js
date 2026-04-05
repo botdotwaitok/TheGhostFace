@@ -168,11 +168,20 @@ export function openStickerPanel(onSelect, onGoToSettings = null) {
         page.appendChild(backdrop);
     }
     backdrop.style.display = 'block';
-    backdrop.addEventListener('pointerdown', (e) => {
+
+    // Replace the backdrop to clear any accumulated ghost listeners from previous opens
+    const newBackdrop = backdrop.cloneNode(true);
+    backdrop.replaceWith(newBackdrop);
+
+    // Use a timing gate to prevent synthesized `pointerdown` events (from the same touch that opened this) from instantly closing it.
+    const openedAt = Date.now();
+    newBackdrop.addEventListener('pointerdown', function handler(e) {
+        if (Date.now() - openedAt < 300) return; // Ignore ghost pointer events right after opening
         e.preventDefault();
         e.stopPropagation();
+        newBackdrop.removeEventListener('pointerdown', handler);
         closeStickerPanel();
-    }, { once: true });
+    });
 
     page.appendChild(panel);
 

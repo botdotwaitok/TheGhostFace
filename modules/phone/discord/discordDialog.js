@@ -31,18 +31,18 @@ export function showDiscordDialog(options) {
     // We use isolated IDs or classes within the dialog if we want, but generating unique IDs is safer if multiple could open.
     // However, usually only one dialog is open at a time.
     const _baseId = 'dc_dialog_' + Date.now() + Math.floor(Math.random()*1000);
-    const cancelId = _baseId + '_cancel';
-    const saveId = _baseId + '_save';
+    const cancelBtn = overlay.querySelector('.dc-btn-secondary');
+    const saveBtn = overlay.querySelector('.dc-btn-primary');
 
     overlay.innerHTML = `
-        <div class="dc-dialog">
+        <div class="dc-dialog" style="max-height: 85vh; display: flex; flex-direction: column;">
             <div class="dc-dialog-title">${title}</div>
-            <div class="dc-dialog-body" style="padding-top: 12px;">
+            <div class="dc-dialog-body" style="padding-top: 12px; overflow-y: auto; flex-shrink: 1; scrollbar-width: thin;">
                 ${contentHtml}
             </div>
-            <div class="dc-dialog-actions" style="margin-top: 16px;">
-                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="${cancelId}">${cancelText}</button>
-                <button class="dc-btn dc-btn-primary dc-btn-sm" id="${saveId}">${saveText}</button>
+            <div class="dc-dialog-actions" style="margin-top: 16px; flex-shrink: 0;">
+                <button class="dc-btn dc-btn-secondary dc-btn-sm">${cancelText}</button>
+                <button class="dc-btn dc-btn-primary dc-btn-sm">${saveText}</button>
             </div>
         </div>
     `;
@@ -63,7 +63,7 @@ export function showDiscordDialog(options) {
         else closeDialog();
     };
 
-    document.getElementById(cancelId)?.addEventListener('click', handleCancel);
+    overlay.querySelector('.dc-btn-secondary')?.addEventListener('click', handleCancel);
 
     // Clicking overlay background closes
     overlay.addEventListener('click', (e) => {
@@ -73,7 +73,7 @@ export function showDiscordDialog(options) {
     });
 
     // Save Action
-    document.getElementById(saveId)?.addEventListener('click', () => {
+    overlay.querySelector('.dc-btn-primary')?.addEventListener('click', () => {
         if (onSave) onSave(closeDialog);
         else closeDialog();
     });

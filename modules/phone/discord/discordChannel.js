@@ -12,8 +12,9 @@ import {
 } from './discordStorage.js';
 import { sendUserMessages, generateAutoConversation, onMessageReceived, onTypingStateChange, getTypingState } from './discordMessageHandler.js';
 import { openStickerPanel, closeStickerPanel, getQuickReactions, renderStickersInText } from './discordEmoji.js';
-import { openServerSettings } from './discordServerSettings.js';
+import { openServerSettings, showChannelEditDialogCore } from './discordServerSettings.js';
 import { handleDiscordImageSelection, showDiscordImageLightbox } from './discordImage.js';
+import { editMemberFromChat } from './discordMembers.js';
 import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 
 const LOG = '[Discord Channel]';
@@ -203,13 +204,26 @@ function _renderChannelView() {
     // Build permission tag for title
     const channelPerms = getChannelPermissions(_currentChannelId);
     const permIcon = channelPerms.length > 0
-        ? '<i class="ph ph-lock-simple dc-channel-perm-icon"></i>'
+        ? '<i class="ph ph-lock-simple dc-channel-perm-icon" style="margin-left: 2px;"></i>'
         : '';
 
+    const allMembers = loadMembers();
+    const onlineCount = allMembers.length;
+
     const titleHtml = `
-        <span style="font-weight:500; color:var(--dc-channel-default);">#</span>
-        <span style="font-weight:600; margin-left:4px;">${escapeHtml(_currentChannelName)}</span>
-        ${permIcon}`;
+        <div class="dc-channel-header-title">
+            <div class="dc-channel-header-top">
+                <i class="ph ph-hash dc-channel-hash"></i>
+                <span class="dc-channel-name">${escapeHtml(_currentChannelName)}</span>
+                <i class="ph ph-caret-right dc-channel-caret"></i>
+                ${permIcon}
+            </div>
+            <div class="dc-channel-header-bottom">
+                <div class="dc-online-dot"></div>
+                <span>${onlineCount} Online</span>
+            </div>
+        </div>
+    `;
 
     const actionsHtml = `
         <button class="dc-icon-btn dc-header-action" id="dc_menu_btn" title="更多">
@@ -220,6 +234,26 @@ function _renderChannelView() {
         _bindChannelEvents();
         _scrollToBottom(false);
         _subscribeToUpdates();
+
+        // Header Click -> Edit Channel
+        const headerTitle = document.querySelector('.dc-channel-header-title');
+        if (headerTitle) {
+            headerTitle.style.cursor = 'pointer';
+            headerTitle.addEventListener('click', () => {
+                showChannelEditDialogCore(_currentChannelId, () => {
+                    const config = loadServerConfig();
+                    let updatedName = _currentChannelName;
+                    if (config && config.categories) {
+                        for (const cat of config.categories) {
+                            const ch = (cat.channels || []).find(c => c.id === _currentChannelId);
+                            if (ch) { updatedName = ch.name; break; }
+                        }
+                    }
+                    _cleanup();
+                    openChannel(_currentChannelId, updatedName, _onReturn);
+                });
+            });
+        }
 
         // Back button → return to server home
         const backHandler = (e) => {
@@ -312,6 +346,7 @@ function _buildMessagesHtml(messages, members, roles) {
 function _isConsecutiveMessage(msg, lastAuthorId, lastTimestamp) {
     if (msg.authorId !== lastAuthorId) return false;
     if (!lastTimestamp) return false;
+    if (msg.replyTo) return false;
     // Consecutive if within 5 minutes
     const diff = new Date(msg.timestamp) - new Date(lastTimestamp);
     return diff < 5 * 60 * 1000;
@@ -335,18 +370,26 @@ function _buildSingleMessageHtml(msg, member, members, roleMap, isConsecutive, i
 
     // Reply reference (quoted message)
     let replyHtml = '';
+    let hasReply = false;
     if (msg.replyTo) {
         const allMessages = loadChannelMessages(_currentChannelId);
         const repliedMsg = allMessages.find(m => m.id === msg.replyTo);
         if (repliedMsg) {
+            hasReply = true;
             const repliedName = repliedMsg.authorName || '未知';
             const repliedMember = members.find(m => m.id === repliedMsg.authorId);
             const repliedColor = repliedMember ? getMemberColor(repliedMember) : '#99aab5';
             const repliedText = repliedMsg.content?.substring(0, 80) || '';
+            const repliedAvatarUrl = getMemberAvatarUrl(repliedMember);
+            const repliedAvatarContent = repliedAvatarUrl
+                ? `<img src="${repliedAvatarUrl}" alt="" />`
+                : escapeHtml((repliedName).charAt(0));
+
             replyHtml = `
                 <div class="dc-reply-ref">
-                    <div class="dc-reply-ref-bar" style="background:${repliedColor}"></div>
-                    <span class="dc-reply-ref-name" style="color:${repliedColor}">${escapeHtml(repliedName)}</span>
+                    <div class="dc-reply-spine"></div>
+                    <div class="dc-reply-ref-avatar" style="background:${repliedColor}">${repliedAvatarContent}</div>
+                    <span class="dc-reply-ref-name" style="color:${repliedColor}">@${escapeHtml(repliedName)}</span>
                     <span class="dc-reply-ref-text">${escapeHtml(repliedText)}</span>
                 </div>
             `;
@@ -356,7 +399,7 @@ function _buildSingleMessageHtml(msg, member, members, roleMap, isConsecutive, i
     if (isConsecutive) {
         // Compact — no avatar/name, just content
         return `
-            <div class="dc-message dc-message-compact" data-msg-id="${msg.id}" data-msg-index="${index}">
+            <div class="dc-message dc-message-compact ${hasReply ? 'dc-message-has-reply' : ''}" data-msg-id="${msg.id}" data-msg-index="${index}">
                 <div class="dc-message-compact-time">${timeStr.split(' ').pop()}</div>
                 <div class="dc-message-body">
                     ${replyHtml}
@@ -372,7 +415,7 @@ function _buildSingleMessageHtml(msg, member, members, roleMap, isConsecutive, i
     const avatarHtml = _buildAvatarHtml(member, msg);
 
     return `
-        <div class="dc-message" data-msg-id="${msg.id}" data-msg-index="${index}">
+        <div class="dc-message ${hasReply ? 'dc-message-has-reply' : ''}" data-msg-id="${msg.id}" data-msg-index="${index}">
             ${avatarHtml}
             <div class="dc-message-body">
                 ${replyHtml}
@@ -392,10 +435,10 @@ function _buildAvatarHtml(member, msg) {
     const color = member?.avatarColor || '#5865f2';
     const avatarUrl = getMemberAvatarUrl(member);
     if (avatarUrl) {
-        return `<div class="dc-msg-avatar" style="background:${color}"><img src="${avatarUrl}" alt="" /></div>`;
+        return `<div class="dc-msg-avatar" style="background:${color}; cursor:pointer;"><img src="${avatarUrl}" alt="" /></div>`;
     }
     const initial = (member?.name || msg.authorName || '?').charAt(0);
-    return `<div class="dc-msg-avatar" style="background:${color}">${escapeHtml(initial)}</div>`;
+    return `<div class="dc-msg-avatar" style="background:${color}; cursor:pointer;">${escapeHtml(initial)}</div>`;
 }
 
 function _processMessageContent(text, members) {
@@ -686,6 +729,25 @@ function _bindChannelEvents() {
     // ── Message interactions (delegation) ──
     const messagesContainer = document.getElementById('dc_channel_messages');
     if (messagesContainer) {
+        // Avatar click -> edit member
+        messagesContainer.addEventListener('click', (e) => {
+            if (_isDeleteMode || _isEditMode) return;
+            const avatar = e.target.closest('.dc-msg-avatar');
+            if (avatar) {
+                const msgEl = avatar.closest('.dc-message');
+                if (msgEl) {
+                    const msgIndex = parseInt(msgEl.dataset.msgIndex, 10);
+                    const msgs = loadChannelMessages(_currentChannelId);
+                    const msg = msgs[msgIndex];
+                    if (msg && msg.authorId) {
+                        editMemberFromChat(msg.authorId, () => {
+                            _cleanup();
+                            openChannel(_currentChannelId, _currentChannelName, _onReturn);
+                        });
+                    }
+                }
+            }
+        });
         // Long press for context menu
         let longPressTimer = null;
         let longPressTarget = null;
@@ -710,9 +772,16 @@ function _bindChannelEvents() {
             longPressTimer = null;
         });
 
-        // Suppress native browser context menu on messages
+        // Show custom context menu on right-click, suppress native menu
         messagesContainer.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+            if (_isDeleteMode || _isEditMode || _contextMenuOpen) return;
+            const msgEl = e.target.closest('.dc-message');
+            if (msgEl) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+                _showContextMenu(msgEl, e);
+            }
         });
 
         // ── Swipe-left to reply gesture ──
@@ -1661,7 +1730,7 @@ async function _rerollLastResponse() {
             lastUserTexts.unshift(msg.content);
         }
         if (msg.mentions) lastUserMentions.push(...msg.mentions);
-        
+
         if (msg.imageUrl && !lastImageData) {
             lastImageData = { thumbnail: msg.imageUrl };
         }
@@ -1688,8 +1757,8 @@ async function _rerollLastResponse() {
     console.log(`${LOG} Reroll: removed ${removedCount} NPC + ${lastUserTexts.length} user messages, re-sending...`);
 
     const result = await sendUserMessages(
-        _currentChannelId, 
-        lastUserTexts.length ? lastUserTexts : ['[图片]'], 
+        _currentChannelId,
+        lastUserTexts.length ? lastUserTexts : ['[图片]'],
         [...new Set(lastUserMentions)],
         lastImageData,
         lastReplyToId

@@ -208,7 +208,11 @@ function _bindMemberListEvents() {
 // Member Form (Create / Edit)
 // ═══════════════════════════════════════════════════════════════════════
 
-function _showMemberForm(memberId = null) {
+export function editMemberFromChat(memberId, onReturn) {
+    _showMemberForm(memberId, onReturn);
+}
+
+function _showMemberForm(memberId = null, customBackHandler = null) {
     const isEdit = !!memberId;
     const member = isEdit ? loadMembers().find(m => m.id === memberId) : null;
     const roles = loadRoles();
@@ -356,12 +360,13 @@ function _showMemberForm(memberId = null) {
     const titleHtml = `<span style="font-weight:600;">${isEdit ? '编辑成员' : '添加成员'}</span>`;
 
     openAppInViewport(titleHtml, html, () => {
-        _bindMemberFormEvents(memberId, avatarColor);
-        // Back → return to member list
+        _bindMemberFormEvents(memberId, avatarColor, customBackHandler);
+        // Back → return to previous state
         const backHandler = (e) => {
             e.preventDefault();
             window.removeEventListener('phone-app-back', backHandler);
-            _renderMemberList();
+            if (customBackHandler) customBackHandler();
+            else _renderMemberList();
         };
         window.addEventListener('phone-app-back', backHandler);
     });
@@ -371,7 +376,7 @@ function _showMemberForm(memberId = null) {
 // Member Form Events
 // ═══════════════════════════════════════════════════════════════════════
 
-function _bindMemberFormEvents(memberId, initialColor) {
+function _bindMemberFormEvents(memberId, initialColor, customBackHandler = null) {
     let currentColor = initialColor;
     let currentAvatar = memberId ? loadMembers().find(m => m.id === memberId)?.avatar || null : null;
 
@@ -580,7 +585,8 @@ function _bindMemberFormEvents(memberId, initialColor) {
         if (typeof toastr !== 'undefined') {
             toastr.success(memberId ? '成员已更新' : '成员已添加');
         }
-        _renderMemberList();
+        if (customBackHandler) customBackHandler();
+        else _renderMemberList();
     });
 
     // ── Delete ──
@@ -588,7 +594,8 @@ function _bindMemberFormEvents(memberId, initialColor) {
         if (!confirm('确定要删除这个成员吗？')) return;
         if (removeMember(memberId)) {
             if (typeof toastr !== 'undefined') toastr.success('成员已删除');
-            _renderMemberList();
+            if (customBackHandler) customBackHandler();
+            else _renderMemberList();
         }
     });
 }

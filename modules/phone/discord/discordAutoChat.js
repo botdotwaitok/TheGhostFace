@@ -191,7 +191,7 @@ async function _onTimerFired() {
 
         const participantCount = Math.min(
             eligibleMembers.length,
-            2 + Math.floor(Math.random() * 3), // 2, 3, or 4
+            3 + Math.floor(Math.random() * 3), // 3, 4, or 5
         );
         const participants = _pickRandom(eligibleMembers, participantCount);
         // ─── 3. Generate conversation ───
