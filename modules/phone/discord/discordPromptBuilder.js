@@ -135,10 +135,18 @@ export function buildGroupChatUserPrompt(channelId, userMessages, mentions = [],
         : unsummarized;
     const recent = historyPool.slice(-30);
 
-    // Build an id → index map so we can show "[回复→N]" for threaded context
+    // ─── Split into old context (no index) and recent indexable (with [N]) ───
+    // Find the boundary: the last user message in the pool marks the start of
+    // the "previous round". Only messages from that point onward get indices
+    // so the LLM can only reference recent messages via replyToIndex.
+    const userMemberId = _getUserMemberId(members);
+    const recentIndexableStart = _findLastRoundStart(recent, userMemberId);
+
+    // Build id → index map ONLY for indexable messages
     const idToIndex = {};
-    for (let i = 0; i < recent.length; i++) {
-        idToIndex[recent[i].id] = i + 1;
+    let indexCounter = 1;
+    for (let i = recentIndexableStart; i < recent.length; i++) {
+        idToIndex[recent[i].id] = indexCounter++;
     }
 
     if (recent.length > 0) {
@@ -149,13 +157,21 @@ export function buildGroupChatUserPrompt(channelId, userMessages, mentions = [],
             let replyTag = '';
             if (msg.replyTo) {
                 const repliedIdx = idToIndex[msg.replyTo];
-                replyTag = repliedIdx ? ` [回复→${repliedIdx}]` : ' [回复]';
+                replyTag = repliedIdx ? ` [回复→${repliedIdx}]` : '';
             }
-            return `[${idx + 1}] ${authorName}${replyTag}: ${content}`;
+
+            if (idx < recentIndexableStart) {
+                // Old context: no index, LLM cannot reference these
+                return `${authorName}: ${content}`;
+            } else {
+                // Recent: with [N] index, LLM can use replyToIndex
+                const displayIdx = idToIndex[msg.id];
+                return `[${displayIdx}] ${authorName}${replyTag}: ${content}`;
+            }
         });
         parts.push(`<chat_history>
-每条消息前的 [N] 是序号，你可以用 replyToIndex 引用它们。
-"[回复→N]" 表示该消息引用了序号 N 的消息。
+以下是最近的聊天记录。只有带 [N] 序号的消息可以被 replyToIndex 引用。
+没有序号的是更早的上下文，仅供了解话题背景。
 ${historyLines.join('\n')}
 </chat_history>`);
     }
@@ -379,7 +395,7 @@ function _buildGroupChatRules(charName, userName, respondingMembers) {
 10. 禁止任何第三人称叙述或动作描写——所有输出都是纯粹的群聊文字消息
 11. 在合适的时候可以使用 Discord markdown 语法来丰富消息表达（如加粗、斜体、代码块、引用等）
 12. 成员可以用 <图片>图片内容描述</图片> 来「发送图片」——在消息文本中用此标签包裹对图片的详细描述（如自拍、美食、风景、宠物等）。偶尔使用即可，不要每条消息都发图
-13. 可以使用 replyToIndex 引用历史消息进行回复（就像 Discord 中引用某条消息回复一样），不用每条都引用，只在明确回应某条消息时使用
+13. 可以使用 replyToIndex 引用 chat_history 中带 [N] 序号的消息进行回复（就像 Discord 中引用某条消息回复一样），不用每条都引用，只在明确回应某条消息时使用。不要引用没有序号的旧消息
 14. 【社交距离红线】普通成员不得对 ${userName} 的家庭细节、住所环境、私人行程等发表评论或提出问题——大家只是网友，不了解彼此的线下生活
 15. 【独立灵魂】至少一部分成员的回复应该围绕 ta 们自己的话题或与其她成员的互动，而不是全部集中回应 ${userName}——真实群聊不会所有人同时围着一个人转
 </group_chat_rules>`;
@@ -418,7 +434,7 @@ function _buildOutputFormat(respondingMembers) {
 - authorId: 必填。必须从以下成员中选择：${validIds}
 - text: 必填。该成员发送的消息文本
 - delay: 必填。模拟打字延迟的秒数（0 = 立即，1-5 = 稍后发送）
-- replyToIndex: 可选。引用 chat_history 中 [N] 序号的消息进行回复（-1 = 最后一条用户消息）
+- replyToIndex: 可选。只能引用 chat_history 中带 [N] 序号的消息（-1 = 最后一条用户消息）。不要引用没有序号的旧消息
 - reaction: 可选。对之前消息添加表情反应
   - targetMsgIndex: -1 = 最后一条用户消息，0+ = 本次回复中的消息索引
   - emoji: Unicode emoji 或 :自定义表情名:
@@ -442,6 +458,49 @@ function _getChannelName(channelId, serverConfig) {
         }
     }
     return '未知频道';
+}
+
+/**
+ * Get the user member's ID from a members array.
+ * @param {Array} members
+ * @returns {string|null}
+ */
+function _getUserMemberId(members) {
+    const userMember = members?.find(m => m.isUser);
+    return userMember?.id || null;
+}
+
+/**
+ * Find the start index of the "last round" in the recent messages array.
+ * The last round starts at the last user message in the history.
+ * Everything before that is "old context" and won't get [N] indices.
+ * If no user message is found, all messages are considered indexable (index 0).
+ *
+ * @param {Array} recent - Recent messages array
+ * @param {string|null} userMemberId - The user member's ID
+ * @returns {number} Start index of the indexable portion
+ */
+function _findLastRoundStart(recent, userMemberId) {
+    if (!userMemberId || recent.length === 0) return 0;
+
+    // Scan backwards to find the last user message
+    for (let i = recent.length - 1; i >= 0; i--) {
+        if (recent[i].authorId === userMemberId) {
+            // The "last round" includes the last user message and everything after it.
+            // But we also want to include the previous LLM round that the user was replying to.
+            // So find the user message BEFORE this one to set the boundary.
+            for (let j = i - 1; j >= 0; j--) {
+                if (recent[j].authorId === userMemberId) {
+                    // Found the previous user message — start indexing from the message after it
+                    return j + 1;
+                }
+            }
+            // No previous user message found — all messages are from this round
+            return 0;
+        }
+    }
+    // No user message at all — everything is indexable
+    return 0;
 }
 
 /**

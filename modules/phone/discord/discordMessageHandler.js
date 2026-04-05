@@ -418,17 +418,25 @@ async function _deliverMessagesWithDelay(channelId, parsedMessages, allMembers, 
     for (const m of allMembers) memberMap[m.id] = m;
 
     // Build index → msgId mapping from recent channel messages (for LLM replyToIndex)
-    // Must match exactly the same message slice used in buildGroupChatUserPrompt's chat_history
+    // Must match exactly the same message slice AND indexing used in buildGroupChatUserPrompt's chat_history
     const channelMessages = loadChannelMessages(channelId);
     const unsummarized = channelMessages.filter(m => !m.summarized);
     const historyPool = excludeLastN > 0
         ? unsummarized.slice(0, unsummarized.length - excludeLastN)
         : unsummarized;
     const recentForIndex = historyPool.slice(-30);
-    // recentForIndex[0] = index 1 in prompt, etc.
+
+    // Find the "last round" boundary — same logic as prompt builder
+    const allMembersForRound = loadMembers();
+    const userMember = allMembersForRound.find(m => m.isUser);
+    const userMemberId = userMember?.id || null;
+    const recentIndexableStart = _findRoundStart(recentForIndex, userMemberId);
+
+    // Only index messages from the last round onward (matching prompt builder)
     const indexToMsgId = {};
-    for (let i = 0; i < recentForIndex.length; i++) {
-        indexToMsgId[i + 1] = recentForIndex[i].id;
+    let indexCounter = 1;
+    for (let i = recentIndexableStart; i < recentForIndex.length; i++) {
+        indexToMsgId[indexCounter++] = recentForIndex[i].id;
     }
 
     // Track messages stored so far (for reaction targeting)
@@ -616,6 +624,27 @@ export async function compressChannel(channelId, oldMessages, recentMessages) {
 
 function _getMemberName(memberId, members) {
     return members?.find(m => m.id === memberId)?.name || '未知用户';
+}
+
+/**
+ * Find the start index of the "last round" — mirrors _findLastRoundStart in discordPromptBuilder.js.
+ * @param {Array} recent - Recent messages array
+ * @param {string|null} userMemberId - The user member's ID
+ * @returns {number} Start index of the indexable portion
+ */
+function _findRoundStart(recent, userMemberId) {
+    if (!userMemberId || recent.length === 0) return 0;
+    for (let i = recent.length - 1; i >= 0; i--) {
+        if (recent[i].authorId === userMemberId) {
+            for (let j = i - 1; j >= 0; j--) {
+                if (recent[j].authorId === userMemberId) {
+                    return j + 1;
+                }
+            }
+            return 0;
+        }
+    }
+    return 0;
 }
 
 /** Fisher-Yates shuffle */
