@@ -7,7 +7,7 @@ import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import { getPhoneUserName } from '../phoneContext.js';
 import {
     loadMembers, loadChannelMessages, saveChannelMessages, appendMessage,
-    getUserMember,
+    getUserMember, canMemberPostInChannel,
     checkCompression, applyCompression, saveChannelSummary, loadChannelSummary,
     generateId,
 } from './discordStorage.js';
@@ -157,7 +157,7 @@ export async function sendUserMessages(channelId, texts, mentions = [], imageDat
 
     // ─── 2. Select responding members ───
     const allMembers = loadMembers();
-    const respondingMembers = selectRespondingMembers(allMembers, mentions);
+    const respondingMembers = selectRespondingMembers(allMembers, mentions, channelId);
     const respondingNames = respondingMembers.filter(m => !m.isUser).map(m => m.name);
 
     console.log(`${LOG} User sent ${validTexts.length} message(s)${imageData ? ' (with image)' : ''}, responding members: ${respondingNames.join(', ')}`);
@@ -266,20 +266,30 @@ export async function generateAutoConversation(channelId, participants) {
  * Select which members will respond to a user message.
  *
  * Rules:
- * - Protagonist (isProtagonist) is ALWAYS selected
- * - Mentioned members are ALWAYS selected
- * - If total non-user members < 5: select ALL
- * - If total non-user members >= 5: select ~half (rounded up)
+ * - Channel permissions filter: only members with allowed roles can respond
+ *   (user is always exempt; protagonist CAN be blocked!)
+ * - Protagonist is selected if they have permission in the channel
+ * - Mentioned members are selected if they have permission
+ * - If total eligible non-user members < 5: select ALL
+ * - If total eligible non-user members >= 5: select ~half (rounded up)
  * - User member is included for context but won't generate responses
  *
  * @param {Array} allMembers - All server members
  * @param {string[]} mentionedIds - IDs of mentioned members
+ * @param {string} [channelId] - Channel ID for permission filtering
  * @returns {Array} Selected members (including user for context)
  */
-export function selectRespondingMembers(allMembers, mentionedIds = []) {
-    const nonUserMembers = allMembers.filter(m => !m.isUser);
+export function selectRespondingMembers(allMembers, mentionedIds = [], channelId = null) {
     const userMember = allMembers.find(m => m.isUser);
     const mentionSet = new Set(mentionedIds);
+
+    // Filter non-user members by channel permissions
+    const nonUserMembers = allMembers.filter(m => {
+        if (m.isUser) return false;
+        // If channelId provided, check permissions (protagonist included in this check!)
+        if (channelId && !canMemberPostInChannel(m, channelId)) return false;
+        return true;
+    });
 
     if (nonUserMembers.length === 0) {
         return userMember ? [userMember] : [];
@@ -288,10 +298,10 @@ export function selectRespondingMembers(allMembers, mentionedIds = []) {
     let selected;
 
     if (nonUserMembers.length < 5) {
-        // Small server: everyone responds
+        // Small eligible group: everyone responds
         selected = [...nonUserMembers];
     } else {
-        // Larger server: select subset
+        // Larger group: select subset
         const mandatoryMembers = [];
         const optionalMembers = [];
 

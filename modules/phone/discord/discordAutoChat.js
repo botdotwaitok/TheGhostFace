@@ -4,7 +4,7 @@
 
 import {
     loadAutoChatConfig, loadServerConfig, loadMembers, getAllChannels,
-    getNonUserMembers,
+    getNonUserMembers, canMemberPostInChannel,
 } from './discordStorage.js';
 import { generateAutoConversation } from './discordMessageHandler.js';
 import { tryAutoStartKeepAlive } from '../keepAlive.js';
@@ -180,21 +180,20 @@ async function _onTimerFired() {
         const channel = channels[Math.floor(Math.random() * channels.length)];
         console.log(`${LOG} Selected channel: #${channel.name} (${channel.id})`);
 
-        // ─── 2. Pick 2-4 random non-user members ───
+        // ─── 2. Pick 2-4 random non-user members who have permission to post ───
         const nonUserMembers = getNonUserMembers();
-        if (nonUserMembers.length < 2) {
-            console.log(`${LOG} Not enough members (${nonUserMembers.length}), need at least 2`);
+        // Filter by channel permissions (protagonist CAN be excluded!)
+        const eligibleMembers = nonUserMembers.filter(m => canMemberPostInChannel(m, channel.id));
+        if (eligibleMembers.length < 2) {
+            console.log(`${LOG} Not enough eligible members in #${channel.name} (${eligibleMembers.length}), need at least 2`);
             return;
         }
 
         const participantCount = Math.min(
-            nonUserMembers.length,
+            eligibleMembers.length,
             2 + Math.floor(Math.random() * 3), // 2, 3, or 4
         );
-        const participants = _pickRandom(nonUserMembers, participantCount);
-
-        console.log(`${LOG} Participants: ${participants.map(p => p.name).join(', ')}`);
-
+        const participants = _pickRandom(eligibleMembers, participantCount);
         // ─── 3. Generate conversation ───
         const result = await generateAutoConversation(channel.id, participants);
 

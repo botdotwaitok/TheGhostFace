@@ -10,7 +10,7 @@ import {
     isServerInitialized, loadServerConfig, saveServerConfig,
     loadMembers, loadRoles, getLastMessage, getMemberColor,
     initDefaultServer, initFromLLMResult, getAllChannels,
-    appendMessage, generateId,
+    appendMessage, generateId, getChannelPermissions,
 } from './discordStorage.js';
 import { openServerSettings } from './discordServerSettings.js';
 import { openChannel as openChannelView } from './discordChannel.js';
@@ -470,11 +470,17 @@ function _buildChannelItemHtml(channel) {
         ? `<div class="dc-channel-unread">${unread > 99 ? '99+' : unread}</div>`
         : '';
 
+    // Show lock icon if channel has permissions set
+    const perms = getChannelPermissions(channel.id);
+    const lockIcon = perms.length > 0
+        ? '<i class="ph ph-lock-simple dc-channel-lock"></i>'
+        : '';
+
     return `
         <div class="dc-channel-item${unread > 0 ? ' dc-channel-unread-item' : ''}" data-channel-id="${channel.id}" data-channel-name="${escapeHtml(channel.name)}">
             <span class="dc-channel-hash">#</span>
             <div class="dc-channel-info">
-                <div class="dc-channel-name">${escapeHtml(channel.name)}</div>
+                <div class="dc-channel-name">${escapeHtml(channel.name)}${lockIcon}</div>
             </div>
             ${unreadHtml}
         </div>

@@ -8,7 +8,8 @@ import {
 } from '../phoneContext.js';
 import {
     loadServerConfig, loadMembers, loadRoles, getMemberColor,
-    loadChannelMessages, loadChannelSummary, loadCustomEmojis, consumeTempBioUpdate
+    loadChannelMessages, loadChannelSummary, loadCustomEmojis, consumeTempBioUpdate,
+    getChannelPermissions,
 } from './discordStorage.js';
 
 const LOG = '[Discord Prompt]';
@@ -68,13 +69,24 @@ export async function buildGroupChatSystemPrompt(channelId, respondingMembers) {
     // ─── Output Format ───
     const outputFormat = _buildOutputFormat(respondingMembers);
 
+    // ─── Channel Permission Context ───
+    const channelPerms = getChannelPermissions(channelId);
+    let permBlock = '';
+    if (channelPerms.length > 0) {
+        const roles = loadRoles();
+        const permRoleNames = channelPerms
+            .map(rid => roles.find(r => r.id === rid)?.name)
+            .filter(Boolean);
+        permBlock = `\n此频道设有发言权限限制，仅以下身份组可以发言：${permRoleNames.join('、')}。\n只有拥有这些身份组的成员才会出现在本次回复中。`;
+    }
+
     // ─── Assemble ───
     const result = `${foundation}
 
 <discord_channel>
 你现在处于 Discord 社区服务器「${serverName}」的「#${channelName}」频道中。
 这是由 ${userName} 和 ${charName} 共同管理的社区。
-你需要同时扮演多位社区成员，在群聊中自然地回复。
+你需要同时扮演多位社区成员，在群聊中自然地回复。${permBlock}
 </discord_channel>
 
 ${charDesc}

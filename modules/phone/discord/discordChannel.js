@@ -8,7 +8,7 @@ import { getPhoneUserName } from '../phoneContext.js';
 import {
     loadChannelMessages, loadMembers, loadRoles, getMemberColor,
     getUserMember, saveChannelMessages, loadServerConfig, uploadFileToST,
-    getMemberAvatarUrl,
+    getMemberAvatarUrl, getChannelPermissions,
 } from './discordStorage.js';
 import { sendUserMessages, generateAutoConversation, onMessageReceived, onTypingStateChange, getTypingState } from './discordMessageHandler.js';
 import { openStickerPanel, closeStickerPanel, getQuickReactions, renderStickersInText } from './discordEmoji.js';
@@ -104,6 +104,7 @@ function _renderChannelView() {
                         <i class="ph ph-x"></i>
                     </button>
                 </div>
+                ${_buildPermissionNoticeHtml()}
                 <div class="dc-input-row">
                     <button class="dc-btn-plus" id="dc_plus_btn" title="更多选项">
                         <i class="ph ph-plus"></i>
@@ -199,9 +200,16 @@ function _renderChannelView() {
         </div>
     `;
 
+    // Build permission tag for title
+    const channelPerms = getChannelPermissions(_currentChannelId);
+    const permIcon = channelPerms.length > 0
+        ? '<i class="ph ph-lock-simple dc-channel-perm-icon"></i>'
+        : '';
+
     const titleHtml = `
         <span style="font-weight:500; color:var(--dc-channel-default);">#</span>
-        <span style="font-weight:600; margin-left:4px;">${escapeHtml(_currentChannelName)}</span>`;
+        <span style="font-weight:600; margin-left:4px;">${escapeHtml(_currentChannelName)}</span>
+        ${permIcon}`;
 
     const actionsHtml = `
         <button class="dc-icon-btn dc-header-action" id="dc_menu_btn" title="更多">
@@ -222,6 +230,29 @@ function _renderChannelView() {
         };
         window.addEventListener('phone-app-back', backHandler);
     }, actionsHtml);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Permission Notice
+// ═══════════════════════════════════════════════════════════════════════
+
+function _buildPermissionNoticeHtml() {
+    const perms = getChannelPermissions(_currentChannelId);
+    if (!perms || perms.length === 0) return '';
+
+    const roles = loadRoles();
+    const roleNames = perms
+        .map(rid => roles.find(r => r.id === rid)?.name)
+        .filter(Boolean);
+
+    if (roleNames.length === 0) return '';
+
+    return `
+        <div class="dc-perm-notice" id="dc_perm_notice">
+            <i class="ph ph-lock-simple"></i>
+            <span>仅 ${escapeHtml(roleNames.join('、'))} 可发言</span>
+        </div>
+    `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

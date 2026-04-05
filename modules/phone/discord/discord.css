@@ -3579,3 +3579,164 @@ textarea#dc_edit_textarea {
 .phone-dark-mode .dc-image-lightbox {
     background: rgba(0, 0, 0, 0.95);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Channel Permissions
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Lock icon on channel list (server home) ── */
+.dc-channel-lock {
+    font-size: 12px;
+    color: var(--dc-text-muted);
+    margin-left: 4px;
+    vertical-align: middle;
+    opacity: 0.7;
+}
+
+/* ── Lock icon on channel title (in header) ── */
+.dc-channel-perm-icon {
+    font-size: 12px;
+    color: var(--dc-text-muted);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* ── Permission notice bar (above input row) ── */
+.dc-perm-notice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--dc-text-muted);
+    background: color-mix(in srgb, var(--dc-brand) 8%, var(--dc-bg-secondary));
+    border-radius: 6px;
+    margin: 0 8px 4px;
+}
+
+.dc-perm-notice i {
+    font-size: 13px;
+    color: var(--dc-brand);
+    flex-shrink: 0;
+}
+
+/* ── Settings: permission badge on channel item ── */
+.dc-ch-perm-badge {
+    font-size: 11px;
+    color: var(--dc-brand);
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+
+/* ── Permission Dialog ── */
+.dc-perm-desc {
+    font-size: 13px;
+    color: var(--dc-text-secondary);
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.dc-perm-roles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dc-scrollbar-thumb) transparent;
+}
+
+.dc-perm-role-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.dc-perm-role-item:hover {
+    background: var(--dc-hover);
+}
+
+.dc-perm-role-item:active {
+    background: rgba(79, 84, 92, 0.16);
+}
+
+.dc-perm-role-checkbox {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 2px solid var(--dc-text-muted);
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    transition: all 0.15s;
+}
+
+.dc-perm-role-checkbox:checked {
+    background: var(--dc-brand);
+    border-color: var(--dc-brand);
+}
+
+.dc-perm-role-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.dc-perm-role-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dc-perm-role-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--dc-text-primary);
+}
+
+.dc-perm-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--dc-text-muted);
+    background: var(--dc-bg-tertiary);
+    border-radius: 6px;
+    margin-bottom: 14px;
+}
+
+.dc-perm-hint i {
+    font-size: 14px;
+    flex-shrink: 0;
+    color: var(--dc-brand);
+}
+
+/* ── Dark mode: channel permissions ── */
+.phone-dark-mode .dc-perm-notice {
+    background: color-mix(in srgb, var(--dc-brand) 12%, var(--dc-bg-secondary));
+}
+
+.phone-dark-mode .dc-perm-role-name {
+    color: var(--dc-text-primary);
+}
+
+.phone-dark-mode .dc-perm-hint {
+    background: var(--dc-bg-tertiary);
+}

@@ -9,7 +9,8 @@ import {
     addCategory, addChannel, removeCategory, removeChannel,
     loadAutoChatConfig, saveAutoChatConfig,
     resetAllData, getAllChannels, clearChannelMessages, generateId,
-    getMemberAvatarUrl, uploadFileToST
+    getMemberAvatarUrl, uploadFileToST,
+    getChannelPermissions, setChannelPermissions,
 } from './discordStorage.js';
 import { openMembersPage } from './discordMembers.js';
 import { startAutoChatTimer, stopAutoChatTimer } from './discordAutoChat.js';
@@ -209,7 +210,11 @@ function _buildChannelsSection(config) {
             <div class="dc-channel-manage-item" data-channel-id="${ch.id}" data-cat-id="${cat.id}">
                 <span class="dc-channel-manage-hash">#</span>
                 <span class="dc-channel-manage-name">${escapeHtml(ch.name)}</span>
+                ${(ch.allowedRoles && ch.allowedRoles.length > 0) ? '<i class="ph ph-lock-simple dc-ch-perm-badge"></i>' : ''}
                 <div class="dc-channel-manage-actions">
+                    <button class="dc-icon-btn dc-ch-perm-btn" data-channel-id="${ch.id}" title="发言权限">
+                        <i class="ph ph-shield-check"></i>
+                    </button>
                     <button class="dc-icon-btn dc-ch-rename-btn" data-channel-id="${ch.id}" title="重命名">
                         <i class="ph ph-pencil-simple"></i>
                     </button>
@@ -602,6 +607,102 @@ function _bindChannelEvents() {
             if (typeof toastr !== 'undefined') toastr.success('频道已删除');
             _renderSettingsPage();
         });
+    });
+
+    // Channel permissions
+    document.querySelectorAll('.dc-ch-perm-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const chId = btn.dataset.channelId;
+            _showChannelPermissionDialog(chId);
+        });
+    });
+}
+
+// ─── Channel Permission Dialog ───
+
+function _showChannelPermissionDialog(channelId) {
+    const roles = loadRoles();
+    const currentPerms = getChannelPermissions(channelId);
+    const currentSet = new Set(currentPerms);
+
+    // Find channel name for display
+    const config = loadServerConfig();
+    let channelName = '频道';
+    if (config?.categories) {
+        for (const cat of config.categories) {
+            const ch = (cat.channels || []).find(c => c.id === channelId);
+            if (ch) { channelName = ch.name; break; }
+        }
+    }
+
+    const roleCheckboxes = roles.map(r => {
+        const checked = currentSet.has(r.id) ? 'checked' : '';
+        return `
+            <label class="dc-perm-role-item">
+                <input type="checkbox" class="dc-perm-role-checkbox" data-role-id="${r.id}" ${checked} />
+                <div class="dc-perm-role-dot" style="background:${r.color}"></div>
+                <span class="dc-perm-role-name">${escapeHtml(r.name)}</span>
+            </label>
+        `;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dc-dialog-overlay dc-fade-in';
+    overlay.innerHTML = `
+        <div class="dc-dialog">
+            <div class="dc-dialog-title">
+                <i class="ph ph-shield-check" style="margin-right:6px;"></i>
+                #${escapeHtml(channelName)} 发言权限
+            </div>
+            <div class="dc-perm-desc">
+                勾选允许在此频道发言的身份组。
+                不勾选任何身份组 = 所有人都可发言。
+            </div>
+            <div class="dc-perm-roles-list" id="dc_perm_roles_list">
+                ${roleCheckboxes}
+            </div>
+            <div class="dc-perm-hint">
+                <i class="ph ph-info"></i>
+                你（用户）始终可以发言，不受权限限制
+            </div>
+            <div class="dc-dialog-actions">
+                <button class="dc-btn dc-btn-secondary dc-btn-sm" id="dc_perm_cancel">取消</button>
+                <button class="dc-btn dc-btn-primary dc-btn-sm" id="dc_perm_save">保存</button>
+            </div>
+        </div>
+    `;
+
+    const page = document.getElementById('dc_settings_page');
+    if (!page) return;
+    page.style.position = 'relative';
+    page.appendChild(overlay);
+
+    // Cancel
+    document.getElementById('dc_perm_cancel')?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    // Save
+    document.getElementById('dc_perm_save')?.addEventListener('click', () => {
+        const selected = [];
+        overlay.querySelectorAll('.dc-perm-role-checkbox').forEach(cb => {
+            if (cb.checked) selected.push(cb.dataset.roleId);
+        });
+        setChannelPermissions(channelId, selected);
+        if (typeof toastr !== 'undefined') {
+            if (selected.length > 0) {
+                const roleNames = selected
+                    .map(rid => roles.find(r => r.id === rid)?.name)
+                    .filter(Boolean);
+                toastr.success(`已设置权限：仅 ${roleNames.join('、')} 可发言`);
+            } else {
+                toastr.success('已移除权限限制，所有人可发言');
+            }
+        }
+        overlay.remove();
+        _renderSettingsPage();
     });
 }
 

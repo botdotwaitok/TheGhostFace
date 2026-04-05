@@ -216,6 +216,71 @@ export function removeCategory(categoryId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Channel Permissions (Role-based posting access)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Get the allowed roles for a channel.
+ * Returns empty array if no restrictions (everyone can post).
+ * @param {string} channelId
+ * @returns {string[]} Array of role IDs allowed to post
+ */
+export function getChannelPermissions(channelId) {
+    const config = loadServerConfig();
+    if (!config?.categories) return [];
+    for (const cat of config.categories) {
+        const ch = (cat.channels || []).find(c => c.id === channelId);
+        if (ch) return ch.allowedRoles || [];
+    }
+    return [];
+}
+
+/**
+ * Set the allowed roles for a channel.
+ * Pass empty array to remove restrictions (everyone can post).
+ * @param {string} channelId
+ * @param {string[]} roleIds - Array of role IDs allowed to post
+ */
+export function setChannelPermissions(channelId, roleIds) {
+    const config = loadServerConfig();
+    if (!config?.categories) return;
+    for (const cat of config.categories) {
+        const ch = (cat.channels || []).find(c => c.id === channelId);
+        if (ch) {
+            ch.allowedRoles = roleIds.length > 0 ? roleIds : undefined;
+            saveServerConfig(config);
+            return;
+        }
+    }
+}
+
+/**
+ * Check if a member can post in a channel.
+ * Rules:
+ *  - If no permissions set (allowedRoles empty/undefined) → everyone can post
+ *  - User (isUser) is ALWAYS exempt → can always post
+ *  - Protagonist (isProtagonist) IS subject to permissions → can be blocked!
+ *  - Other members: must have at least one role in allowedRoles
+ * @param {Object} member - Member object
+ * @param {string} channelId
+ * @returns {boolean}
+ */
+export function canMemberPostInChannel(member, channelId) {
+    if (!member) return false;
+
+    // User is always exempt (admin privilege)
+    if (member.isUser) return true;
+
+    const allowed = getChannelPermissions(channelId);
+    // No restrictions → everyone can post
+    if (!allowed || allowed.length === 0) return true;
+
+    // Check if member has any of the allowed roles
+    const memberRoles = member.roles || [];
+    return memberRoles.some(r => allowed.includes(r));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Members
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -346,6 +411,21 @@ export function removeRole(roleId) {
         }
     }
     if (changed) saveMembers(members);
+    // Also remove from channel permissions
+    const config = loadServerConfig();
+    if (config?.categories) {
+        let configChanged = false;
+        for (const cat of config.categories) {
+            for (const ch of (cat.channels || [])) {
+                if (ch.allowedRoles?.includes(roleId)) {
+                    ch.allowedRoles = ch.allowedRoles.filter(r => r !== roleId);
+                    if (ch.allowedRoles.length === 0) delete ch.allowedRoles;
+                    configChanged = true;
+                }
+            }
+        }
+        if (configChanged) saveServerConfig(config);
+    }
 }
 
 /** Update a role */
