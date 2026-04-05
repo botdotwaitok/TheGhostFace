@@ -6,6 +6,7 @@ import * as moments from './moments.js';
 import { renderPhoneFloatingIcon, openPhone } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { showToast } from './momentsHelpers.js';
+import { stopAppUsage } from '../utils/appUsageTracker.js';
 
 // Load moments-specific CSS
 (function loadMomentsStyles() {
@@ -83,6 +84,8 @@ export function closeMomentsPanel() {
     // Restore the floating phone icon (it was hidden when Moments opened)
     const floatingIcon = document.getElementById('phone_floating_icon');
     if (floatingIcon) floatingIcon.style.setProperty('display', 'flex', 'important');
+    
+    stopAppUsage();
 }
 
 // ═══════════════════════════════════════════════════════════════════════

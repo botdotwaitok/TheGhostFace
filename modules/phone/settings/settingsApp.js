@@ -39,6 +39,7 @@ import {
     initAmbient, uploadUserAmbient, clearUserAmbient,
     startAmbient, stopAmbient, isAmbientPlaying
 } from '../voiceCall/ambientManager.js';
+import { getTodayUsage, getAppListInfo, clearAllUsageData, stopAppUsage, startAppUsage, getUsageData, isScreenTimeEnabled } from '../utils/appUsageTracker.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Discord Binding Section (reused in account detail page)
@@ -1270,6 +1271,34 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ 屏幕使用时间 (Screen Time) ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #10b981, #059669);"><i class="ph ph-hourglass-medium"></i></span>
+                <span>屏幕使用时间</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">记录手机使用时间</span>
+                        <button id="${P}_screentime_enable_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    该功能开启后方可进行记录，所有统计数据仅存放于浏览器本地 (localStorage)。
+                </div>
+                <div class="phone-settings-row" style="justify-content: center; padding-top: 4px;">
+                    <button id="${P}_screentime_btn" class="phone-settings-btn" style="width:100%; font-size: 13px;">
+                        <i class="ph ph-chart-bar"></i> 查看所有活动
+                    </button>
+                </div>
+            </div>
+        </details>
+
         <!-- ═══ 开发者工具 (Dev Tools) ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
@@ -1606,7 +1635,35 @@ export function openSettingsApp() {
             }
         }
 
-        // ═══ Ringtone Settings ═══
+        // ═══ Screen Time Toggle ═══
+        const screenTimeToggle = document.getElementById(`${P}_screentime_enable_toggle`);
+        const screenTimeOn = getPhoneSetting('screenTimeEnabled', false);
+        if (screenTimeToggle) {
+            screenTimeToggle.setAttribute('aria-checked', String(screenTimeOn));
+            if (screenTimeOn) screenTimeToggle.classList.add('active');
+            
+            screenTimeToggle.addEventListener('click', () => {
+                const wasOn = screenTimeToggle.getAttribute('aria-checked') === 'true';
+                const newState = !wasOn;
+                screenTimeToggle.setAttribute('aria-checked', String(newState));
+                screenTimeToggle.classList.toggle('active', newState);
+                setPhoneSetting('screenTimeEnabled', newState);
+                
+                if (newState) {
+                    startAppUsage('settings');
+                    showToast('已开启屏幕时间记录');
+                } else {
+                    stopAppUsage();
+                    showToast('已关闭记录');
+                }
+            });
+        }
+        
+        onClick(`${P}_screentime_btn`, () => {
+            openScreenTimePage();
+        });
+
+        // ═══ Dev Tools ═══
         {
             _renderRingtoneCard(P);
         }
@@ -2715,4 +2772,157 @@ export function applySavedAppearance() {
 
     const isDark = getPhoneSetting('darkMode', false);
     applyDarkMode(isDark);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Screen Time Details Page
+// ═══════════════════════════════════════════════════════════════════════
+
+export function openScreenTimePage() {
+    const P = 'phone_screentime';
+    const isEnabled = isScreenTimeEnabled();
+    
+    // Build initial HTML
+    const html = `
+    <div class="phone-settings-page">
+        <div class="phone-settings-section phone-settings-account-card">
+            <div class="phone-settings-section-body" style="padding: 24px 20px; text-align: center;">
+                <div style="font-size: 42px; color: #10b981; margin-bottom: 12px; display: flex; justify-content: center;">
+                    <div style="width: 72px; height: 72px; background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.2)); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <i class="ph ph-hourglass-medium"></i>
+                    </div>
+                </div>
+                <div style="font-size: 20px; font-weight: 600; color: var(--SmartThemeEmColor); margin-bottom: 8px;">屏幕使用时间</div>
+                <div style="font-size: 13px; color: #8e8e93; line-height: 1.5; margin-bottom: 16px;">
+                    查看你今天在各个应用中的活动情况，或者清除所有缓存。
+                </div>
+                ${!isEnabled ? `
+                    <div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 10px; border-radius: 12px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="ph ph-warning-circle"></i> 屏幕使用时间记录未开启
+                    </div>
+                ` : `
+                    <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.1); color: #10b981; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                        <span style="display: block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite;"></span> 正在为您记录
+                    </div>
+                `}
+            </div>
+        </div>
+
+        <div class="phone-settings-section">
+            <div class="phone-settings-group-title" style="margin: 0 0 12px 16px;">今日概览</div>
+            <div id="${P}_stats_container" class="phone-settings-section-body" style="padding: 20px;">
+                <div style="text-align: center; color: #8e8e93; font-size: 13px;">
+                    <i class="ph ph-spinner ph-spin" style="font-size: 24px; margin-bottom: 8px;"></i><br>
+                    加载中...
+                </div>
+            </div>
+        </div>
+
+        <div class="phone-settings-actions" style="margin-top: 24px; padding-bottom: 24px;">
+            <button id="${P}_clear_btn" class="phone-settings-btn" style="color: #ef4444; background: rgba(239, 68, 68, 0.1); border: none;">
+                <i class="ph ph-trash"></i> 清除所有记录
+            </button>
+        </div>
+    </div>
+    `;
+
+    openAppInViewport('屏幕时间', html, () => {
+        _renderScreenTimeStats(P);
+
+        // Periodically refresh stats if currently viewing
+        const refreshInterval = setInterval(() => {
+            if (document.getElementById(`${P}_stats_container`)) {
+                _renderScreenTimeStats(P);
+            } else {
+                clearInterval(refreshInterval);
+            }
+        }, 10000);
+
+        const clearBtn = document.getElementById(`${P}_clear_btn`);
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                if (confirm('确定要清除所有使用记录吗？清除后不可恢复。')) {
+                    clearAllUsageData();
+                    _renderScreenTimeStats(P);
+                    showToast('记录已清除');
+                }
+            });
+        }
+    });
+}
+
+function _renderScreenTimeStats(P) {
+    const container = document.getElementById(`${P}_stats_container`);
+    if (!container) return;
+
+    const todayUsage = getTodayUsage();
+    let totalSec = 0;
+    const items = [];
+    const appInfo = getAppListInfo();
+
+    for (const [appId, sec] of Object.entries(todayUsage)) {
+        totalSec += sec;
+        items.push({ 
+            appId, 
+            sec, 
+            info: appInfo[appId] || { name: appId, icon: 'ph ph-app-window', color: '#8e8e93' } 
+        });
+    }
+
+    if (items.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: #8e8e93; font-size: 13px; padding: 20px 0;">
+                <i class="ph ph-leaf" style="font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.5;"></i>
+                今天还没有活动记录
+            </div>
+        `;
+        return;
+    }
+
+    // Sort descending by time spent
+    items.sort((a, b) => b.sec - a.sec);
+
+    // Format total time beautifully
+    const totalMin = Math.floor(totalSec / 60);
+    const totalHr = Math.floor(totalMin / 60);
+    const displayTotal = totalHr > 0 ? `${totalHr} <span style="font-size:14px;font-weight:normal;opacity:0.6;">h</span> ${totalMin % 60} <span style="font-size:14px;font-weight:normal;opacity:0.6;">m</span>` : `${Math.max(1, totalMin)} <span style="font-size:14px;font-weight:normal;opacity:0.6;">m</span>`;
+
+    let contentHtml = `
+        <div style="margin-bottom: 32px; text-align: center;">
+            <div style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">总计</div>
+            <div style="font-size: 36px; font-weight: 800; color: var(--SmartThemeEmColor); line-height: 1; font-family: 'Inter', -apple-system, sans-serif;">${displayTotal}</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+    `;
+
+    for (const item of items) {
+        const pct = Math.max(1, Math.round((item.sec / totalSec) * 100)); // Minimum 1% to show slightly
+        
+        let timeStr;
+        if (item.sec < 60) timeStr = `< 1m`;
+        else {
+            const m = Math.floor(item.sec / 60);
+            timeStr = m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`;
+        }
+
+        contentHtml += `
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 38px; height: 38px; border-radius: 12px; background: ${item.info.color}; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; flex-shrink: 0; box-shadow: 0 4px 10px ${item.info.color}40;">
+                    <i class="${item.info.icon}"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="font-size: 14px; font-weight: 600; color: var(--SmartThemeEmColor);">${escapeHtml(item.info.name)}</span>
+                        <span style="font-size: 13px; font-weight: 500; color: #8e8e93;">${timeStr} <span style="opacity:0.5; margin-left:4px; font-size:11px;">${pct}%</span></span>
+                    </div>
+                    <div style="height: 6px; background: rgba(120, 120, 128, 0.12); border-radius: 3px; overflow: hidden; position: relative;">
+                        <div style="height: 100%; width: ${pct}%; background: ${item.info.color}; border-radius: 3px; position: absolute; left: 0; top: 0;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    contentHtml += `</div>`;
+    container.innerHTML = contentHtml;
 }

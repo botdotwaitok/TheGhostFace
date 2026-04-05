@@ -22,6 +22,7 @@ import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
 import { openHandbookApp, isHandbookEnabled } from './handbook/handbookApp.js';
 import { openDiscordApp } from './discord/discordApp.js';
+import { startAppUsage, stopAppUsage } from './utils/appUsageTracker.js';
 
 // ─── State ───
 let phoneMounted = false;
@@ -173,6 +174,8 @@ export function openPhone() {
     updateWidgets();
     renderApps();
     applySavedAppearance();
+    
+    startAppUsage('home_screen');
 
     // Hide floating icon while phone is open
     const floatingIcon = document.getElementById('phone_floating_icon');
@@ -192,6 +195,8 @@ export function closePhone() {
     // Show floating icon again after phone closes
     const floatingIcon = document.getElementById('phone_floating_icon');
     if (floatingIcon) floatingIcon.style.setProperty('display', 'flex', 'important');
+    
+    stopAppUsage();
 }
 
 /** Update a specific app's badge count */
@@ -221,6 +226,7 @@ export function initPhone() {
             closePhone();
             setTimeout(() => {
                 openMomentsPanel();
+                startAppUsage('moments');
                 // Re-hide the floating icon — closePhone() showed it, but Moments is still "in phone"
                 const floatingIcon = document.getElementById('phone_floating_icon');
                 if (floatingIcon) floatingIcon.style.setProperty('display', 'none', 'important');
@@ -359,10 +365,13 @@ export function initPhone() {
             icon: 'ph ph-notebook',
             color: '#d4a76a',
             glow: 'rgba(212, 167, 106, 0.4)',
-            onOpen: () => {
+        onOpen: () => {
                 // Close phone first, then open standalone window
                 closePhone();
-                setTimeout(() => openHandbookApp(), 150);
+                setTimeout(() => {
+                    openHandbookApp();
+                    startAppUsage('handbook');
+                }, 150);
             },
         });
     }
@@ -406,6 +415,7 @@ function mountPhone() {
         if (canGoBack) {
             const viewport = document.getElementById('phone_app_viewport');
             if (viewport) viewport.classList.remove('app-active');
+            startAppUsage('home_screen');
         }
     });
 }
@@ -470,6 +480,9 @@ function renderApps() {
             }
 
             if (typeof app.onOpen === 'function') {
+                if (appId !== 'moments' && appId !== 'handbook') {
+                    startAppUsage(appId);
+                }
                 app.onOpen();
             }
         });
