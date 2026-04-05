@@ -618,84 +618,9 @@ function _bindChannelEvents() {
             _renderSettingsPage();
         });
     });
-
-    // Channel permissions
-    document.querySelectorAll('.dc-ch-perm-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const chId = btn.dataset.channelId;
-            _showChannelPermissionDialog(chId);
-        });
-    });
 }
 
-// ─── Channel Permission Dialog ───
-
-function _showChannelPermissionDialog(channelId) {
-    const roles = loadRoles();
-    const currentPerms = getChannelPermissions(channelId);
-    const currentSet = new Set(currentPerms);
-
-    // Find channel name for display
-    const config = loadServerConfig();
-    let channelName = '频道';
-    if (config?.categories) {
-        for (const cat of config.categories) {
-            const ch = (cat.channels || []).find(c => c.id === channelId);
-            if (ch) { channelName = ch.name; break; }
-        }
-    }
-
-    const roleCheckboxes = roles.map(r => {
-        const checked = currentSet.has(r.id) ? 'checked' : '';
-        return `
-            <label class="dc-perm-role-item">
-                <input type="checkbox" class="dc-perm-role-checkbox" data-role-id="${r.id}" ${checked} />
-                <div class="dc-perm-role-dot" style="background:${r.color}"></div>
-                <span class="dc-perm-role-name">${escapeHtml(r.name)}</span>
-            </label>
-        `;
-    }).join('');
-
-    showDiscordDialog({
-        title: `<i class="ph ph-shield-check" style="margin-right:6px;"></i>#${escapeHtml(channelName)} 发言权限`,
-        contentHtml: `
-            <div class="dc-perm-desc">
-                勾选允许在此频道发言的身份组。
-                不勾选任何身份组 = 所有人都可发言。
-            </div>
-            <div class="dc-perm-roles-list" id="dc_perm_roles_list">
-                ${roleCheckboxes}
-            </div>
-            <div class="dc-perm-hint" style="margin-top: 8px;">
-                <i class="ph ph-info"></i>
-                你（用户）始终可以发言，不受权限限制
-            </div>
-        `,
-        onSave: (close) => {
-            const selected = [];
-            // Target only checkboxes inside the dialog overlay
-            document.querySelectorAll('.dc-dialog-overlay .dc-perm-role-checkbox').forEach(cb => {
-                if (cb.checked) selected.push(cb.dataset.roleId);
-            });
-            setChannelPermissions(channelId, selected);
-            if (typeof toastr !== 'undefined') {
-                if (selected.length > 0) {
-                    const roleNames = selected
-                        .map(rid => roles.find(r => r.id === rid)?.name)
-                        .filter(Boolean);
-                    toastr.success(`已设置权限：仅 ${roleNames.join('、')} 可发言`);
-                } else {
-                    toastr.success('已移除权限限制，所有人可发言');
-                }
-            }
-            close();
-            _renderSettingsPage();
-        }
-    });
-}
-
-// ─── Channel Edit Dialog (name + topic) ───
+// ─── Channel Edit Dialog (name + topic + perms) ───
 
 export function showChannelEditDialogCore(channelId, onComplete) {
     const config = loadServerConfig();
@@ -709,8 +634,23 @@ export function showChannelEditDialogCore(channelId, onComplete) {
     }
     if (!targetChannel) return;
 
+    // Build permissions list
+    const roles = loadRoles();
+    const currentPerms = getChannelPermissions(channelId);
+    const currentSet = new Set(currentPerms);
+    const roleCheckboxes = roles.map(r => {
+        const checked = currentSet.has(r.id) ? 'checked' : '';
+        return `
+            <label class="dc-perm-role-item">
+                <input type="checkbox" class="dc-perm-role-checkbox" data-role-id="${r.id}" ${checked} />
+                <div class="dc-perm-role-dot" style="background:${r.color}"></div>
+                <span class="dc-perm-role-name">${escapeHtml(r.name)}</span>
+            </label>
+        `;
+    }).join('');
+
     showDiscordDialog({
-        title: `<i class="ph ph-hash" style="margin-right:6px;"></i>编辑频道`,
+        title: `<i class="ph ph-gear" style="margin-right:6px;"></i>频道设置`,
         contentHtml: `
             <div class="dc-form-section">
                 <div class="dc-form-label">频道名称</div>
@@ -725,6 +665,19 @@ export function showChannelEditDialogCore(channelId, onComplete) {
                 <div class="dc-form-note" style="margin-top:4px;">
                     <i class="ph ph-info"></i>
                     频道主题会引导成员在此频道聊相关话题
+                </div>
+            </div>
+            <div class="dc-form-section" style="margin-top:16px; margin-bottom:0;">
+                <div class="dc-form-label" style="margin-bottom:8px;">
+                    发言权限
+                    <span style="font-size:12px; color:#99aab5; margin-left:8px; font-weight:normal;">(不勾选任何 = 所有人可发言)</span>
+                </div>
+                <div class="dc-perm-roles-list">
+                    ${roleCheckboxes}
+                </div>
+                <div class="dc-perm-hint" style="margin-top: 8px;">
+                    <i class="ph ph-info"></i>
+                    你（用户）始终可以发言，不受权限限制
                 </div>
             </div>
         `,
@@ -747,6 +700,13 @@ export function showChannelEditDialogCore(channelId, onComplete) {
                 return false;
             }
 
+            // Save permissions
+            const selectedRoles = [];
+            document.querySelectorAll('.dc-dialog-overlay .dc-perm-role-checkbox').forEach(cb => {
+                if (cb.checked) selectedRoles.push(cb.dataset.roleId);
+            });
+            setChannelPermissions(channelId, selectedRoles);
+
             // Re-read config to avoid stale state
             const freshConfig = loadServerConfig();
             if (freshConfig) {
@@ -756,7 +716,7 @@ export function showChannelEditDialogCore(channelId, onComplete) {
                         ch.name = nameVal;
                         ch.topic = topicVal;
                         saveServerConfig(freshConfig);
-                        if (typeof toastr !== 'undefined') toastr.success('频道已更新');
+                        if (typeof toastr !== 'undefined') toastr.success('频道配置已更新');
                         break;
                     }
                 }
