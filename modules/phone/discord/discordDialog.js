@@ -27,17 +27,17 @@ export function showDiscordDialog(options) {
 
     const overlay = document.createElement('div');
     overlay.className = 'dc-dialog-overlay dc-fade-in';
-    
+
     // We use isolated IDs or classes within the dialog if we want, but generating unique IDs is safer if multiple could open.
     // However, usually only one dialog is open at a time.
-    const _baseId = 'dc_dialog_' + Date.now() + Math.floor(Math.random()*1000);
+    const _baseId = 'dc_dialog_' + Date.now() + Math.floor(Math.random() * 1000);
     const cancelBtn = overlay.querySelector('.dc-btn-secondary');
     const saveBtn = overlay.querySelector('.dc-btn-primary');
 
     overlay.innerHTML = `
         <div class="dc-dialog" style="max-height: 85vh; display: flex; flex-direction: column;">
             <div class="dc-dialog-title">${title}</div>
-            <div class="dc-dialog-body" style="padding-top: 12px; overflow-y: auto; flex-shrink: 1; scrollbar-width: thin;">
+            <div class="dc-dialog-body" style="padding-top: 12px; overflow-y: auto; flex-shrink: 1;">
                 ${contentHtml}
             </div>
             <div class="dc-dialog-actions" style="margin-top: 16px; flex-shrink: 0;">
@@ -91,7 +91,7 @@ export function showDiscordDialog(options) {
 export function showDiscordPrompt({ title, placeholder = '', defaultValue = '', note = '', onConfirm }) {
     const inputId = 'dc_prompt_' + Date.now();
     const noteHtml = note ? `<div class="dc-form-note"><i class="ph ph-info"></i> ${escapeHtml(note)}</div>` : '';
-    
+
     showDiscordDialog({
         title,
         contentHtml: `
@@ -110,13 +110,13 @@ export function showDiscordPrompt({ title, placeholder = '', defaultValue = '', 
                         input.setSelectionRange(input.value.length, input.value.length);
                     }
                 }, 100);
-                
+
                 // Allow enter key to submit
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
                         const saveBtn = overlay.querySelector('.dc-btn-primary');
-                        if(saveBtn) saveBtn.click();
+                        if (saveBtn) saveBtn.click();
                     }
                 });
             }
