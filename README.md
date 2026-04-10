@@ -1,4 +1,4 @@
-# 👻 鬼面 (TheGhostFace) V4.2.3
+# 👻 鬼面 (TheGhostFace) V4.2.2
 
 > **"给她一切她曾被拒绝的东西"** — The Entity 的承诺
 
