@@ -1,6 +1,6 @@
 // core.js
-import { getContext, extension_settings } from '../../../../extensions.js';
-import { saveChatDebounced, chat, characters, eventSource, event_types } from '../../../../../script.js';
+import { getContext, extension_settings, cancelDebouncedMetadataSave } from '../../../../extensions.js';
+import { saveChatConditional, cancelDebouncedChatSave, chat, characters, eventSource, event_types } from '../../../../../script.js';
 import { createWorldInfoEntry } from '../../../../world-info.js';
 
 import * as ui from '../ui/ui.js';
@@ -837,22 +837,18 @@ export function get_extension_directory() {
     return extension_path;
 }
 
-//保存聊天
+//保存聊天 — 直接调用 saveChatConditional（可 await、有 mutex 保护）
+// ⚠️ 修复竞态：旧版用 saveChatDebounced() + sleep(1500ms)，与 saveMetadataDebounced
+// 形成两路独立定时器竞争。现在先取消所有待处理的 debounce，再同步保存。
 export async function saveChat() {
     try {
+        // 取消所有待处理的 debounced save，防止它们在我们保存后再覆盖
+        cancelDebouncedChatSave();
+        cancelDebouncedMetadataSave();
 
-        // 🎯 方法1：使用官方防抖保存
-        if (typeof saveChatDebounced === 'function') {
-            saveChatDebounced();
-
-            // 等待防抖完成
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            return true;
-        }
-
-        // 备用方案已移除：saveChatConditional 未被导入，永迎不会执行
-
-        return false;
+        // 直接同步保存 — 内部有 isChatSaving mutex 防并发
+        await saveChatConditional();
+        return true;
 
     } catch (error) {
         logger.error('🪼调用官方保存函数失败:', error);
@@ -1153,8 +1149,9 @@ export async function handleChatChange() {
             // console.log('🌍 聊天切换时自动管理世界书...');
             await autoManageWorldBook();
 
-            // 等待世界书切换完成
-            await new Promise(r => setTimeout(r, 1000));
+            // 等待世界书切换完成 + ST 初始化保存完成
+            // ⚠️ 延长等待：防止在 ST 仍在保存上一轮 chat 时就发起新保存
+            await new Promise(r => setTimeout(r, 3000));
 
             await ui.updateWorldBookDisplay();
             await restoreHiddenStateOnStartup();
