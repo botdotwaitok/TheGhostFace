@@ -25,6 +25,7 @@ export const CHARACTER_GIFTS = {
     '普通饼干': { itemType: 'petbot', itemId: 1, emoji: '🍪', desc: '给你的宠物准备的小零食' },
     '美味罐头': { itemType: 'petbot', itemId: 2, emoji: '🥫', desc: '高级宠物食品，满满的营养' },
     '清洁皂': { itemType: 'petbot', itemId: 3, emoji: '🧼', desc: '让宠物焕然一新的清洁用品' },
+    '自动清洗液': { itemType: 'petbot', itemId: 4, emoji: '🧴', desc: '让宠物自动清洗的清洁用品' },
     '小玩具球': { itemType: 'petbot', itemId: 5, emoji: '🏐', desc: '宠物最爱的弹力小球' },
     '豪华护理套餐': { itemType: 'petbot', itemId: 6, emoji: '💆', desc: '全方位的宠物护理' },
     '万能药剂': { itemType: 'petbot', itemId: 7, emoji: '💊', desc: '能治愈宠物一切疾病的神秘药水' },
@@ -120,7 +121,7 @@ export const GIFT_SYSTEM_PROMPT = [
     '注意:',
     '- 送礼时要带有你的个性，附上一句与礼物相关的话',
     '- 一次只送一个礼物',
-    '- 礼物名称必须与列表中的完全一致',
+    '- 礼物名称必须与列表中的完全一致，不能添加emoji',
     '- 这是每天一次的特别惊喜，请务必在本次回复中送出！',
     '</character_gift_system>',
 ].join('\n');

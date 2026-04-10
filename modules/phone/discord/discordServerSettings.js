@@ -16,6 +16,7 @@ import { openMembersPage } from './discordMembers.js';
 import { startAutoChatTimer, stopAutoChatTimer } from './discordAutoChat.js';
 import { buildStickerManagementHtml, bindStickerManagementEvents } from './discordEmoji.js';
 import { showDiscordDialog, showDiscordPrompt } from './discordDialog.js';
+import { injectManualMessages } from './discordMessageHandler.js';
 
 const LOG = '[Discord Settings]';
 
@@ -680,6 +681,18 @@ export function showChannelEditDialogCore(channelId, onComplete) {
                     你（用户）始终可以发言，不受权限限制
                 </div>
             </div>
+            <div class="dc-form-section" style="margin-top:16px; margin-bottom:0;">
+                <div class="dc-form-label" style="margin-bottom:8px;">
+                    <i class="ph ph-syringe" style="margin-right:4px;"></i>消息注入
+                </div>
+                <button class="dc-btn dc-btn-secondary dc-btn-sm dc-btn-full" id="dc_ch_inject_msg_btn">
+                    <i class="ph ph-arrow-square-in"></i> 手动注入消息
+                </button>
+                <div class="dc-form-note" style="margin-top:4px;">
+                    <i class="ph ph-info"></i>
+                    填写时间和消息JSON，手动添加消息到聊天记录
+                </div>
+            </div>
         `,
         onRender: (overlay) => {
             const input = overlay.querySelector('#dc_ch_edit_name');
@@ -691,6 +704,10 @@ export function showChannelEditDialogCore(channelId, onComplete) {
                     }
                 }, 100);
             }
+            // Inject messages button
+            overlay.querySelector('#dc_ch_inject_msg_btn')?.addEventListener('click', () => {
+                _showInjectMessagesDialog(channelId);
+            });
         },
         onSave: (close) => {
             const nameVal = document.getElementById('dc_ch_edit_name')?.value?.trim();
@@ -729,6 +746,69 @@ export function showChannelEditDialogCore(channelId, onComplete) {
 
 function _showChannelEditDialog(channelId) {
     showChannelEditDialogCore(channelId, () => _renderSettingsPage());
+}
+
+// ─── Inject Messages Dialog ───
+
+function _showInjectMessagesDialog(channelId) {
+    // Current time as default
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const defaultTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    const exampleJson = `[\n  { "authorId": "成员名称或ID", "text": "消息内容" },\n  { "authorId": "另一个成员", "text": "第二条消息" }\n]`;
+
+    showDiscordDialog({
+        title: `<i class="ph ph-syringe" style="margin-right:6px;"></i>注入消息`,
+        saveText: '注入',
+        contentHtml: `
+            <div class="dc-form-section">
+                <div class="dc-form-label">消息时间</div>
+                <input type="text" class="dc-input" id="dc_inject_timestamp"
+                       value="${escapeHtml(defaultTime)}"
+                       placeholder="YYYY-MM-DD HH:mm 或 ISO 格式" autocomplete="off" />
+                <div class="dc-form-note" style="margin-top:4px;">
+                    <i class="ph ph-info"></i>
+                    多条消息将依次递增1秒
+                </div>
+            </div>
+            <div class="dc-form-section" style="margin-bottom:0;">
+                <div class="dc-form-label">消息 JSON</div>
+                <textarea class="dc-input dc-textarea" id="dc_inject_json"
+                          placeholder='${escapeHtml(exampleJson)}'
+                          style="min-height: 160px; font-family: monospace; font-size: 12px; line-height: 1.5; white-space: pre;"></textarea>
+                <div class="dc-form-note" style="margin-top:4px;">
+                    <i class="ph ph-info"></i>
+                    authorId 支持成员名称或ID。支持 text / content 字段。
+                </div>
+            </div>
+        `,
+        onRender: (overlay) => {
+            const textarea = overlay.querySelector('#dc_inject_json');
+            if (textarea) {
+                setTimeout(() => textarea.focus(), 100);
+            }
+        },
+        onSave: (close) => {
+            const timestamp = document.getElementById('dc_inject_timestamp')?.value?.trim() || '';
+            const jsonStr = document.getElementById('dc_inject_json')?.value || '';
+
+            if (!jsonStr.trim()) {
+                if (typeof toastr !== 'undefined') toastr.warning('请填写消息 JSON');
+                return false;
+            }
+
+            const result = injectManualMessages(channelId, timestamp, jsonStr);
+
+            if (result.success) {
+                if (typeof toastr !== 'undefined') toastr.success(`已注入 ${result.count} 条消息`);
+                close();
+            } else {
+                if (typeof toastr !== 'undefined') toastr.error(result.error || '注入失败');
+                return false;
+            }
+        },
+    });
 }
 
 // ─── Auto-Chat Events ───

@@ -637,6 +637,107 @@ export async function compressChannel(channelId, oldMessages, recentMessages) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Manual Message Injection — Debug / manual history import
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Manually inject messages into a channel from user-provided JSON.
+ * Used for importing history or debugging.
+ *
+ * Expected JSON format (array):
+ * [
+ *   { "authorId": "member_xxx" | "MemberName", "text": "message content" },
+ *   ...
+ * ]
+ *
+ * Each item can also include optional fields:
+ *   - replyTo: message ID to reply to
+ *   - reactions: [{ emoji, users: [memberId, ...] }]
+ *
+ * @param {string} channelId - Target channel
+ * @param {string} timestamp - ISO timestamp string for the messages
+ * @param {string} rawJson - Raw JSON string to parse
+ * @returns {{ success: boolean, count?: number, error?: string }}
+ */
+export function injectManualMessages(channelId, timestamp, rawJson) {
+    if (!channelId) return { success: false, error: '未指定频道' };
+    if (!rawJson?.trim()) return { success: false, error: 'JSON 不能为空' };
+
+    try {
+        const parsed = JSON.parse(rawJson);
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+
+        if (items.length === 0) return { success: false, error: '消息列表为空' };
+
+        const allMembers = loadMembers();
+        // Build name → member mapping for flexible matching
+        const nameToMember = {};
+        const idToMember = {};
+        for (const m of allMembers) {
+            idToMember[m.id] = m;
+            nameToMember[m.name] = m;
+            nameToMember[m.name.toLowerCase()] = m;
+        }
+
+        const baseTime = timestamp ? new Date(timestamp) : new Date();
+        if (isNaN(baseTime.getTime())) {
+            return { success: false, error: '无效的时间格式' };
+        }
+
+        let injectedCount = 0;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (!item || typeof item !== 'object') continue;
+
+            const text = (item.text || item.content || '').trim();
+            if (!text) continue;
+
+            // Resolve author: try ID first, then name
+            let member = null;
+            const authorRef = item.authorId || item.authorName || item.author || '';
+            if (idToMember[authorRef]) {
+                member = idToMember[authorRef];
+            } else {
+                member = nameToMember[authorRef] || nameToMember[authorRef.toLowerCase?.()];
+            }
+
+            if (!member) {
+                console.warn(`${LOG} injectManualMessages: unknown author "${authorRef}", skipping`);
+                continue;
+            }
+
+            // Offset each message by 1 second so timestamps are ordered
+            const msgTime = new Date(baseTime.getTime() + i * 1000);
+
+            const msgObj = {
+                id: generateId('msg'),
+                channelId,
+                authorId: member.id,
+                authorName: member.name,
+                content: text,
+                timestamp: msgTime.toISOString(),
+                reactions: item.reactions || [],
+                mentions: item.mentions || [],
+                replyTo: item.replyTo || null,
+                summarized: false,
+            };
+
+            const saved = appendMessage(channelId, msgObj);
+            _notifyMessage(saved, channelId);
+            injectedCount++;
+        }
+
+        console.log(`${LOG} Injected ${injectedCount} manual messages into channel ${channelId}`);
+        return { success: true, count: injectedCount };
+
+    } catch (e) {
+        console.error(`${LOG} injectManualMessages parse error:`, e);
+        return { success: false, error: `JSON 解析失败: ${e.message}` };
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
