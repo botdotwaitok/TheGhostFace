@@ -22,6 +22,7 @@ import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
 import { openHandbookApp, isHandbookEnabled } from './handbook/handbookApp.js';
 import { openDiscordApp } from './discord/discordApp.js';
+import { openLiteratureApp } from './literature/literatureApp.js';
 import { startAppUsage, stopAppUsage } from './utils/appUsageTracker.js';
 
 // ─── State ───
@@ -137,6 +138,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link13.rel = 'stylesheet';
         link13.href = `${baseDir}/discord/discord.css`;
         document.head.appendChild(link13);
+    }
+    // Literature CSS
+    if (!document.getElementById('gf-literature-styles')) {
+        const link14 = document.createElement('link');
+        link14.id = 'gf-literature-styles';
+        link14.rel = 'stylesheet';
+        link14.href = `${baseDir}/literature/literature.css`;
+        document.head.appendChild(link14);
     }
 })();
 
@@ -355,6 +364,16 @@ export function initPhone() {
         color: '#1a1a2e',
         glow: 'rgba(212, 164, 76, 0.4)',
         onOpen: () => openDndApp(),
+    });
+
+    // ── 文学 (Literature) ──
+    registerApp({
+        id: 'literature',
+        name: '文学',
+        icon: 'ph ph-book-open-text',
+        color: '#8b5e3c',
+        glow: 'rgba(139, 94, 60, 0.4)',
+        onOpen: () => openLiteratureApp(),
     });
 
     // ── 手账本 (HandBook) — gated by Settings toggle ──

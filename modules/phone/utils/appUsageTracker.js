@@ -154,6 +154,7 @@ export function getAppListInfo() {
         dnd: { name: 'D&D', icon: 'ph ph-sword', color: '#1a1a2e' },
         console: { name: 'Console', icon: 'fa-solid fa-terminal', color: '#1e1e1e' },
         handbook: { name: '手账本', icon: 'ph ph-notebook', color: '#d4a76a' },
+        literature: { name: '文学', icon: 'ph ph-book-open-text', color: '#8b5e3c' },
         home_screen: { name: '主屏幕', icon: 'fa-solid fa-mobile-screen-button', color: '#8e8e93' }
     };
 }
