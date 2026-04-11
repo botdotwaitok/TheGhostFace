@@ -50,21 +50,28 @@ export async function updateMomentsWorldInfo() {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const shortId = p.id.split('_').pop().slice(-5);
 
-            // 只检查角色自身是否评论过（不混入用户 ID）
+            // ── 双重匹配：authorId 或 authorName 匹配角色即视为角色评论 ──
+            // 本地创建的评论 authorId = "char_42"，后端同步回来的可能是服务器 userId
             const charAuthorId = getCharAuthorId();
-            let postReplied = p.comments?.some(c => c.authorId === charAuthorId && !c.replyToId);
+            const _isCharComment = (c) => c.authorId === charAuthorId || (myCharName && c.authorName === myCharName);
+
+            let postReplied = p.comments?.some(c => _isCharComment(c) && !c.replyToId);
             // 检测帖子是否有新的外部活动（自角色上次评论后）
-            let noNewActivity = false;
+            let hasNewExternalActivity = false;
             if (postReplied && p.comments) {
                 const myCommentTimes = p.comments
-                    .filter(c => c.authorId === charAuthorId && !c.replyToId)
+                    .filter(c => _isCharComment(c) && !c.replyToId)
                     .map(c => new Date(c.createdAt).getTime());
                 const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
-                noNewActivity = myLastCommentTime > 0 && !p.comments.some(c =>
-                    c.authorId !== charAuthorId &&
+                hasNewExternalActivity = myLastCommentTime > 0 && p.comments.some(c =>
+                    !_isCharComment(c) &&
                     new Date(c.createdAt).getTime() > myLastCommentTime
                 );
             }
+
+            // ── 核心逻辑：已回复且无新活动的帖子不注入 ID，LLM 无法对其操作 ──
+            const postInteractable = !postReplied || hasNewExternalActivity;
+
             const isCounterpart = myCharName && p.authorName === myCharName && !myAuthorIds.has(p.authorId);
             // 确定帖子归属关系标签
             let ownerLabel = '';
@@ -75,14 +82,29 @@ export async function updateMomentsWorldInfo() {
             } else if (!myAuthorIds.has(p.authorId) && p.authorName !== myCharName) {
                 ownerLabel = ` [${userName}的好友或其伴侣发布]`;
             }
-            let text = `【帖子】[ID:${shortId}] [${p.authorName}]${ownerLabel} (${timeStr}): ${p.content}${postReplied ? (noNewActivity ? ' [你已评论][无新互动，请勿再评论此帖]' : ' [你已评论]') : ''}`;
+
+            // 有 ID → 可互动；无 ID → 仅作为上下文背景
+            let text;
+            if (postInteractable) {
+                text = `【帖子】[ID:${shortId}] [${p.authorName}]${ownerLabel} (${timeStr}): ${p.content}`;
+            } else {
+                text = `【帖子】[${p.authorName}]${ownerLabel} (${timeStr}): ${p.content}`;
+            }
 
             if (p.comments && p.comments.length > 0) {
                 const recentComments = p.comments.slice(-5).map(c => {
                     const cShortId = c.id.split('_').pop().slice(-5);
                     const replyStr = c.replyToName ? ` 回复 ${c.replyToName}` : '';
-                    let commentReplied = p.comments.some(replyC => replyC.authorId === charAuthorId && replyC.replyToId === c.id);
-                    return `  - 【评论】[ID:${cShortId}] ${c.authorName}${replyStr}: ${c.content}${commentReplied ? ' [你已回复]' : ''}`;
+                    // 角色自己的评论永远不注入 ID（角色不会回复自己）
+                    if (_isCharComment(c)) {
+                        return `  - 【评论】${c.authorName}${replyStr}: ${c.content}`;
+                    }
+                    const commentReplied = p.comments.some(replyC => _isCharComment(replyC) && replyC.replyToId === c.id);
+                    // 已回复的评论不注入 ID，仅保留文本上下文
+                    if (commentReplied) {
+                        return `  - 【评论】${c.authorName}${replyStr}: ${c.content}`;
+                    }
+                    return `  - 【评论】[ID:${cShortId}] ${c.authorName}${replyStr}: ${c.content}`;
                 }).join('\n');
                 text += '\n' + recentComments;
             }
@@ -99,7 +121,7 @@ export async function updateMomentsWorldInfo() {
 - 评论动态格式：(评论 ID: 你的评论内容)
 
 ⚠️格式严格警告：
-1. 绝对不要对已经被标记了"[你已评论]"或"[你已回复]"的内容进行任何回复！那代表你已经回复过了！如果再次回复会让别人觉得奇怪，所以绝对不可以！特别是被标记了"[无新互动，请勿再评论此帖]"的帖子，绝对禁止再次评论或在该帖下查找可以回复的评论！
+1. 只有带有 [ID:xxxxx] 标记的帖子和评论才可以被评论或回复！没有 ID 的内容是纯背景信息，绝对不可以互动！
 2. 绝对不要在括号内或外添加 【帖子】[ID:xxx]、【评论】[ID:xxx] 或 [角色名 回复] 等前缀，直接写内容！
 3. 错误示范：(朋友圈: 评论xxx) 【评论】[ID:123] 回复: 内容...
 4. 正确评论示范：(评论 92808: 居然是这样！太有趣了。)
@@ -171,10 +193,11 @@ Recent social feed is in World Info. To interact:
 - Comment on a post or reply to a comment: (评论 ID: your text)
 
 【FORMATTING RULES - CRITICAL】
-1. Example using a 5-character ID: (评论 a1b2c: Hello there!)
-2. DO NOT use names in the command, ONLY use the 5-character ID.
-3. DO NOT output fake IDs or prefix your text with 【帖子】[ID:xxx], 【评论】[ID:xxx] or [Name] outside or inside the command.
-4. ALWAYS output the pure text inside the command syntax.`;
+1. You may ONLY interact with posts/comments that have an [ID:xxxxx] marker. Items without an ID are read-only background context — DO NOT attempt to comment on or reply to them.
+2. Example using a 5-character ID: (评论 a1b2c: Hello there!)
+3. DO NOT use names in the command, ONLY use the 5-character ID.
+4. DO NOT output fake IDs or prefix your text with 【帖子】[ID:xxx], 【评论】[ID:xxx] or [Name] outside or inside the command.
+5. ALWAYS output the pure text inside the command syntax.`;
 
     if (!useMomentCustomApi) {
         return protocolText + `\n\n【IMPORTANT】在你正常回复用户之后，如果想互动，你**必须**严格使用以上 (朋友圈: ...) 或 (评论 ID: ...) 的格式在回复的最末尾。绝不要混淆发动态和评论的功能。`;
