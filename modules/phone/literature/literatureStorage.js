@@ -1,29 +1,73 @@
 // modules/phone/literature/literatureStorage.js — 文学 App 数据持久化
-// Storage: localStorage (per-character, large data), chat_metadata (preferences).
+// Storage:
+//   chat_metadata  → 写作数据 + 阅读元数据（跨设备同步）
+//   localStorage   → 用户导入书籍全文（体积过大，不适合 chat_metadata）
 
 import { getContext, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata } from '../../../../../../../script.js';
 
-const MODULE_NAME = 'the_ghost_face';
-const STORAGE_KEY_PREFIX = `${MODULE_NAME}_literature_v1_`;
+// chat_metadata keys
+const META_KEY_WRITING = 'gf_literature_writing';
+const META_KEY_READING = 'gf_literature_reading';
 const META_KEY_PREFS = 'gf_literaturePreferences';
 
+// localStorage keys (book content only)
+const BOOK_CONTENT_PREFIX = 'gf_lit_book_';
+
+// Legacy localStorage keys (for migration)
+const LEGACY_PREFIX = 'the_ghost_face_literature_v1_';
+
 // ═══════════════════════════════════════════════════════════════════════
-// Character ID Helper
+// Shared Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-function _getCharKey() {
+/** Save data to chat_metadata + trigger debounced persist */
+function _saveToMeta(key, data) {
     try {
-        const context = getContext();
-        const charId = context.characterId;
-        return charId != null ? `char_${charId}` : 'global_fallback';
-    } catch {
-        return 'global_fallback';
+        if (chat_metadata) {
+            chat_metadata[key] = data;
+            saveMetadataDebounced();
+        }
+    } catch (e) {
+        console.warn(`[文学] _saveToMeta(${key}) failed:`, e);
     }
 }
 
-function _storageKey(suffix = '') {
-    return `${STORAGE_KEY_PREFIX}${_getCharKey()}${suffix}`;
+/** Build legacy localStorage key for migration */
+function _legacyKey(suffix = '') {
+    try {
+        const context = getContext();
+        const charId = context.characterId;
+        const charKey = charId != null ? `char_${charId}` : 'global_fallback';
+        return `${LEGACY_PREFIX}${charKey}${suffix}`;
+    } catch {
+        return `${LEGACY_PREFIX}global_fallback${suffix}`;
+    }
+}
+
+// --- Book content (localStorage, browser-local) ---
+
+function _saveBookContent(bookId, chapters) {
+    try {
+        localStorage.setItem(BOOK_CONTENT_PREFIX + bookId, JSON.stringify(chapters));
+    } catch (e) {
+        console.warn('[文学] _saveBookContent failed:', e);
+    }
+}
+
+function _loadBookContent(bookId) {
+    try {
+        const raw = localStorage.getItem(BOOK_CONTENT_PREFIX + bookId);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function _removeBookContent(bookId) {
+    try {
+        localStorage.removeItem(BOOK_CONTENT_PREFIX + bookId);
+    } catch { /* noop */ }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -53,35 +97,56 @@ function _emptyWritingData() {
         //   ratingCount: 0,          // 评分人数
         //   favorites: 0,            // 收藏数
         //   readers: 0,              // 读者数（累计）
+        //   outline: null,           // 全书大纲（LLM-only, UI 不展示）
+        //   // outline: {
+        //   //   totalPlannedChapters: 15,
+        //   //   endingDirection: '结局走向',
+        //   //   chapterPlans: [ { chapterNum: 1, plan: '...' }, ... ]
+        //   // }
         //   chapters: [],
         //   comments: [],
         //   createdAt: '',
         //   lastUpdatedAt: '',
         // }
-        // chapters[]: { id, title, content, wordCount, createdAt }
+        // chapters[]: { id, title, content, wordCount, summary, createdAt }
+        //   summary: LLM-only 隐藏摘要（50-100字），催更时作为前文 context 传入
         // comments[]: { id, author, content, rating, isReader, createdAt, authorReply }
     };
 }
 
 export function loadWritingData() {
+    // Primary: chat_metadata
     try {
-        const raw = localStorage.getItem(_storageKey('_writing'));
+        const data = chat_metadata?.[META_KEY_WRITING];
+        if (data && data.authorProfile) return data;
+    } catch { /* fall through */ }
+
+    // Fallback: migrate from legacy localStorage
+    try {
+        const raw = localStorage.getItem(_legacyKey('_writing'));
         if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed && parsed.authorProfile) return parsed;
+            if (parsed && parsed.authorProfile) {
+                _saveToMeta(META_KEY_WRITING, parsed);
+                console.log('[文学] 写作数据已从 localStorage 迁移到 chat_metadata');
+                return parsed;
+            }
         }
     } catch (e) {
-        console.warn('[文学] loadWritingData failed:', e);
+        console.warn('[文学] loadWritingData migration failed:', e);
     }
     return _emptyWritingData();
 }
 
 export function saveWritingData(data) {
-    try {
-        localStorage.setItem(_storageKey('_writing'), JSON.stringify(data));
-    } catch (e) {
-        console.warn('[文学] saveWritingData failed:', e);
-    }
+    _saveToMeta(META_KEY_WRITING, data);
+}
+
+/** Reset all writing data for the current character (used by regenerate) */
+export function resetWritingData() {
+    const empty = _emptyWritingData();
+    saveWritingData(empty);
+    return empty;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -127,24 +192,61 @@ function _emptyReadingData() {
 }
 
 export function loadReadingData() {
+    // Primary: chat_metadata (metadata only, book content loaded from localStorage)
     try {
-        const raw = localStorage.getItem(_storageKey('_reading'));
+        const metaData = chat_metadata?.[META_KEY_READING];
+        if (metaData && Array.isArray(metaData.userBooks)) {
+            // Rehydrate: load book chapters from localStorage
+            for (const book of metaData.userBooks) {
+                if (!book.chapters || book.chapters.length === 0) {
+                    book.chapters = _loadBookContent(book.id);
+                }
+            }
+            return metaData;
+        }
+    } catch { /* fall through */ }
+
+    // Fallback: migrate from legacy localStorage
+    try {
+        const raw = localStorage.getItem(_legacyKey('_reading'));
         if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed && Array.isArray(parsed.userBooks)) return parsed;
+            if (parsed && Array.isArray(parsed.userBooks)) {
+                // Split: save book content to localStorage, metadata to chat_metadata
+                for (const book of parsed.userBooks) {
+                    if (book.chapters && book.chapters.length > 0) {
+                        _saveBookContent(book.id, book.chapters);
+                    }
+                }
+                _saveReadingMeta(parsed);
+                console.log('[文学] 阅读数据已从 localStorage 迁移到 chat_metadata');
+                return parsed;
+            }
         }
     } catch (e) {
-        console.warn('[文学] loadReadingData failed:', e);
+        console.warn('[文学] loadReadingData migration failed:', e);
     }
     return _emptyReadingData();
 }
 
 export function saveReadingData(data) {
-    try {
-        localStorage.setItem(_storageKey('_reading'), JSON.stringify(data));
-    } catch (e) {
-        console.warn('[文学] saveReadingData failed:', e);
+    // Save book content to localStorage (large data)
+    for (const book of (data.userBooks || [])) {
+        if (book.chapters && book.chapters.length > 0) {
+            _saveBookContent(book.id, book.chapters);
+        }
     }
+    // Save metadata (without chapters) to chat_metadata
+    _saveReadingMeta(data);
+}
+
+/** Save reading metadata to chat_metadata, stripping book content */
+function _saveReadingMeta(data) {
+    const metaCopy = JSON.parse(JSON.stringify(data));
+    for (const book of (metaCopy.userBooks || [])) {
+        delete book.chapters; // Strip content, keep everything else
+    }
+    _saveToMeta(META_KEY_READING, metaCopy);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -172,6 +274,7 @@ export function createWork(data, workInfo) {
         ratingCount: workInfo.initialRatingCount || 0,
         favorites: workInfo.initialFavorites || 0,
         readers: workInfo.initialReaders || 0,
+        outline: workInfo.outline || null,  // LLM-only 全书大纲
         chapters: [],
         comments: [],
         createdAt: new Date().toISOString(),
@@ -191,6 +294,7 @@ export function addChapter(data, workId, chapterInfo) {
         title: chapterInfo.title || `第${work.chapters.length + 1}章`,
         content: chapterInfo.content || '',
         wordCount: (chapterInfo.content || '').length,
+        summary: chapterInfo.summary || '',  // LLM-only 隐藏摘要
         createdAt: new Date().toISOString(),
     };
     work.chapters.push(chapter);
@@ -262,9 +366,22 @@ export function getChapterReward(work) {
 
     const baseReward = 100;
     const tierMultiplier = [0, 1, 1.5, 2.5]; // tier 0/1/2/3
-    const qualityBonus = Math.floor(work.rating * 5); // 0~50 bonus from rating
+    const { avg } = computeWorkRating(work);
+    const qualityBonus = Math.floor(avg * 5); // 0~50 bonus from rating
 
     return Math.floor(baseReward * (tierMultiplier[work.contractTier] || 1) + qualityBonus);
+}
+
+/**
+ * Compute rating stats from actual comments (no fabrication).
+ * @param {Object} work
+ * @returns {{ avg: number, count: number }}
+ */
+export function computeWorkRating(work) {
+    const rated = (work.comments || []).filter(c => c.rating != null);
+    if (rated.length === 0) return { avg: 0, count: 0 };
+    const sum = rated.reduce((s, c) => s + c.rating, 0);
+    return { avg: parseFloat((sum / rated.length).toFixed(1)), count: rated.length };
 }
 
 export function getWork(data, workId) {
@@ -310,6 +427,7 @@ export function addBookNote(data, bookId, chapterIdx, noteType, content) {
 }
 
 export function removeBook(data, bookId) {
+    _removeBookContent(bookId); // Clean localStorage book content
     data.userBooks = data.userBooks.filter(b => b.id !== bookId);
     saveReadingData(data);
 }

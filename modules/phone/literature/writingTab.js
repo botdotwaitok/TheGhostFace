@@ -5,18 +5,20 @@ import { escapeHtml } from '../utils/helpers.js';
 import { showToast } from '../moments/momentsUI.js';
 import { walletAdd } from '../moments/apiClient.js';
 import {
-    loadWritingData, saveWritingData,
+    loadWritingData, saveWritingData, resetWritingData,
     createWork, addChapter, addComment, setCommentReply, updateWorkStats, signWork, getChapterReward,
-    getWork, getAllWorks, WORK_TYPES, CONTRACT_TIERS,
+    getWork, getAllWorks, computeWorkRating, WORK_TYPES, CONTRACT_TIERS,
 } from './literatureStorage.js';
 import {
     generateAuthorInit, generateChapterUpdate, evaluateContract,
-    generateAuthorReply, generateNewWork,
+    generateBatchAuthorReplies, generateNewWork,
 } from './literatureGeneration.js';
 
 const AURIC_CELLS_ICON = '/scripts/extensions/third-party/TheGhostFace/assets/images/IconCurrency_auricCells.png';
 
 let _currentWorkId = null;
+let _commentPage = 0;
+const COMMENTS_PER_PAGE = 5;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Public: Render Writing Tab Content
@@ -72,16 +74,16 @@ function _renderInitScreen(container) {
                 title: result.firstWork.title,
                 type: result.firstWork.type,
                 genre: result.firstWork.genre,
-                initialRating: result.firstWork.initialRating || 7.0,
-                initialRatingCount: result.firstWork.initialRatingCount || 3,
                 initialFavorites: result.firstWork.initialFavorites || 5,
                 initialReaders: result.firstWork.initialReaders || 12,
+                outline: result.firstWork.outline || null,
             });
 
-            // Add first chapter
+            // Add first chapter (with hidden summary for LLM context)
             addChapter(data, work.id, {
                 title: result.firstWork.firstChapterTitle,
                 content: result.firstWork.firstChapterContent,
+                summary: result.firstWork.firstChapterSummary || '',
             });
 
             // Store synopsis as a special meta-comment
@@ -116,8 +118,6 @@ function _renderAuthorHome(container, data) {
 
     const worksHtml = works.map(w => {
         const typeLabel = WORK_TYPES[w.type] || w.type;
-        const chCount = w.chapters.length;
-        const totalWords = w.chapters.reduce((sum, ch) => sum + (ch.wordCount || 0), 0);
         const statusLabel = w.status === 'ongoing' ? '连载中' : w.status === 'completed' ? '已完结' : '暂停中';
         const tier = CONTRACT_TIERS[w.contractTier];
 
@@ -131,13 +131,6 @@ function _renderAuthorHome(container, data) {
                     <span class="lit-work-tag">${escapeHtml(typeLabel)}</span>
                     <span class="lit-work-tag">${escapeHtml(w.genre)}</span>
                     <span class="lit-work-status ${w.status}">${statusLabel}</span>
-                </div>
-                <div class="lit-work-stats">
-                    <span><i class="ph ph-star"></i> ${w.rating.toFixed(1)}</span>
-                    <span><i class="ph ph-book-open"></i> ${chCount}章</span>
-                    <span><i class="ph ph-text-aa"></i> ${_formatNumber(totalWords)}字</span>
-                    <span><i class="ph ph-heart"></i> ${_formatNumber(w.favorites)}</span>
-                    <span><i class="ph ph-users"></i> ${_formatNumber(w.readers)}</span>
                 </div>
             </div>
         `;
@@ -155,6 +148,9 @@ function _renderAuthorHome(container, data) {
                             <i class="ph-fill ${tierInfo.icon}"></i> ${tierInfo.label}
                         </div>
                     </div>
+                    <button class="lit-regen-btn" id="lit_regen_btn" title="重新生成">
+                        <i class="ph ph-arrows-clockwise"></i>
+                    </button>
                 </div>
                 <div class="lit-profile-bio">${escapeHtml(profile.bio)}</div>
                 <div class="lit-profile-stat-row">
@@ -213,6 +209,7 @@ function _renderAuthorHome(container, data) {
                 initialRatingCount: result.initialRatingCount || 0,
                 initialFavorites: result.initialFavorites || 0,
                 initialReaders: result.initialReaders || 0,
+                outline: result.outline || null,
             });
 
             if (result.synopsis) {
@@ -222,6 +219,7 @@ function _renderAuthorHome(container, data) {
             addChapter(data, work.id, {
                 title: result.firstChapterTitle,
                 content: result.firstChapterContent,
+                summary: result.firstChapterSummary || '',
             });
 
             showToast('开新坑啦！');
@@ -231,6 +229,57 @@ function _renderAuthorHome(container, data) {
             showToast('生成失败：' + err.message);
             btn.disabled = false;
             btn.innerHTML = '<i class="ph ph-plus"></i> 新作品';
+        }
+    });
+
+    // Bind regenerate button
+    document.getElementById('lit_regen_btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('lit_regen_btn');
+        if (!btn || btn.disabled) return;
+
+        if (!confirm('确定要重新生成吗？\n这将清除所有已有的作品、章节和评论数据。')) return;
+
+        btn.disabled = true;
+        btn.classList.add('spinning');
+
+        try {
+            resetWritingData();
+            const result = await generateAuthorInit();
+            const data = loadWritingData();
+
+            // Save author profile
+            data.authorProfile.penName = result.profile.penName;
+            data.authorProfile.bio = result.profile.bio;
+            data.authorProfile.initialized = true;
+
+            // Create first work
+            const work = createWork(data, {
+                title: result.firstWork.title,
+                type: result.firstWork.type,
+                genre: result.firstWork.genre,
+                initialFavorites: result.firstWork.initialFavorites || 5,
+                initialReaders: result.firstWork.initialReaders || 12,
+                outline: result.firstWork.outline || null,
+            });
+
+            addChapter(data, work.id, {
+                title: result.firstWork.firstChapterTitle,
+                content: result.firstWork.firstChapterContent,
+                summary: result.firstWork.firstChapterSummary || '',
+            });
+
+            if (result.firstWork.synopsis) {
+                work.synopsis = result.firstWork.synopsis;
+                saveWritingData(data);
+            }
+
+            showToast('已重新生成创作身份！');
+            _renderAuthorHome(container, data);
+        } catch (err) {
+            console.error('[文学] Regenerate failed:', err);
+            showToast('重新生成失败：' + err.message);
+            btn.disabled = false;
+            btn.classList.remove('spinning');
         }
     });
 }
@@ -245,6 +294,7 @@ function _openWorkDetail(container, workId) {
     if (!work) return;
 
     _currentWorkId = workId;
+    _commentPage = 0;
     const typeLabel = WORK_TYPES[work.type] || work.type;
     const tier = CONTRACT_TIERS[work.contractTier];
 
@@ -291,7 +341,7 @@ function _openWorkDetail(container, workId) {
             <!-- Stats Bar -->
             <div class="lit-stats-bar">
                 <div class="lit-stat-item">
-                    <div class="lit-stat-num">${work.rating.toFixed(1)}</div>
+                    <div class="lit-stat-num">${computeWorkRating(work).avg.toFixed(1)}</div>
                     <div class="lit-stat-label"><i class="ph ph-star"></i> 评分</div>
                 </div>
                 <div class="lit-stat-item">
@@ -303,7 +353,7 @@ function _openWorkDetail(container, workId) {
                     <div class="lit-stat-label"><i class="ph ph-users"></i> 读者</div>
                 </div>
                 <div class="lit-stat-item">
-                    <div class="lit-stat-num">${work.ratingCount}</div>
+                    <div class="lit-stat-num">${computeWorkRating(work).count}</div>
                     <div class="lit-stat-label"><i class="ph ph-chat-dots"></i> 评价</div>
                 </div>
             </div>
@@ -411,49 +461,57 @@ function _bindWorkDetailEvents(container, work) {
         textarea.value = '';
         showToast('评论已发布');
 
-        // Refresh comments
+        // Refresh comments (jump to first page to see new comment)
+        _commentPage = 0;
         const freshWork = getWork(data, work.id);
         const listEl = document.getElementById('lit_comments_list');
         if (listEl && freshWork) {
             listEl.innerHTML = _buildCommentsHtml(freshWork);
             _bindReplyButtons(container, work.id);
+            _bindCommentPagination(container, work.id);
         }
     });
 
-    // Reply buttons for reader comments
+    // Reply buttons + comment pagination
     _bindReplyButtons(container, work.id);
+    _bindCommentPagination(container, work.id);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Reply Button Handlers (Author replies to reader comments)
+// Reply Button Handlers (Batch: reply to ALL unreplied comments at once)
 // ═══════════════════════════════════════════════════════════════════════
 
 function _bindReplyButtons(container, workId) {
     container.querySelectorAll('.lit-reply-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const commentId = btn.dataset.commentId;
-            if (!commentId || btn.disabled) return;
+            if (btn.disabled) return;
 
-            // Show loading state
-            btn.disabled = true;
-            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            // Collect ALL unreplied comments for this work
+            const data = loadWritingData();
+            const work = getWork(data, workId);
+            if (!work) return;
+
+            const unreplied = work.comments.filter(c => !c.authorReply);
+            if (unreplied.length === 0) { showToast('没有待回复的评论'); return; }
+
+            // Disable ALL reply buttons and show loading
+            const allBtns = container.querySelectorAll('.lit-reply-btn');
+            allBtns.forEach(b => {
+                b.disabled = true;
+                b.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            });
 
             try {
-                const data = loadWritingData();
-                const work = getWork(data, workId);
-                if (!work) throw new Error('作品不存在');
+                // Batch generate replies for ALL unreplied comments
+                const replyMap = await generateBatchAuthorReplies(work, unreplied);
 
-                const comment = work.comments.find(c => c.id === commentId);
-                if (!comment) throw new Error('评论不存在');
+                // Save all replies
+                for (const [commentId, replyText] of Object.entries(replyMap)) {
+                    setCommentReply(data, workId, commentId, replyText);
+                }
 
-                // Generate reply via LLM
-                const reply = await generateAuthorReply(work, comment);
-
-                // Save reply
-                setCommentReply(data, workId, commentId, reply);
-
-                showToast('作者已回复');
+                showToast(`作者回复了 ${unreplied.length} 条评论`);
 
                 // Refresh comments
                 const freshWork = getWork(loadWritingData(), workId);
@@ -461,12 +519,15 @@ function _bindReplyButtons(container, workId) {
                 if (listEl && freshWork) {
                     listEl.innerHTML = _buildCommentsHtml(freshWork);
                     _bindReplyButtons(container, workId);
+                    _bindCommentPagination(container, workId);
                 }
             } catch (err) {
-                console.error('[文学] Reply failed:', err);
+                console.error('[文学] Batch reply failed:', err);
                 showToast('回复失败：' + err.message);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="ph ph-chat-text"></i>';
+                allBtns.forEach(b => {
+                    b.disabled = false;
+                    b.innerHTML = '<i class="ph ph-chat-text"></i>';
+                });
             }
         });
     });
@@ -536,10 +597,11 @@ async function _handleUpdate(container, workId) {
         // 1. Generate chapter + comments + stats
         const result = await generateChapterUpdate(work);
 
-        // 2. Add new chapter
+        // 2. Add new chapter (with hidden summary for LLM context)
         addChapter(data, workId, {
             title: result.chapter.title,
             content: result.chapter.content,
+            summary: result.chapterSummary || '',
         });
 
         // 3. Add reader comments
@@ -554,13 +616,11 @@ async function _handleUpdate(container, workId) {
             }
         }
 
-        // 4. Update stats
+        // 4. Update stats (favorites & readers only; rating is computed from comments)
         if (result.statsUpdate) {
             const s = result.statsUpdate;
             work = getWork(data, workId); // Refresh ref
             updateWorkStats(data, workId, {
-                rating: Math.max(0, Math.min(10, work.rating + (s.ratingDelta || 0))),
-                ratingCount: work.ratingCount + (s.newRatingCount || 0),
                 favorites: Math.max(0, work.favorites + (s.favoriteDelta || 0)),
                 readers: Math.max(0, work.readers + (s.readerDelta || 0)),
             });
@@ -656,8 +716,16 @@ function _buildCommentsHtml(work) {
 
     // Show most recent first
     const sorted = [...work.comments].reverse();
+    const totalPages = Math.ceil(sorted.length / COMMENTS_PER_PAGE);
 
-    return sorted.map(c => {
+    // Clamp page
+    if (_commentPage >= totalPages) _commentPage = totalPages - 1;
+    if (_commentPage < 0) _commentPage = 0;
+
+    const start = _commentPage * COMMENTS_PER_PAGE;
+    const paged = sorted.slice(start, start + COMMENTS_PER_PAGE);
+
+    const cardsHtml = paged.map(c => {
         const isUser = !c.isReader;
         const ratingDots = c.rating ? `<span class="lit-comment-rating">${c.rating}/10</span>` : '';
         const authorIcon = isUser
@@ -675,8 +743,8 @@ function _buildCommentsHtml(work) {
             `;
         }
 
-        // Reply button for reader comments without replies
-        const replyBtn = c.isReader && !c.authorReply
+        // Reply button for ALL unreplied comments (readers + user's own)
+        const replyBtn = !c.authorReply
             ? `<button class="lit-reply-btn" data-comment-id="${c.id}"><i class="ph ph-chat-text"></i></button>`
             : '';
 
@@ -694,6 +762,52 @@ function _buildCommentsHtml(work) {
             </div>
         `;
     }).join('');
+
+    // Pagination controls (only if more than 1 page)
+    let paginationHtml = '';
+    if (totalPages > 1) {
+        paginationHtml = `
+            <div class="lit-comment-pagination" id="lit_comment_pagination">
+                <button class="lit-page-btn" data-page-dir="prev" ${_commentPage === 0 ? 'disabled' : ''}>
+                    <i class="ph ph-caret-left"></i>
+                </button>
+                <span class="lit-page-info">${_commentPage + 1} / ${totalPages}</span>
+                <button class="lit-page-btn" data-page-dir="next" ${_commentPage >= totalPages - 1 ? 'disabled' : ''}>
+                    <i class="ph ph-caret-right"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    return cardsHtml + paginationHtml;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Comment Pagination
+// ═══════════════════════════════════════════════════════════════════════
+
+function _bindCommentPagination(container, workId) {
+    const paginationEl = document.getElementById('lit_comment_pagination');
+    if (!paginationEl) return;
+
+    paginationEl.querySelectorAll('.lit-page-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dir = btn.dataset.pageDir;
+            if (dir === 'prev') _commentPage--;
+            if (dir === 'next') _commentPage++;
+
+            const data = loadWritingData();
+            const work = getWork(data, workId);
+            if (!work) return;
+
+            const listEl = document.getElementById('lit_comments_list');
+            if (listEl) {
+                listEl.innerHTML = _buildCommentsHtml(work);
+                _bindReplyButtons(container, workId);
+                _bindCommentPagination(container, workId);
+            }
+        });
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
