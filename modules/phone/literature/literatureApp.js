@@ -12,7 +12,7 @@ import { renderReadingTab, bindReadingBackButton } from './readingTab.js';
 /** Opens the Literature App inside the phone viewport */
 export function openLiteratureApp() {
     const titleHtml = `
-        <div class="lit-header-tabs">
+        <div class="lit-header-tabs" id="lit_header_tabs">
             <button class="lit-header-tab" data-tab="reading">
                 <span>阅读</span>
             </button>
@@ -20,6 +20,7 @@ export function openLiteratureApp() {
                 <span>写作</span>
             </button>
         </div>
+        <div class="lit-header-title" id="lit_header_title" style="display:none; font-weight:600; font-size:1.1em; color:#e5d5c5;"></div>
     `;
 
     const html = _buildMainHTML();

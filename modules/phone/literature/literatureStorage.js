@@ -95,9 +95,10 @@ function _emptyReadingData() {
         //   id: 'book_xxx',
         //   title: '',
         //   author: '',
+        //   summary: '',           // 用户手动输入的书籍简介（帮助 LLM 理解冷门书）
         //   chapters: [{ title, content }],
         //   progress: { chapterIdx: 0, scrollPos: 0 },
-        //   notes: {},  // keyed by chapterIdx: { user: '...', char: '...' }
+        //   notes: {},  // keyed by pageKey (e.g. 'p_3'): { user: '...', char: '...' }
         //   addedAt: ''
         // }
         charBookshelf: [],
@@ -105,9 +106,21 @@ function _emptyReadingData() {
         //   title: '',
         //   author: '',
         //   genre: '',
-        //   charNote: '',      // 角色对这本书的笔记
-        //   gutenbergId: null, // 如果在 Project Gutenberg 上找到
-        //   generated: false   // 是否已经生成过详细笔记
+        //   charNote: '',           // 角色对这本书的笔记
+        //   generated: false,       // 是否已经生成过详细笔记
+        //   detailedNote: '',       // 详细读书笔记（lazy-loaded）
+        //   sourcesSearched: false, // 是否已完成多源搜索
+        //   sources: [],            // 电子书源搜索结果
+        //   // sources[]: {
+        //   //   type: 'gutenberg' | 'openLibrary' | 'googleBooks',
+        //   //   id: '',
+        //   //   title: '',
+        //   //   author: '',
+        //   //   downloadUrl: null,    // 直接下载 URL（仅 Gutenberg）
+        //   //   previewUrl: '',       // 预览/借阅外链
+        //   //   coverUrl: null,       // 封面图 URL
+        //   //   canImport: false,     // 是否可一键导入（有纯文本下载）
+        //   // }
         // }
         charBookshelfGenerated: false,  // 是否已生成过角色书架
     };
@@ -301,6 +314,13 @@ export function removeBook(data, bookId) {
     saveReadingData(data);
 }
 
+export function updateBookSummary(data, bookId, summary) {
+    const book = data.userBooks.find(b => b.id === bookId);
+    if (!book) return;
+    book.summary = summary;
+    saveReadingData(data);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Preferences (chat_metadata)
 // ═══════════════════════════════════════════════════════════════════════
@@ -343,68 +363,30 @@ export const CONTRACT_TIERS = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// Reading Data (用户书架 — 不分角色，用户共享)
+// Character Bookshelf Helpers (角色独立书架)
 // ═══════════════════════════════════════════════════════════════════════
 
-const READING_STORAGE_KEY = `${MODULE_NAME}_reading_v1`;
-
-function _emptyReadingData() {
-    return {
-        userBooks: [],
-        // userBooks[]: {
-        //   id: 'book_xxx',
-        //   title: '',
-        //   author: '',
-        //   chapters: [{ title, content }],
-        //   progress: { chapterIdx: 0 },
-        //   addedAt: '',
-        // }
-    };
-}
-
-export function loadReadingData() {
-    try {
-        const raw = localStorage.getItem(READING_STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && Array.isArray(parsed.userBooks)) return parsed;
-        }
-    } catch (e) {
-        console.warn('[文学] loadReadingData failed:', e);
-    }
-    return _emptyReadingData();
-}
-
-export function saveReadingData(data) {
-    try {
-        localStorage.setItem(READING_STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-        console.warn('[文学] saveReadingData failed:', e);
-    }
-}
-
-export function addBook(data, bookInfo) {
-    const book = {
-        id: `book_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        title: bookInfo.title || '未知书名',
-        author: bookInfo.author || '未知作者',
-        chapters: bookInfo.chapters || [],
-        progress: { chapterIdx: 0 },
-        addedAt: new Date().toISOString(),
-    };
-    data.userBooks.push(book);
-    saveReadingData(data);
-    return book;
-}
-
-export function updateBookProgress(data, bookId, progress) {
-    const book = data.userBooks.find(b => b.id === bookId);
-    if (!book) return;
-    book.progress = { ...book.progress, ...progress };
+export function setCharBookshelf(data, books) {
+    data.charBookshelf = books;
+    data.charBookshelfGenerated = true;
     saveReadingData(data);
 }
 
-export function removeBook(data, bookId) {
-    data.userBooks = data.userBooks.filter(b => b.id !== bookId);
+export function appendCharBookshelf(data, books) {
+    if (!data.charBookshelf) data.charBookshelf = [];
+    data.charBookshelf = data.charBookshelf.concat(books);
+    data.charBookshelfGenerated = true;
+    saveReadingData(data);
+}
+
+export function setCharBookNote(data, bookIdx, note) {
+    if (!data.charBookshelf || !data.charBookshelf[bookIdx]) return;
+    data.charBookshelf[bookIdx].detailedNote = note;
+    data.charBookshelf[bookIdx].generated = true;
+    saveReadingData(data);
+}
+
+export function markCharBookshelfGenerated(data) {
+    data.charBookshelfGenerated = true;
     saveReadingData(data);
 }

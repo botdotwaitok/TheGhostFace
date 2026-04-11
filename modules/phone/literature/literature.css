@@ -1705,3 +1705,1131 @@
 .phone-dark-mode .lit-rd-reader-title {
     color: #e5d5c5;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phase 5 — Shelf Toggle
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-shelf-toggle {
+    display: flex;
+    gap: 0;
+    padding: 10px 12px 0;
+    background: transparent;
+}
+
+.lit-shelf-toggle-btn {
+    flex: 1;
+    padding: 8px 0;
+    border: none;
+    background: none;
+    color: #999;
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.25s ease;
+}
+
+.lit-shelf-toggle-btn.active {
+    color: #6b4226;
+    border-bottom-color: #8b5e3c;
+}
+
+.lit-shelf-toggle-btn:active {
+    opacity: 0.7;
+}
+
+.lit-shelf-toggle-btn i {
+    font-size: 1.1em;
+}
+
+.lit-shelf-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px 12px;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phase 5 — Character Bookshelf
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-char-shelf-gen-btn {
+    margin-top: 12px;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #8b5e3c, #6b4226);
+    color: #fff;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: transform 0.15s;
+    box-shadow: 0 4px 15px rgba(107, 66, 38, 0.25);
+}
+
+.lit-char-shelf-gen-btn:active {
+    transform: scale(0.96);
+}
+
+.lit-char-shelf-gen-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lit-char-shelf-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.lit-char-shelf-load-more {
+    margin-top: 15px;
+    margin-bottom: 20px;
+    align-self: center;
+    padding: 10px 24px;
+    border: 1px solid rgba(139, 94, 60, 0.4);
+    background: transparent;
+    color: #8b5e3c;
+    border-radius: 20px;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.lit-char-shelf-load-more:active {
+    transform: scale(0.96);
+    background: rgba(139, 94, 60, 0.08);
+}
+
+.lit-char-shelf-load-more:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lit-char-book-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    transition: box-shadow 0.2s;
+}
+
+.lit-char-book-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.lit-char-book-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #f5ebe0, #ede0d4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.lit-char-book-icon i {
+    font-size: 1.15em;
+    color: #8b5e3c;
+}
+
+.lit-char-book-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.lit-char-book-title {
+    font-size: 0.9em;
+    font-weight: 700;
+    color: #2c1810;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lit-char-book-author {
+    font-size: 0.72em;
+    color: #999;
+    margin-top: 1px;
+}
+
+.lit-char-book-genre {
+    font-size: 0.68em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(139, 94, 60, 0.08);
+    color: #8b5e3c;
+    font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.lit-char-book-note {
+    font-size: 0.8em;
+    color: #7a6555;
+    line-height: 1.55;
+    font-style: italic;
+    padding: 0 2px;
+}
+
+.lit-char-note-expand-btn {
+    margin-top: 8px;
+    border: 1px solid rgba(139, 94, 60, 0.15);
+    background: none;
+    color: #8b5e3c;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.15s;
+    width: 100%;
+    justify-content: center;
+}
+
+.lit-char-note-expand-btn:active {
+    background: rgba(139, 94, 60, 0.06);
+}
+
+.lit-char-note-expand-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lit-char-note-detail {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(139, 94, 60, 0.04);
+    border-radius: 10px;
+    font-size: 0.8em;
+    color: #555;
+    line-height: 1.65;
+    animation: lit-fade-in 0.3s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phase 6 — Multi-Source Panel (Gutenberg + Open Library + Google Books)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-source-panel {
+    margin-top: 10px;
+    background: rgba(59, 130, 246, 0.03);
+    border: 1px solid rgba(59, 130, 246, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    animation: lit-fade-in 0.3s ease;
+}
+
+.lit-source-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 10px;
+    font-size: 0.7em;
+    font-weight: 600;
+    color: #8b5e3c;
+    background: rgba(139, 94, 60, 0.04);
+}
+
+.lit-source-panel-header i {
+    font-size: 1.15em;
+}
+
+.lit-source-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.lit-source-row:first-of-type {
+    border-top: none;
+}
+
+.lit-source-icon {
+    font-size: 1.1em;
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+}
+
+.lit-source-name {
+    flex: 1;
+    font-size: 0.72em;
+    font-weight: 600;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lit-source-import-btn {
+    border: none;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.68em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    transition: transform 0.15s, opacity 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.lit-source-import-btn:active {
+    transform: scale(0.96);
+}
+
+.lit-source-import-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.lit-source-import-btn.done {
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+    cursor: default;
+}
+
+.lit-source-link {
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    background: none;
+    color: #3b82f6;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.68em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    transition: background 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.lit-source-link:active {
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.lit-source-link i {
+    font-size: 0.9em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phase 5 — Co-Reading Note Bubble
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-rd-note-section {
+    padding: 16px 0;
+    display: flex;
+    justify-content: center;
+}
+
+.lit-rd-note-btn {
+    border: 1px dashed rgba(139, 94, 60, 0.25);
+    background: rgba(139, 94, 60, 0.03);
+    color: #8b5e3c;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.lit-rd-note-btn:active {
+    transform: scale(0.97);
+}
+
+.lit-rd-note-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lit-rd-note-bubble {
+    margin: 16px 0;
+    padding: 12px 14px;
+    background: linear-gradient(145deg, #f5ebe0, #ede0d4);
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(107, 66, 38, 0.08);
+    animation: lit-note-slide-up 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+@keyframes lit-note-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.lit-rd-note-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75em;
+    font-weight: 700;
+    color: #8b5e3c;
+    margin-bottom: 6px;
+}
+
+.lit-rd-note-header i {
+    font-size: 1.1em;
+}
+
+.lit-rd-note-content {
+    font-size: 0.82em;
+    color: #555;
+    line-height: 1.65;
+}
+
+/* Note icon in chapter list */
+.lit-rd-chapter-note-icon {
+    font-size: 0.85em;
+    color: #d4a06a;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Book Summary Input (in book detail)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-rd-summary-section {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.lit-rd-summary-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75em;
+    font-weight: 600;
+    color: #8b5e3c;
+    margin-bottom: 6px;
+}
+
+.lit-rd-summary-label i {
+    font-size: 1.1em;
+}
+
+.lit-rd-summary-input {
+    width: 100%;
+    border: 1px solid rgba(139, 94, 60, 0.12);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 0.8em;
+    color: #555;
+    background: rgba(139, 94, 60, 0.03);
+    font-family: inherit;
+    resize: none;
+    box-sizing: border-box;
+    line-height: 1.5;
+    transition: border-color 0.2s;
+}
+
+.lit-rd-summary-input:focus {
+    outline: none;
+    border-color: rgba(139, 94, 60, 0.3);
+}
+
+.lit-rd-summary-input::placeholder {
+    color: #bbb;
+    font-size: 0.92em;
+}
+
+.lit-rd-summary-save-btn {
+    margin-top: 6px;
+    padding: 6px 16px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #8b5e3c, #6b4226);
+    color: #fff;
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: transform 0.15s;
+}
+
+.lit-rd-summary-save-btn:active {
+    transform: scale(0.96);
+}
+
+.lit-rd-summary-text {
+    font-size: 0.82em;
+    color: #555;
+    line-height: 1.6;
+    padding: 8px 12px;
+    background: rgba(139, 94, 60, 0.04);
+    border-radius: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Note Trigger Button (in reader header)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-rd-note-trigger {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(139, 94, 60, 0.08);
+    color: #8b5e3c;
+    font-size: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.lit-rd-note-trigger:active {
+    transform: scale(0.9);
+}
+
+.lit-rd-note-trigger.has-note {
+    background: linear-gradient(135deg, #8b5e3c, #d4a06a);
+    color: #fff;
+}
+
+.lit-rd-note-trigger.has-note::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e6a817;
+    border: 2px solid #f5ebe0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Note Panel (slides up from bottom)
+   ═══════════════════════════════════════════════════════════════════════ */
+.lit-rd-note-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 24;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.lit-rd-note-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+
+.lit-rd-note-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 70%;
+    background: #fdf8f0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12);
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
+}
+
+.lit-rd-note-panel.active {
+    transform: translateY(0);
+}
+
+.lit-rd-note-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    font-size: 0.9em;
+    font-weight: 700;
+    color: #3c2415;
+    border-bottom: 1px solid rgba(139, 94, 60, 0.1);
+    flex-shrink: 0;
+}
+
+.lit-rd-note-panel-close {
+    border: none;
+    background: none;
+    color: #999;
+    font-size: 1.1em;
+    cursor: pointer;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+.lit-rd-note-panel-close:hover {
+    color: #666;
+}
+
+.lit-rd-note-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 20px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ── Note Panel Internal Components ── */
+
+.lit-rd-note-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78em;
+    font-weight: 700;
+    color: #8b5e3c;
+    margin-bottom: 8px;
+}
+
+.lit-rd-note-label i {
+    font-size: 1.1em;
+}
+
+.lit-rd-note-textarea {
+    width: 100%;
+    border: 1px solid rgba(139, 94, 60, 0.12);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.85em;
+    color: #333;
+    background: #fff;
+    font-family: inherit;
+    resize: none;
+    box-sizing: border-box;
+    line-height: 1.6;
+    transition: border-color 0.2s;
+}
+
+.lit-rd-note-textarea:focus {
+    outline: none;
+    border-color: rgba(139, 94, 60, 0.35);
+}
+
+.lit-rd-note-textarea::placeholder {
+    color: #bbb;
+}
+
+.lit-rd-note-save-btn {
+    margin-top: 8px;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #8b5e3c, #6b4226);
+    color: #fff;
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: transform 0.15s;
+    width: 100%;
+    justify-content: center;
+}
+
+.lit-rd-note-save-btn:active {
+    transform: scale(0.97);
+}
+
+.lit-rd-note-saved-text {
+    font-size: 0.85em;
+    color: #555;
+    line-height: 1.65;
+    padding: 10px 12px;
+    background: rgba(139, 94, 60, 0.04);
+    border-radius: 10px;
+}
+
+.lit-rd-note-edit-btn {
+    margin-top: 6px;
+    border: 1px solid rgba(139, 94, 60, 0.15);
+    background: none;
+    color: #8b5e3c;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.72em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.15s;
+}
+
+.lit-rd-note-edit-btn:active {
+    background: rgba(139, 94, 60, 0.06);
+}
+
+.lit-rd-note-divider {
+    height: 1px;
+    background: rgba(139, 94, 60, 0.1);
+    margin: 14px 0;
+}
+
+.lit-rd-note-char-content {
+    font-size: 0.85em;
+    color: #555;
+    line-height: 1.65;
+    padding: 10px 12px;
+    background: linear-gradient(145deg, #f5ebe0, #ede0d4);
+    border-radius: 10px;
+    animation: lit-note-slide-up 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.lit-rd-note-ask-btn {
+    margin-top: 4px;
+    padding: 10px 20px;
+    border: 1px dashed rgba(139, 94, 60, 0.25);
+    background: rgba(139, 94, 60, 0.03);
+    color: #8b5e3c;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    transition: background 0.2s, transform 0.15s;
+}
+
+.lit-rd-note-ask-btn:active {
+    transform: scale(0.97);
+}
+
+.lit-rd-note-ask-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lit-rd-note-char-hint {
+    font-size: 0.78em;
+    color: #bbb;
+    text-align: center;
+    padding: 10px;
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Notes Navigation (in book detail)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.lit-rd-notes-nav-section {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.lit-rd-notes-nav-section .lit-section-header {
+    padding: 0 14px 6px;
+}
+
+.lit-rd-notes-nav-section .lit-section-header i {
+    margin-right: 3px;
+}
+
+.lit-rd-notes-count {
+    font-size: 0.72em;
+    font-weight: 500;
+    color: #bbb;
+}
+
+.lit-rd-notes-nav-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.lit-rd-notes-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    transition: background 0.15s;
+}
+
+.lit-rd-notes-nav-item:last-child {
+    border-bottom: none;
+}
+
+.lit-rd-notes-nav-item:active {
+    background: rgba(139, 94, 60, 0.06);
+}
+
+.lit-rd-notes-nav-page {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #f5ebe0, #ede0d4);
+    color: #8b5e3c;
+    font-size: 0.68em;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.lit-rd-notes-nav-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.lit-rd-notes-nav-ch {
+    font-size: 0.72em;
+    color: #999;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lit-rd-notes-nav-preview {
+    font-size: 0.8em;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.lit-rd-notes-nav-icons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.lit-rd-notes-nav-icons i {
+    font-size: 0.85em;
+    color: #d4a06a;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Phase 5/6 — Dark Mode
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Shelf Toggle Dark */
+.phone-dark-mode .lit-shelf-toggle-btn {
+    color: #666;
+}
+
+.phone-dark-mode .lit-shelf-toggle-btn.active {
+    color: #d4a06a;
+    border-bottom-color: #d4a06a;
+}
+
+/* Character Bookshelf Dark */
+.phone-dark-mode .lit-char-shelf-gen-btn {
+    background: linear-gradient(135deg, #a0734d, #8b5e3c);
+}
+
+.phone-dark-mode .lit-char-book-card {
+    background: #1e1e20;
+    border-color: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+}
+
+.phone-dark-mode .lit-char-book-icon {
+    background: linear-gradient(145deg, #2c2420, #1e1a17);
+}
+
+.phone-dark-mode .lit-char-book-icon i {
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-char-book-title {
+    color: #e5d5c5;
+}
+
+.phone-dark-mode .lit-char-book-author {
+    color: #777;
+}
+
+.phone-dark-mode .lit-char-book-genre {
+    background: rgba(212, 160, 106, 0.1);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-char-book-note {
+    color: #9a8477;
+}
+
+.phone-dark-mode .lit-char-note-expand-btn {
+    border-color: rgba(212, 160, 106, 0.15);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-char-note-expand-btn:active {
+    background: rgba(212, 160, 106, 0.06);
+}
+
+.phone-dark-mode .lit-char-note-detail {
+    background: rgba(212, 160, 106, 0.06);
+    color: #bbb;
+}
+
+/* Co-Reading Note Dark (legacy) */
+.phone-dark-mode .lit-rd-note-btn {
+    border-color: rgba(212, 160, 106, 0.2);
+    background: rgba(212, 160, 106, 0.04);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-bubble {
+    background: linear-gradient(145deg, #2c2420, #1e1a17);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.phone-dark-mode .lit-rd-note-header {
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-content {
+    color: #bbb;
+}
+
+.phone-dark-mode .lit-rd-chapter-note-icon {
+    color: #d4a06a;
+}
+
+/* Source Panel Dark */
+.phone-dark-mode .lit-source-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .lit-source-panel-header {
+    background: rgba(212, 160, 106, 0.06);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-source-row {
+    border-top-color: rgba(255, 255, 255, 0.04);
+}
+
+.phone-dark-mode .lit-source-name {
+    color: #aaa;
+}
+
+.phone-dark-mode .lit-source-import-btn {
+    background: linear-gradient(135deg, #16a34a, #15803d);
+}
+
+.phone-dark-mode .lit-source-import-btn.done {
+    background: linear-gradient(135deg, #64748b, #475569);
+}
+
+.phone-dark-mode .lit-source-link {
+    border-color: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+}
+
+.phone-dark-mode .lit-source-link:active {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   New Components — Dark Mode
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Book Summary Dark */
+.phone-dark-mode .lit-rd-summary-section {
+    border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+.phone-dark-mode .lit-rd-summary-label {
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-summary-input {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+    color: #ccc;
+}
+
+.phone-dark-mode .lit-rd-summary-input:focus {
+    border-color: rgba(212, 160, 106, 0.3);
+}
+
+.phone-dark-mode .lit-rd-summary-input::placeholder {
+    color: #555;
+}
+
+.phone-dark-mode .lit-rd-summary-save-btn {
+    background: linear-gradient(135deg, #a0734d, #8b5e3c);
+}
+
+.phone-dark-mode .lit-rd-summary-text {
+    background: rgba(212, 160, 106, 0.06);
+    color: #bbb;
+}
+
+/* Note Trigger Dark */
+.phone-dark-mode .lit-rd-note-trigger {
+    background: rgba(212, 160, 106, 0.1);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-trigger.has-note {
+    background: linear-gradient(135deg, #a0734d, #8b5e3c);
+    color: #fff;
+}
+
+.phone-dark-mode .lit-rd-note-trigger.has-note::after {
+    border-color: #2c2420;
+}
+
+/* Note Panel Dark */
+.phone-dark-mode .lit-rd-note-panel {
+    background: #1a1815;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.phone-dark-mode .lit-rd-note-panel-header {
+    color: #e5d5c5;
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .lit-rd-note-panel-close {
+    color: #666;
+}
+
+.phone-dark-mode .lit-rd-note-label {
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-textarea {
+    background: #2a2a2c;
+    border-color: rgba(255, 255, 255, 0.06);
+    color: #e0e0e0;
+}
+
+.phone-dark-mode .lit-rd-note-textarea:focus {
+    border-color: rgba(212, 160, 106, 0.3);
+}
+
+.phone-dark-mode .lit-rd-note-textarea::placeholder {
+    color: #555;
+}
+
+.phone-dark-mode .lit-rd-note-save-btn {
+    background: linear-gradient(135deg, #a0734d, #8b5e3c);
+}
+
+.phone-dark-mode .lit-rd-note-saved-text {
+    background: rgba(212, 160, 106, 0.06);
+    color: #bbb;
+}
+
+.phone-dark-mode .lit-rd-note-edit-btn {
+    border-color: rgba(212, 160, 106, 0.15);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-divider {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .lit-rd-note-char-content {
+    background: linear-gradient(145deg, #2c2420, #1e1a17);
+    color: #bbb;
+}
+
+.phone-dark-mode .lit-rd-note-ask-btn {
+    border-color: rgba(212, 160, 106, 0.2);
+    background: rgba(212, 160, 106, 0.04);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-note-char-hint {
+    color: #555;
+}
+
+/* Notes Navigation Dark */
+.phone-dark-mode .lit-rd-notes-nav-section {
+    border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+.phone-dark-mode .lit-rd-notes-nav-item {
+    border-bottom-color: rgba(255, 255, 255, 0.03);
+}
+
+.phone-dark-mode .lit-rd-notes-nav-item:active {
+    background: rgba(212, 160, 106, 0.06);
+}
+
+.phone-dark-mode .lit-rd-notes-nav-page {
+    background: linear-gradient(145deg, #2c2420, #1e1a17);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-rd-notes-nav-ch {
+    color: #666;
+}
+
+.phone-dark-mode .lit-rd-notes-nav-preview {
+    color: #bbb;
+}
+
+.phone-dark-mode .lit-rd-notes-nav-icons i {
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-char-shelf-load-more {
+    border-color: rgba(212, 160, 106, 0.3);
+    color: #d4a06a;
+}
+
+.phone-dark-mode .lit-char-shelf-load-more:active {
+    background: rgba(212, 160, 106, 0.08);
+}
