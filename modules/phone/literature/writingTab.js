@@ -10,7 +10,7 @@ import {
     getWork, getAllWorks, computeWorkRating, WORK_TYPES, CONTRACT_TIERS,
 } from './literatureStorage.js';
 import {
-    generateAuthorInit, generateChapterUpdate, evaluateContract,
+    generateAuthorInit, generateFullUpdate, evaluateContract,
     generateBatchAuthorReplies, generateNewWork,
 } from './literatureGeneration.js';
 
@@ -587,24 +587,32 @@ async function _handleUpdate(container, workId) {
     if (!btn || btn.disabled) return;
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 创作中……';
+    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 正在写稿……';
 
     try {
         let data = loadWritingData();
         let work = getWork(data, workId);
         if (!work) throw new Error('作品不存在');
 
-        // 1. Generate chapter + comments + stats
-        const result = await generateChapterUpdate(work);
+        // Two-call pipeline with progress feedback
+        const result = await generateFullUpdate(work, (stage) => {
+            if (btn) {
+                if (stage === 'writing') {
+                    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 正在写稿……';
+                } else if (stage === 'reactions') {
+                    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 读者反馈涌入中……';
+                }
+            }
+        });
 
-        // 2. Add new chapter (with hidden summary for LLM context)
+        // 1. Add new chapter (with hidden summary for LLM context)
         addChapter(data, workId, {
             title: result.chapter.title,
             content: result.chapter.content,
             summary: result.chapterSummary || '',
         });
 
-        // 3. Add reader comments
+        // 2. Add reader comments (now with built-in author replies)
         if (result.newComments && Array.isArray(result.newComments)) {
             for (const cmt of result.newComments) {
                 addComment(data, workId, {
@@ -612,8 +620,19 @@ async function _handleUpdate(container, workId) {
                     content: cmt.content,
                     rating: cmt.rating,
                     isReader: true,
+                    authorReply: cmt.authorReply || null,
                 });
             }
+        }
+
+        // 3. Apply replies to old unreplied comments
+        if (result.oldCommentReplies && result.unrepliedCommentIds) {
+            result.unrepliedCommentIds.forEach((commentId, i) => {
+                const reply = result.oldCommentReplies[i];
+                if (reply) {
+                    setCommentReply(data, workId, commentId, reply);
+                }
+            });
         }
 
         // 4. Update stats (favorites & readers only; rating is computed from comments)
