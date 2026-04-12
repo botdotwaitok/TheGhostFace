@@ -5,7 +5,7 @@
 
 import { getSttEngine } from '../sttInit.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../../phoneContext.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, stripLLMTags } from '../../utils/helpers.js';
 import { getTtsEngine } from '../tts/ttsInit.js';
 import { parseSayTags } from '../tts/toneMappings.js';
 import { callPhoneLLM } from '../../../api.js';
@@ -671,7 +671,10 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
         }
 
         // Strip <scene> tag from response before display/TTS
-        const displayResponse = cleanResponse.replace(/<scene>.*?<\/scene>/gs, '').trim();
+        let displayResponse = cleanResponse.replace(/<scene>.*?<\/scene>/gs, '').trim();
+
+        // Strip any remaining leaked tags (<think>, <状态栏>, etc.)
+        displayResponse = stripLLMTags(displayResponse);
 
         // Parse <say tone="..."> tags (using cleaned response without <scene>)
         const parsed = parseSayTags(displayResponse);

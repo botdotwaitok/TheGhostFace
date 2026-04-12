@@ -5,6 +5,7 @@
 
 import { callPhoneLLM } from '../../api.js';
 import { handleMainChatOutput } from '../moments/momentsWorldInfo.js';
+import { stripLLMTags } from '../utils/helpers.js';
 import {
     getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona,
     getCoreFoundationPrompt, getPhoneContext, getPhoneWorldBookContext,
@@ -236,14 +237,8 @@ async function sanitizeLLMOutput(text) {
     // ── Step 2: 从显示文本中删除朋友圈/评论格式 ──
     cleaned = cleaned.replace(momentPatterns, '');
 
-    // ── Step 3: 清除 <标签>内容</标签> 格式 ──
-    // 匹配成对标签: <xxx>...</xxx>
-    cleaned = cleaned.replace(/<([a-zA-Z\u4e00-\u9fff_]+)>[\s\S]*?<\/\1>/g, '');
-    // 匹配独立标签: <xxx> (非 HTML 实体)
-    cleaned = cleaned.replace(/<\/?[a-zA-Z\u4e00-\u9fff_]+>/g, '');
-
-    // ── Step 4: 清理残余空行 ──
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+    // ── Step 3: 清除 <标签>内容</标签> 格式（状态栏世界书泄漏 / CoT 泄漏）──
+    cleaned = stripLLMTags(cleaned);
 
     return cleaned;
 }

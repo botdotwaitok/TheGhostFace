@@ -5,7 +5,7 @@
 
 import { getSttEngine } from './sttInit.js';
 import { getPhoneCharInfo, getPhoneUserName, getCoreFoundationPrompt } from '../phoneContext.js';
-import { escapeHtml } from '../utils/helpers.js';
+import { escapeHtml, stripLLMTags } from '../utils/helpers.js';
 import { getTtsEngine } from './tts/ttsInit.js';
 import { parseSayTags, stripSayTags } from './tts/toneMappings.js';
 import { callPhoneLLM } from '../../api.js';
@@ -871,7 +871,7 @@ async function _sendToLLM(text) {
             throw new Error('LLM returned empty response');
         }
 
-        const cleanResponse = response.trim();
+        const cleanResponse = stripLLMTags(response.trim());
 
         // 🎭 Parse <say tone="..."> tags from LLM output
         const parsed = parseSayTags(cleanResponse);
