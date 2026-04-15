@@ -35,7 +35,9 @@ export class GroqSttProvider {
         const apiKey = opts.apiKey;
         const proxyServer = opts.proxyServer;
         const model = opts.model || this.defaultSettings.model;
-        const language = opts.language || '';
+        const rawLang = opts.language || '';
+        const fullLangCodes = ['haw', 'yue'];
+        const language = fullLangCodes.includes(rawLang) ? rawLang : rawLang.slice(0, 2);
 
         if (!apiKey) {
             throw new Error('请在设置中填写 Groq API Key');
