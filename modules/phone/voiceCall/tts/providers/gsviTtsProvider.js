@@ -354,7 +354,7 @@ export class GsviTtsProvider {
 
     // ─── GSVI Inference Plugin: GET /models/{version} ───
     async _fetchVoicesGSVI(endpoint) {
-        const versions = ['v2', 'v3', 'v4', 'v2Pro'];
+        const versions = ['v2', 'v3', 'v4', 'v2Pro', 'v2ProPlus'];
         const allVoices = [];
 
         for (const version of versions) {
