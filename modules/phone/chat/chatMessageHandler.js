@@ -30,7 +30,7 @@ import {
     shouldAutoRobToday, markRobberyDone, broadcastRobberyToMoments,
 } from '../shop/robberySystem.js';
 import { tryAutoStartKeepAlive } from '../keepAlive.js';
-import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer } from './autoMessage.js';
+import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer, getPhoneIdleDuration } from './autoMessage.js';
 import { synthesizeToBlob, uploadAudioToST } from './voiceMessageService.js';
 import { buildBubbleRow, buildRecalledPeekBubble, formatChatTime } from './chatHtmlBuilder.js';
 import { applyAIReactions } from './chatReactions.js';
@@ -64,6 +64,9 @@ export function handleCallDeclined() {
 
     console.log(`${CHAT_LOG_PREFIX} Call declined — triggering character follow-up.`);
 
+    // Snapshot idle duration BEFORE saving the missed call entry
+    const idleMsSnapshot = getPhoneIdleDuration();
+
     // Inject missed call event into chat history as a user action
     const history = loadChatHistory();
     const now = new Date().toISOString();
@@ -94,7 +97,7 @@ export function handleCallDeclined() {
     setIsGenerating(true);
     updateButtonStates();
     showTypingIndicator(true);
-    startBackgroundGeneration(['[用户拒接了来电]'], historyBeforeSend);
+    startBackgroundGeneration(['[用户拒接了来电]'], historyBeforeSend, null, idleMsSnapshot);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -251,6 +254,12 @@ export async function sendAllMessages() {
     const historyBeforeSend = [...history]; // snapshot for prompt building
     const now = new Date().toISOString();
 
+    // ── Snapshot idle duration BEFORE saving new messages ──
+    // getPhoneIdleDuration() reads from loadChatHistory(), so we must capture
+    // the time gap *before* the new user messages are persisted, otherwise
+    // the idle duration will always be ~0ms.
+    const idleMsSnapshot = getPhoneIdleDuration();
+
     for (let i = 0; i < messagesToSend.length; i++) {
         const msg = messagesToSend[i];
         const entry = { role: 'user', content: msg, timestamp: now };
@@ -315,7 +324,7 @@ export async function sendAllMessages() {
 
     // ── Fire off background generation (does NOT block the UI) ──
     // The result will be handled by _handleResponseReady() via event
-    startBackgroundGeneration(messagesToSend, historyBeforeSend, imageData?.base64 || null);
+    startBackgroundGeneration(messagesToSend, historyBeforeSend, imageData?.base64 || null, idleMsSnapshot);
 
     // Reset auto-message timer (user just sent a message, restart idle countdown)
     resetAutoMessageTimer();

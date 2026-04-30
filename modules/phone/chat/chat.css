@@ -2285,3 +2285,46 @@ textarea#chat_edit_textarea {
 .phone-dark-mode .chat-btn-send.mic-mode:disabled {
     color: #48484a;
 }
+
+/* ─── Toast Notification (above input bar) ─── */
+.chat-toast {
+    position: absolute;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff;
+    font-size: 13px;
+    border-radius: 20px;
+    white-space: nowrap;
+    z-index: 50;
+    pointer-events: none;
+    animation: chatToastIn 0.3s ease-out, chatToastOut 0.4s ease-in 2.6s forwards;
+}
+
+.phone-dark-mode .chat-toast {
+    background: rgba(80, 80, 84, 0.85);
+}
+
+@keyframes chatToastIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+@keyframes chatToastOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}

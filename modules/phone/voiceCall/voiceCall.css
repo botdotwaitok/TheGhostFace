@@ -156,7 +156,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 40px;
+    gap: 28px;
     padding-bottom: 20px;
 }
 
@@ -189,8 +189,89 @@
     color: #333;
 }
 
+.voice-control-btn.keyboard {
+    background: rgba(255, 255, 255, 0.2);
+}
+
 .voice-control-btn.hangup {
     background: #FF3B30; /* iOS Red */
+}
+
+/* ─── Text Input Bar (slide-up keyboard alternative) ─── */
+.voice-text-input-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: rgba(20, 20, 20, 0.92);
+    backdrop-filter: blur(18px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    animation: textInputSlideUp 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.voice-text-input {
+    flex: 1;
+    min-height: 40px;
+    max-height: 100px;
+    padding: 10px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 15px;
+    line-height: 1.4;
+    resize: none;
+    outline: none;
+    font-family: inherit;
+}
+
+.voice-text-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.voice-text-input:focus {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.voice-text-input-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.voice-text-input-close:active {
+    opacity: 0.7;
+    transform: scale(0.92);
+}
+
+/* Lift subtitle area & shrink controls bottom padding when input bar is up */
+.phone-voice-call-overlay.text-input-active .voice-call-subtitles {
+    margin-bottom: 100px;
+}
+
+.phone-voice-call-overlay.text-input-active .voice-call-controls {
+    padding-bottom: 90px;
+}
+
+@keyframes textInputSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 /* ─── Animations ─── */

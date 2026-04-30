@@ -214,9 +214,9 @@ function _renderCallList() {
 
 // ─── Talk Frequency Presets ───
 const TALK_FREQ_PRESETS = {
-    quiet: { label: '安静陪看', icon: 'ph ph-moon-stars', desc: '只在关键时刻说话，大部分时间安静陪你', frameMs: 30000, llmMs: 25000 },
-    moderate: { label: '偶尔说说', icon: 'ph ph-chat-circle-dots', desc: '适当评论有趣的画面，不会太吵', frameMs: 20000, llmMs: 15000 },
-    chatty: { label: '话唠模式', icon: 'ph ph-megaphone-simple', desc: '积极评论每个画面，停不下来的那种', frameMs: 10000, llmMs: 8000 },
+    quiet: { label: '安静陪看', icon: 'ph ph-moon-stars', desc: '基本不说话，只在很关键的时刻冒一句', frameMs: 30000, llmMs: 90000 },
+    moderate: { label: '偶尔说说', icon: 'ph ph-chat-circle-dots', desc: '隔一阵子聊两句，不会打扰你看', frameMs: 20000, llmMs: 75000 },
+    chatty: { label: '话唠模式', icon: 'ph ph-megaphone-simple', desc: '积极评论每个画面，停不下来的那种', frameMs: 10000, llmMs: 35000 },
 };
 
 function _buildWatchTabHtml() {

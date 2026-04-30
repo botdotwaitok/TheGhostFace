@@ -14,13 +14,13 @@ import { openShopApp } from './shop/shopApp.js';
 
 import { openTarotApp } from './tarot/tarotApp.js';
 import { openTreeApp } from './tree/treeApp.js';
-import { openConsoleApp, isConsoleEnabled } from './console/consoleApp.js';
+import { openConsoleApp } from './console/consoleApp.js';
 import { openCalendarApp } from './calendar/calendarApp.js';
 import { openVcApp } from './voiceCall/vcApp.js';
 import { openMusicApp } from './music/musicApp.js';
 import { openDndApp } from './dnd/dndApp.js';
 import { updateWidgets } from './widgets/homeWidgets.js';
-import { openHandbookApp, isHandbookEnabled } from './handbook/handbookApp.js';
+import { openHandbookApp } from './handbook/handbookApp.js';
 import { openDiscordApp } from './discord/discordApp.js';
 import { openLiteratureApp } from './literature/literatureApp.js';
 import { startAppUsage, stopAppUsage } from './utils/appUsageTracker.js';
@@ -376,26 +376,24 @@ export function initPhone() {
         onOpen: () => openLiteratureApp(),
     });
 
-    // ── 手账本 (HandBook) — gated by Settings toggle ──
-    if (isHandbookEnabled()) {
-        registerApp({
-            id: 'handbook',
-            name: '手账本',
-            icon: 'ph ph-notebook',
-            color: '#d4a76a',
-            glow: 'rgba(212, 167, 106, 0.4)',
+    // ── 手账本 (HandBook) ──
+    registerApp({
+        id: 'handbook',
+        name: '手账本',
+        icon: 'ph ph-notebook',
+        color: '#d4a76a',
+        glow: 'rgba(212, 167, 106, 0.4)',
         onOpen: () => {
-                // Close phone first, then open standalone window
-                closePhone();
-                setTimeout(() => {
-                    openHandbookApp();
-                    startAppUsage('handbook');
-                }, 150);
-            },
-        });
-    }
+            // Close phone first, then open standalone window
+            closePhone();
+            setTimeout(() => {
+                openHandbookApp();
+                startAppUsage('handbook');
+            }, 150);
+        },
+    });
 
-    // ── Console (调试) — always visible, but requires enable in Settings to function ──
+    // ── Console (调试) ──
     registerApp({
         id: 'console',
         name: 'Console',

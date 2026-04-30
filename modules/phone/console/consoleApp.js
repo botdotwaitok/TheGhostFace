@@ -9,7 +9,6 @@ import { openAppInViewport } from '../phoneController.js';
 // Constants & State
 // ═══════════════════════════════════════════════════════════════════════
 
-const STORAGE_KEY = 'gf_phone_console_enabled';
 const MAX_LOG_ENTRIES = 300;
 const PROMPT_PREVIEW_LENGTH = 200;
 const AUTO_REFRESH_INTERVAL = 1000; // ms
@@ -55,37 +54,20 @@ let _autoRefreshTimer = null;
 let _filterText = '';
 let _lastRenderedCount = -1; // track for smart refresh
 
-// ── Auto-install monkey-patch on module load if previously enabled ──
-if (isConsoleEnabled() && !_patchInstalled) {
-    setTimeout(() => installConsolePatch(), 0);
-}
+// ── Auto-install monkey-patch on module load ──
+setTimeout(() => installConsolePatch(), 0);
 
 // ═══════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Check if console app is enabled */
-export function isConsoleEnabled() {
-    return localStorage.getItem(STORAGE_KEY) === 'true';
-}
-
-/** Set console enabled state */
-export function setConsoleEnabled(enabled) {
-    localStorage.setItem(STORAGE_KEY, String(enabled));
-    if (enabled && !_patchInstalled) {
-        installConsolePatch();
-    }
-}
-
 /** Push an error/warn log entry (called by the monkey-patch) */
 export function pushErrorLog(message, level = 'error') {
-    if (!isConsoleEnabled()) return;
     _pushLog(_errorLogs, { time: new Date(), level, args: [message] });
 }
 
 /** Push a prompt log entry (called after building prompts) */
 export function pushPromptLog(label, systemPrompt, userPrompt) {
-    if (!isConsoleEnabled()) return;
     const entry = {
         time: new Date(),
         label: label || 'Chat Prompt',
@@ -99,22 +81,6 @@ export function pushPromptLog(label, systemPrompt, userPrompt) {
 
 /** Open the Console app UI */
 export function openConsoleApp() {
-    // If console is not enabled in Settings, show a disabled-state page
-    if (!isConsoleEnabled()) {
-        const disabledHtml = `
-        <div class="console-app" id="console_app_root" style="display:flex; align-items:center; justify-content:center; height:100%;">
-            <div style="text-align:center; padding:40px 20px; color:#8e8e93;">
-                <div style="font-size:48px; margin-bottom:16px; opacity:0.3;"><i class="ph ph-terminal"></i></div>
-                <div style="font-size:16px; font-weight:600; color:#1c1c1e; margin-bottom:8px;">Console 未启用</div>
-                <div style="font-size:14px; line-height:1.6;">
-                    请前往 <b>设置</b> → <b>开发者工具</b><br>打开 Console 调试工具开关
-                </div>
-            </div>
-        </div>`;
-        openAppInViewport('Console', disabledHtml, () => {});
-        return;
-    }
-
     // Ensure patches are installed whenever the app opens
     if (!_patchInstalled) installConsolePatch();
     if (!_fetchPatchInstalled) installFetchPatch();
@@ -144,9 +110,6 @@ function installConsolePatch() {
         // Always call original
         origFn(...args);
 
-        // Only capture if console is enabled
-        if (!isConsoleEnabled()) return;
-
         // Deep-clone args for storage (avoid holding references to large live objects)
         const clonedArgs = args.map(a => _safeClone(a));
 
@@ -174,7 +137,6 @@ function installConsolePatch() {
 
     // ─── Browser-level errors (404, script errors, etc.) ───
     window.addEventListener('error', (event) => {
-        if (!isConsoleEnabled()) return;
         let msg;
         if (event.target && (event.target.tagName === 'IMG' || event.target.tagName === 'SCRIPT' || event.target.tagName === 'LINK')) {
             const url = event.target.src || event.target.href || '(unknown)';
@@ -189,7 +151,6 @@ function installConsolePatch() {
     }, true);
 
     window.addEventListener('unhandledrejection', (event) => {
-        if (!isConsoleEnabled()) return;
         const reason = event.reason;
         const msg = `[Unhandled Promise] ${reason?.message || reason?.toString() || String(reason)}`;
         _pushLog(_errorLogs, { time: new Date(), level: 'error', args: [msg] });
@@ -211,10 +172,6 @@ function installFetchPatch() {
     const origFetch = window.fetch.bind(window);
 
     window.fetch = async function patchedFetch(input, init) {
-        if (!isConsoleEnabled()) {
-            return origFetch(input, init);
-        }
-
         const startTime = performance.now();
         const method = (init?.method || 'GET').toUpperCase();
         const url = typeof input === 'string' ? input : (input?.url || String(input));

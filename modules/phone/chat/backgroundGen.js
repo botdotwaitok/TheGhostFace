@@ -39,8 +39,9 @@ const LOG_PREFIX = '[后台生成]';
  * @param {string[]} messagesToSend - User messages that were sent
  * @param {Array} historyBeforeSend - Chat history BEFORE the user messages were appended
  * @param {string|null} [imageBase64=null] - Optional base64 data URL of an attached image
+ * @param {number|null} [idleMsSnapshot=null] - Pre-computed idle duration (ms) captured BEFORE saving new messages
  */
-export async function startBackgroundGeneration(messagesToSend, historyBeforeSend, imageBase64 = null) {
+export async function startBackgroundGeneration(messagesToSend, historyBeforeSend, imageBase64 = null, idleMsSnapshot = null) {
     _isGenerating = true;
     _error = null;
     _pendingResult = null;
@@ -50,7 +51,7 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
     let systemPrompt, userPrompt;
     try {
         systemPrompt = await buildChatSystemPrompt();
-        userPrompt = buildChatUserPrompt(messagesToSend, historyBeforeSend, undefined, !!imageBase64);
+        userPrompt = buildChatUserPrompt(messagesToSend, historyBeforeSend, undefined, !!imageBase64, idleMsSnapshot);
     } catch (promptErr) {
         console.error(`${LOG_PREFIX} Prompt building failed:`, promptErr);
         _error = promptErr.message || 'Prompt building failed';

@@ -4,28 +4,8 @@
 // and pushes the init package via BroadcastChannel.
 
 import { pushInitPackage } from './handbookBridge.js';
-import { getPhoneSetting, setPhoneSetting } from '../phoneSettings.js';
 
 const LOG = '[HandBook App]';
-
-// ═══════════════════════════════════════════════════════════════════════
-// Feature Gate
-// ═══════════════════════════════════════════════════════════════════════
-
-/**
- * Check if the handbook feature is enabled.
- * Default: false (user must enable in Settings)
- */
-export function isHandbookEnabled() {
-    return getPhoneSetting('handbookEnabled', false);
-}
-
-/**
- * Set the handbook feature enabled/disabled.
- */
-export function setHandbookEnabled(enabled) {
-    setPhoneSetting('handbookEnabled', enabled);
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // App Launcher

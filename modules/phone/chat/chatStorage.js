@@ -3,6 +3,7 @@
 
 import { getContext, saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata } from '../../../../../../../script.js';
+import { getRegexedString, regex_placement } from '../../../../../regex/engine.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { buildRollingSummarizePrompt } from './chatPromptBuilder.js';
 import { saveToWorldBook } from '../../worldbook.js';
@@ -18,13 +19,53 @@ const CHAT_LOG_PREFIX = '[聊天]';
 const MAX_HISTORY_MESSAGES = 500; // Raise cap — summarize handles compression
 
 // ─── Auto-summarize constants ───
-const SUMMARIZE_THRESHOLD = 500; // Trigger summarize when history reaches this
-const KEEP_RECENT = 30;          // Keep the most recent N messages unsummarized
+const SUMMARIZE_TOKEN_THRESHOLD = 40000; // Trigger when unsummarized tokens reach 10k
+const KEEP_RECENT = 60;                  // Keep the most recent N messages unsummarized
+
+// ─── ST main-chat injection ───
+// Cap the raw ST history token budget per call. Once auto-summarize fires,
+// older ST content is folded into the phone summary and the marker advances,
+// so the actual injected count stays well under this cap in steady state.
+const ST_HISTORY_TOKEN_LIMIT = 20000;
 
 // ─── chat_metadata keys ───
 const META_KEY_HISTORY = 'gf_phoneChatHistory';
 const META_KEY_SUMMARY = 'gf_phoneChatSummary';
 const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
+const META_KEY_ST_SYNC_MARKER = 'gf_phoneChatLastSTMarker'; // send_date of last ST msg absorbed into summary
+
+// ═══════════════════════════════════════════════════════════════════════
+// Token Estimation (CJK-aware)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Estimate token count for a string.
+ * CJK characters ≈ 1.5 tokens each, ASCII/Latin ≈ 0.25 tokens per char.
+ * @param {string} text
+ * @returns {number}
+ */
+function estimateTokenCount(text) {
+    if (!text) return 0;
+    let tokens = 0;
+    for (const char of text) {
+        tokens += char.charCodeAt(0) > 0x2E80 ? 1.5 : 0.25;
+    }
+    return Math.ceil(tokens);
+}
+
+/**
+ * Estimate total token count for an array of chat messages.
+ * @param {Array} messages - [{content, role, ...}]
+ * @returns {number}
+ */
+function estimateMessagesTokens(messages) {
+    let total = 0;
+    for (const msg of messages) {
+        total += estimateTokenCount(msg.content || '');
+        total += 10; // overhead: role label, timestamp, separators
+    }
+    return total;
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Character / User Info Helpers
@@ -147,11 +188,50 @@ export function clearPersistedPendingResult() {
 }
 
 /**
+ * Load the ST sync marker — send_date of the last ST main-chat message that
+ * was absorbed into the rolling phone summary.
+ * @returns {string} send_date string, or '' if not set
+ */
+export function loadSTSyncMarker() {
+    try {
+        return chat_metadata?.[META_KEY_ST_SYNC_MARKER] || '';
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Save the ST sync marker.
+ * @param {string} marker - send_date string of the last absorbed ST message
+ */
+export function saveSTSyncMarker(marker) {
+    try {
+        if (!chat_metadata) return;
+        if (marker) {
+            chat_metadata[META_KEY_ST_SYNC_MARKER] = marker;
+        } else {
+            delete chat_metadata[META_KEY_ST_SYNC_MARKER];
+        }
+        saveMetadataDebounced();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} ST sync marker save failed:`, e);
+    }
+}
+
+/**
+ * Reset the ST sync marker — next getSTChatHistory call will see all ST history again.
+ */
+export function clearSTSyncMarker() {
+    saveSTSyncMarker('');
+}
+
+/**
  * Clear all chat history for the current character.
  */
 export function clearChatHistory() {
     saveChatHistory([]);
-    saveChatSummary('');  // 同时清空滚动总结，避免残留旧上下文
+    saveChatSummary('');       // 同时清空滚动总结，避免残留旧上下文
+    clearSTSyncMarker();       // 重置 ST 同步进度，下次注入会重新吸收主线
 }
 
 /**
@@ -207,12 +287,26 @@ export function updateMessageByIndex(index, newContent) {
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Read the most recent messages from ST's main chat (the storyline).
- * This allows the phone chat LLM to know what's happening "offline".
- * @param {number} maxMessages - Maximum number of recent messages to fetch
- * @returns {Array<{role: string, content: string}>}
+ * Read recent messages from ST's main chat (the storyline).
+ * Each message is run through ST's regex engine with isPrompt=true so that
+ * the user's "promptOnly" filters (e.g. strip thinking/main body, keep summary)
+ * apply consistently with what the main LLM sees.
+ *
+ * Two-stage filter:
+ *   1. sinceMarker: drop everything up to and including the last ST message
+ *      that was already absorbed into the rolling phone summary
+ *   2. tokenLimit: walk from newest backwards, keep as many as fit
+ *
+ * Returned objects also carry `send_date` so callers (auto-summarize) can
+ * advance the marker after successfully folding content into the summary.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.sinceMarker=true] - If true, only return messages newer than the marker
+ * @param {number}  [opts.tokenLimit=ST_HISTORY_TOKEN_LIMIT] - Token budget cap; 0 disables
+ * @param {number}  [opts.maxMessages=0] - Optional hard message-count cap; 0 disables
+ * @returns {Array<{role: string, content: string, send_date: string}>}
  */
-export function getSTChatHistory(maxMessages = 0) {
+export function getSTChatHistory({ sinceMarker = true, tokenLimit = ST_HISTORY_TOKEN_LIMIT, maxMessages = 0 } = {}) {
     try {
         const context = getContext();
         const stChat = context.chat;
@@ -221,27 +315,56 @@ export function getSTChatHistory(maxMessages = 0) {
             return [];
         }
 
-        // Filter to user + character messages only (skip system, narrator, etc.)
-        let filtered = stChat
-            .filter(msg => {
-                if (!msg || typeof msg.mes !== 'string' || msg.mes.trim() === '') return false;
-                // Skip system messages / hidden / etc.
-                if (msg.is_system) return false;
-                return true;
+        const total = stChat.length;
+        const candidates = [];
+        for (let i = 0; i < total; i++) {
+            const msg = stChat[i];
+            if (!msg || typeof msg.mes !== 'string' || msg.mes.trim() === '') continue;
+            if (msg.is_system) continue;
+            const depth = total - 1 - i;
+            const placement = msg.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+            const processed = getRegexedString(msg.mes, placement, { isPrompt: true, depth });
+            if (!processed || processed.trim() === '') continue;
+            candidates.push({
+                role: msg.is_user ? 'user' : 'char',
+                content: processed,
+                send_date: msg.send_date || '',
             });
-
-        // Only slice if a limit is specified
-        if (maxMessages > 0) {
-            filtered = filtered.slice(-maxMessages);
         }
 
-        filtered = filtered.map(msg => ({
-                role: msg.is_user ? 'user' : 'char',
-                content: msg.mes,
-            }));
+        let working = candidates;
 
-        console.log(`${CHAT_LOG_PREFIX} Fetched ${filtered.length} messages from ST main chat`);
-        return filtered;
+        // Stage 1: drop messages up to and including the marker.
+        // If marker is set but the corresponding message has been deleted,
+        // findIndex returns -1 → we silently fall back to "everything",
+        // which is the safe behavior (snapshot was lost, re-absorb fresh).
+        if (sinceMarker) {
+            const marker = loadSTSyncMarker();
+            if (marker) {
+                const idx = working.findIndex(c => c.send_date === marker);
+                if (idx >= 0) working = working.slice(idx + 1);
+            }
+        }
+
+        // Stage 2: token budget — keep the newest messages that fit.
+        if (tokenLimit > 0 && working.length > 0) {
+            let acc = 0;
+            let cutIdx = 0;
+            for (let i = working.length - 1; i >= 0; i--) {
+                const cost = estimateTokenCount(working[i].content) + 10;
+                if (acc + cost > tokenLimit) {
+                    cutIdx = i + 1;
+                    break;
+                }
+                acc += cost;
+            }
+            working = working.slice(cutIdx);
+        }
+
+        if (maxMessages > 0) working = working.slice(-maxMessages);
+
+        console.log(`${CHAT_LOG_PREFIX} Fetched ${working.length} ST messages (sinceMarker=${sinceMarker}, tokenLimit=${tokenLimit})`);
+        return working;
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} Failed to read ST main chat:`, e);
         return [];
@@ -325,11 +448,11 @@ export async function sendRawTranscriptAsUserMessage(history) {
     }).join('\n');
 
     const messageText = `<恶灵QR>[手机聊天记录同步 — 原文]
-${userName}刚才在外出期间通过手机短信和${charName}进行了一段聊天。以下是完整的手机聊天记录原文：
+在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天记录原文：
 
 ${transcript}
 
-${userName}现在已经回到了${charName}身边。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
+${userName}现在已经和${charName}结束了异地。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
 
     try {
         const textarea = document.getElementById('send_textarea');
@@ -399,6 +522,19 @@ export function saveChatSummary(summaryText) {
 
 let _isSummarizing = false; // Guard against concurrent runs
 
+/** Show a brief toast in the chat UI (non-blocking, auto-dismiss) */
+function _showSummarizeToast(text, durationMs = 3000) {
+    const root = document.getElementById('chat_page_root');
+    if (!root) return; // User not in chat app
+    const existing = root.querySelector('.chat-summarize-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'chat-toast chat-summarize-toast';
+    toast.textContent = text;
+    root.appendChild(toast);
+    setTimeout(() => toast.remove(), durationMs);
+}
+
 /**
  * Check if auto-summarize should trigger, and if so, run it.
  * Called after every saveChatHistory in sendAllMessages.
@@ -412,12 +548,14 @@ export async function maybeAutoSummarize() {
 
     const history = loadChatHistory();
 
-    // Only unsummarized messages count toward the threshold
+    // Estimate tokens of unsummarized messages
     const unsummarized = history.filter(m => !m.summarized);
-    if (unsummarized.length < SUMMARIZE_THRESHOLD) return;
+    const unsummarizedTokens = estimateMessagesTokens(unsummarized);
+    if (unsummarizedTokens < SUMMARIZE_TOKEN_THRESHOLD) return;
 
     _isSummarizing = true;
-    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条未总结消息 (阈值 ${SUMMARIZE_THRESHOLD})`);
+    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条消息, ~${unsummarizedTokens} tokens (阈值 ${SUMMARIZE_TOKEN_THRESHOLD})`);
+    _showSummarizeToast('正在压缩聊天记录…');
 
     try {
         // ─── Determine slice to summarize ───
@@ -471,6 +609,8 @@ export async function maybeAutoSummarize() {
         }
 
         // ─── Step 2: Rolling summary via LLM ───
+        // Also fold in the ST main-chat increment so future prompts can stop
+        // re-injecting raw ST history every turn.
         try {
             const existingSummary = loadChatSummary();
 
@@ -479,11 +619,23 @@ export async function maybeAutoSummarize() {
                 return `${role}: ${msg.content}`;
             }).join('\n');
 
+            // Snapshot ST increment BEFORE the LLM call. Any ST messages that
+            // arrive during the call will be picked up next round (marker only
+            // advances to this snapshot's tail, not to "current end of chat").
+            const stIncrement = getSTChatHistory({ sinceMarker: true, tokenLimit: ST_HISTORY_TOKEN_LIMIT });
+            const stTranscript = stIncrement.length > 0
+                ? stIncrement.map(m => `${m.role === 'user' ? userName : charName}: ${m.content}`).join('\n')
+                : '';
+
             const summarySystemPrompt = buildRollingSummarizePrompt();
 
-            let summaryUserPrompt = '';
-            if (existingSummary) {
+            let summaryUserPrompt;
+            if (existingSummary && stTranscript) {
+                summaryUserPrompt = `旧总结：\n${existingSummary}\n\n新的手机聊天记录：\n${transcript}\n\n相关的主线背景片段（线下互动，请作为环境信息纳入）：\n${stTranscript}\n\n请合并为一份完整的总结。`;
+            } else if (existingSummary) {
                 summaryUserPrompt = `旧总结：\n${existingSummary}\n\n新的聊天记录：\n${transcript}\n\n请合并为一份完整的总结。`;
+            } else if (stTranscript) {
+                summaryUserPrompt = `手机聊天记录：\n${transcript}\n\n相关的主线背景片段（线下互动，请作为环境信息纳入）：\n${stTranscript}\n\n请生成一份完整的总结。`;
             } else {
                 summaryUserPrompt = `聊天记录：\n${transcript}\n\n请生成总结。`;
             }
@@ -492,7 +644,17 @@ export async function maybeAutoSummarize() {
 
             if (newSummary && newSummary.trim()) {
                 saveChatSummary(newSummary.trim());
-                console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummary.trim().length} 字)`);
+
+                // Advance marker only after a successful summary. Walk from end
+                // to grab the newest non-empty send_date — defensively skips
+                // any (rare) message lacking the field.
+                let newMarker = '';
+                for (let i = stIncrement.length - 1; i >= 0; i--) {
+                    if (stIncrement[i].send_date) { newMarker = stIncrement[i].send_date; break; }
+                }
+                if (newMarker) saveSTSyncMarker(newMarker);
+
+                console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummary.trim().length} 字), ST marker → ${newMarker || '(unchanged)'}`);
             }
         } catch (e) {
             console.error(`${CHAT_LOG_PREFIX} ❌ 滚动总结生成失败:`, e);
@@ -513,9 +675,11 @@ export async function maybeAutoSummarize() {
         }
         saveChatHistory(freshHistory);
         console.log(`${CHAT_LOG_PREFIX} ✅ 已标记 ${markedCount} 条消息为已总结`);
+        _showSummarizeToast('聊天记录已压缩');
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} ❌ 自动总结流程失败:`, error);
+        _showSummarizeToast('记录压缩失败');
     } finally {
         _isSummarizing = false;
     }

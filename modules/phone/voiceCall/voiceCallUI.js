@@ -40,6 +40,25 @@ let _greetingText = '';           // Pre-generated greeting text
 // Template & Mounting
 // ═══════════════════════════════════════════════════════════════════════
 
+const callControlsHtml = String.raw`
+    <button class="voice-control-btn mic" id="voice_call_mic_btn">
+        <i class="fa-solid fa-microphone"></i>
+    </button>
+    <button class="voice-control-btn keyboard" id="voice_call_keyboard_btn" title="文字输入">
+        <i class="ph ph-keyboard"></i>
+    </button>
+    <button class="voice-control-btn hangup" id="voice_call_hangup_btn">
+        <i class="fa-solid fa-phone-slash"></i>
+    </button>`;
+
+const textInputBarHtml = String.raw`
+<div class="voice-text-input-bar" id="voice_text_input_bar">
+    <textarea id="voice_text_input" class="voice-text-input" placeholder="想说什么..." rows="1" maxlength="500"></textarea>
+    <button class="voice-text-input-close" id="voice_text_input_close" title="关闭">
+        <i class="ph ph-x"></i>
+    </button>
+</div>`;
+
 const voiceCallTemplate = String.raw`
 <div id="phone_voice_call_overlay" class="phone-voice-call-overlay">
     <div class="voice-call-bg" id="voice_call_bg"></div>
@@ -55,12 +74,7 @@ const voiceCallTemplate = String.raw`
         </div>
 
         <div class="voice-call-controls">
-            <button class="voice-control-btn mic" id="voice_call_mic_btn">
-                <i class="fa-solid fa-microphone"></i>
-            </button>
-            <button class="voice-control-btn hangup" id="voice_call_hangup_btn">
-                <i class="fa-solid fa-phone-slash"></i>
-            </button>
+            ${callControlsHtml}
         </div>
     </div>
 </div>`;
@@ -190,12 +204,7 @@ function _transitionToActiveCall() {
         </div>
 
         <div class="voice-call-controls">
-            <button class="voice-control-btn mic" id="voice_call_mic_btn">
-                <i class="fa-solid fa-microphone"></i>
-            </button>
-            <button class="voice-control-btn hangup" id="voice_call_hangup_btn">
-                <i class="fa-solid fa-phone-slash"></i>
-            </button>
+            ${callControlsHtml}
         </div>
     </div>`;
 
@@ -546,9 +555,14 @@ function _initDOM() {
 function _bindEvents() {
     const hangupBtn = document.getElementById('voice_call_hangup_btn');
     const micBtn = document.getElementById('voice_call_mic_btn');
+    const keyboardBtn = document.getElementById('voice_call_keyboard_btn');
 
     if (hangupBtn) {
         hangupBtn.onclick = () => _showHangupConfirmation();
+    }
+
+    if (keyboardBtn) {
+        keyboardBtn.onclick = () => _showTextInput();
     }
 
     if (micBtn) {
@@ -576,6 +590,92 @@ function _bindEvents() {
     _sttEngine.onInterim = _onSttInterim;
     _sttEngine.onTranscript = _onSttTranscript;
     _sttEngine.onStateChange = _onSttStateChange;
+}
+
+// ─── Text Input Bar ───
+
+let _textInputPrevMuted = false; // mic state before input bar opened
+
+function _showTextInput() {
+    const overlay = document.getElementById('phone_voice_call_overlay');
+    if (!overlay) return;
+    if (document.getElementById('voice_text_input_bar')) return; // already open
+
+    // Remember mic state, then mute STT while typing
+    const micBtn = document.getElementById('voice_call_mic_btn');
+    _textInputPrevMuted = micBtn?.classList.contains('muted') || false;
+    if (!_textInputPrevMuted) {
+        if (_sttEngine && _sttEngine.state === 'listening') {
+            _sttEngine.stopListening();
+        }
+        if (micBtn) {
+            micBtn.classList.add('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
+        }
+    }
+
+    const content = overlay.querySelector('.voice-call-content');
+    if (!content) return;
+    content.insertAdjacentHTML('beforeend', textInputBarHtml);
+    overlay.classList.add('text-input-active');
+
+    const ta = document.getElementById('voice_text_input');
+    const closeBtn = document.getElementById('voice_text_input_close');
+
+    if (ta) {
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.isComposing) {
+                e.preventDefault();
+                const text = ta.value.trim();
+                if (text) {
+                    _handleTextSubmit(text);
+                    ta.value = '';
+                }
+            }
+        });
+        setTimeout(() => ta.focus(), 50);
+    }
+
+    if (closeBtn) {
+        closeBtn.onclick = () => _hideTextInput();
+    }
+
+    _scrollToBottom();
+}
+
+function _hideTextInput() {
+    const bar = document.getElementById('voice_text_input_bar');
+    if (bar) bar.remove();
+    const overlay = document.getElementById('phone_voice_call_overlay');
+    if (overlay) overlay.classList.remove('text-input-active');
+
+    // Restore mic UI and STT if user wasn't manually muted before
+    if (!_textInputPrevMuted) {
+        const micBtn = document.getElementById('voice_call_mic_btn');
+        if (micBtn) {
+            micBtn.classList.remove('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+        }
+        _restartSttAfterTts();
+    }
+}
+
+function _handleTextSubmit(text) {
+    if (!text) return;
+    const subs = document.getElementById('voice_call_subtitles');
+    if (subs) {
+        subs.insertAdjacentHTML('beforeend',
+            `<div class="voice-subtitle-bubble user">${escapeHtml(text)}</div>`);
+        _scrollToBottom();
+    }
+
+    _callMessages.push({
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString(),
+    });
+
+    _sendToLLM(text);
 }
 
 // ─── Hangup Confirmation ───
@@ -616,13 +716,7 @@ function _hideHangupConfirmation() {
     if (!controls || !controls.classList.contains('confirming')) return;
 
     controls.classList.remove('confirming');
-    controls.innerHTML = `
-        <button class="voice-control-btn mic" id="voice_call_mic_btn">
-            <i class="fa-solid fa-microphone"></i>
-        </button>
-        <button class="voice-control-btn hangup" id="voice_call_hangup_btn">
-            <i class="fa-solid fa-phone-slash"></i>
-        </button>`;
+    controls.innerHTML = callControlsHtml;
 
     // Re-bind events on restored buttons
     _bindEvents();

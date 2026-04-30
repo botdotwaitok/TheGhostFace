@@ -64,16 +64,22 @@ export function getPhoneIdleDuration() {
 /**
  * Convert milliseconds to a human-readable Chinese string.
  * @param {number} ms
- * @returns {string} e.g. "3分钟", "1小时20分钟", "8小时"
+ * @returns {string} e.g. "3分钟", "1小时20分钟", "8小时", "1天3小时", "2天"
  */
 export function humanizeMs(ms) {
     const totalMinutes = Math.floor(ms / 60000);
     if (totalMinutes < 1) return '不到1分钟';
     if (totalMinutes < 60) return `${totalMinutes}分钟`;
-    const hours = Math.floor(totalMinutes / 60);
+    const totalHours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
-    if (mins === 0) return `${hours}小时`;
-    return `${hours}小时${mins}分钟`;
+    if (totalHours < 24) {
+        if (mins === 0) return `${totalHours}小时`;
+        return `${totalHours}小时${mins}分钟`;
+    }
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (hours === 0) return `${days}天`;
+    return `${days}天${hours}小时`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

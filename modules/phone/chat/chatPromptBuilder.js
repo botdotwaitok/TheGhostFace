@@ -3,7 +3,6 @@
 // Integrates Entity/恶灵 worldview from "恶灵低语(短信版)" preset.
 
 import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary } from './chatStorage.js';
-import { useMomentCustomApi, customApiConfig } from '../../api.js';
 import { getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { getActiveChatEffects, getActivePersonalityOverrides, getActiveSpecialMessageEffects, getActivePrankEffects, getActiveRobBuffs } from '../shop/shopStorage.js';
 import { getShopItem, resolveItemPrompt } from '../shop/shopData.js';
@@ -710,68 +709,79 @@ export function buildRollingSummarizePrompt() {
  * Now includes recent ST main chat storyline for context continuity.
  * @param {string[]} pendingMessages - Array of user's pending message strings
  * @param {Array} history - Recent chat history (from chatStorage)
- * @param {number} maxHistoryPairs - How many recent message pairs to include
  * @param {boolean} imageAttached - Whether the user is attaching an image (multimodal)
+ * @param {number|null} [idleMsOverride=null] - Pre-computed idle duration (ms); bypasses getPhoneIdleDuration() to avoid reading already-saved messages
  * @returns {string}
  */
-export function buildChatUserPrompt(pendingMessages, history = [], maxHistoryPairs = 15, imageAttached = false) {
+export function buildChatUserPrompt(pendingMessages, history = [], _unused, imageAttached = false, idleMsOverride = null) {
     const parts = [];
     const charName = getCharacterInfo()?.name || '角色';
 
+    // Compact timestamp formatter: [MM-DD HH:MM]; returns '' for invalid input.
+    const formatTs = (raw) => {
+        if (!raw) return '';
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return '';
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mi = String(d.getMinutes()).padStart(2, '0');
+        return `[${mm}-${dd} ${hh}:${mi}]`;
+    };
+
     // ─── ST Main Chat Storyline Context ───
-    // Only inject when using custom API. When using ST's built-in generateRaw,
-    // Generate() already includes the full ST chat history in the assembled prompt.
-    // Injecting it again would DOUBLE the token count (30k × 2 = 60k).
-    const isUsingCustomApi = useMomentCustomApi && customApiConfig?.url && customApiConfig?.model;
-    if (isUsingCustomApi) {
-        try {
-            const stHistory = getSTChatHistory();
-            if (stHistory.length > 0) {
-                const stLines = stHistory.map(msg => {
-                    const role = msg.role === 'user' ? getUserName() : charName;
-                    // Strip moments commands from storyline context to save tokens
-                    const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
-                    return `${role}: ${cleanContent}`;
-                });
-                parts.push(`<storyline_context>
+    // generateRaw() does NOT auto-include ST chat history; it only uses the prompt
+    // we pass in. So inject regardless of API path.
+    try {
+        const stHistory = getSTChatHistory();
+        if (stHistory.length > 0) {
+            const stLines = stHistory.map(msg => {
+                const role = msg.role === 'user' ? getUserName() : charName;
+                const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
+                const ts = formatTs(msg.send_date);
+                return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}`;
+            });
+            parts.push(`<storyline_context>
 以下是${getUserName()}和${charName}最近在线下（非短信）的互动片段。
 ${charName}清楚这些事情已经发生过，可以自然地引用或延续这些话题。
-不需要复述这些内容，只是让你知道当前的剧情背景。
+不需要复述这些内容，只是让你知道当前的剧情背景。这其中可能会包含一些meta data，无视即可。
+每行开头的 [MM-DD HH:MM] 表示该消息的发送时间。
 
 ${stLines.join('\n')}
 </storyline_context>`);
-            }
-        } catch (e) {
-            console.warn('[聊天] Failed to fetch ST chat history:', e);
         }
+    } catch (e) {
+        console.warn('[聊天] Failed to fetch ST chat history:', e);
     }
 
     // ─── Rolling Chat Summary (from auto-summarize) ───
     const chatSummary = loadChatSummary();
     if (chatSummary) {
-        parts.push(`<chat_summary>\n以下是之前手机聊天的滚动总结，${charName}记得这些内容：\n${chatSummary}\n</chat_summary>`);
+        parts.push(`<chat_summary>\n以下是之前手机聊天的总结：\n${chatSummary}\n</chat_summary>`);
     }
 
     // ─── Phone Chat History (排除已总结的消息) ───
+    // All unsummarized messages are included — auto-summarize handles compression.
     if (history.length > 0) {
         const activeHistory = history.filter(msg => !msg.summarized);
-        const recentHistory = activeHistory.slice(-maxHistoryPairs * 2);
-        const historyLines = recentHistory.map(msg => {
+        const historyLines = activeHistory.map(msg => {
             const role = msg.role === 'user' ? getUserName() : charName;
             // Strip moments commands from chat history to save tokens
             const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
-            return `${role}: ${cleanContent}`;
+            const ts = formatTs(msg.timestamp);
+            return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}`;
         });
 
         if (historyLines.length > 0) {
-            parts.push(`<chat_history>\n${historyLines.join('\n')}\n</chat_history>`);
+            parts.push(`<chat_history>\n每行开头的 [MM-DD HH:MM] 表示该条短信的发送时间。\n${historyLines.join('\n')}\n</chat_history>`);
         }
     }
 
     // ─── Time Context (时间感知) ───
     try {
-        const hour = new Date().getHours();
-        const minute = new Date().getMinutes();
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
         let timeOfDay;
         if (hour >= 5 && hour < 9) timeOfDay = 'early morning';
         else if (hour >= 9 && hour < 12) timeOfDay = 'morning';
@@ -780,12 +790,38 @@ ${stLines.join('\n')}
         else if (hour >= 18 && hour < 22) timeOfDay = 'evening';
         else timeOfDay = 'late night';
 
-        const idleMs = getPhoneIdleDuration();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const weekday = weekdays[now.getDay()];
+
+        // Use override if provided (caller snapshots idle BEFORE saving new user messages)
+        const idleMs = idleMsOverride != null ? idleMsOverride : getPhoneIdleDuration();
         const idleStr = isFinite(idleMs) ? humanizeMs(idleMs) : null;
 
-        let timeBlock = `<time_context>\nCurrent time: ${hour}:${String(minute).padStart(2, '0')} (${timeOfDay})`;
+        let timeBlock = `<time_context>\nCurrent date: ${dateStr} (${weekday})\nCurrent time: ${hour}:${String(minute).padStart(2, '0')} (${timeOfDay})`;
         if (idleStr) {
-            timeBlock += `\nTime since ${getUserName()}'s last message: ${idleStr}`;
+            // Compute the timestamp of the last user message and flag day-rollover
+            let lastMsgInfo = '';
+            if (isFinite(idleMs)) {
+                const lastMsgTime = new Date(now.getTime() - idleMs);
+                const lastDateStr = `${lastMsgTime.getFullYear()}-${String(lastMsgTime.getMonth() + 1).padStart(2, '0')}-${String(lastMsgTime.getDate()).padStart(2, '0')}`;
+                const lastTimeStr = `${lastMsgTime.getHours()}:${String(lastMsgTime.getMinutes()).padStart(2, '0')}`;
+                if (lastDateStr === dateStr) {
+                    lastMsgInfo = ` (today ${lastTimeStr})`;
+                } else {
+                    // Calendar-day delta (ignoring time of day) so "23:00 → 01:00" reads as 跨日, not "same day"
+                    const dayMs = 24 * 60 * 60 * 1000;
+                    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    const startOfLast = new Date(lastMsgTime.getFullYear(), lastMsgTime.getMonth(), lastMsgTime.getDate()).getTime();
+                    const dayDiff = Math.round((startOfToday - startOfLast) / dayMs);
+                    let dayLabel;
+                    if (dayDiff === 1) dayLabel = 'yesterday';
+                    else if (dayDiff === 2) dayLabel = 'the day before yesterday';
+                    else dayLabel = `${dayDiff} days ago`;
+                    lastMsgInfo = ` (${dayLabel} ${lastTimeStr} → today ${hour}:${String(minute).padStart(2, '0')}, crosses ${dayDiff} day${dayDiff > 1 ? 's' : ''})`;
+                }
+            }
+            timeBlock += `\nTime since ${getUserName()}'s last message: ${idleStr}${lastMsgInfo}`;
         }
         timeBlock += `\n</time_context>`;
         parts.push(timeBlock);
@@ -795,10 +831,11 @@ ${stLines.join('\n')}
 
     // ─── Current User Messages ───
     const userMsgs = pendingMessages.map(m => m.trim()).filter(Boolean);
+    const nowTs = formatTs(new Date());
     if (userMsgs.length === 1) {
-        parts.push(`${getUserName()}发来短信：\n${userMsgs[0]}`);
+        parts.push(`${getUserName()}发来短信 ${nowTs}：\n${userMsgs[0]}`);
     } else {
-        parts.push(`${getUserName()}连续发来了${userMsgs.length}条短信：\n${userMsgs.map((m, i) => `${i + 1}. ${m}`).join('\n')}`);
+        parts.push(`${getUserName()}连续发来了${userMsgs.length}条短信 ${nowTs}：\n${userMsgs.map((m, i) => `${i + 1}. ${m}`).join('\n')}`);
     }
 
     // ─── Image Attachment Note ───
