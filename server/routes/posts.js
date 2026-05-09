@@ -10,7 +10,7 @@ const router = express.Router();
 // Body: { authorId, authorName, authorAvatar?, content, imageUrl? }
 router.post('/', (req, res) => {
     try {
-        const { authorId, authorName, authorAvatar, content, imageUrl } = req.body;
+        const { authorId, authorName, authorAvatar, content, imageUrl, isCharacterPost } = req.body;
         if (!authorId || !content || !content.trim()) {
             return res.status(400).json({ error: 'authorId and content are required' });
         }
@@ -26,9 +26,9 @@ router.post('/', (req, res) => {
 
         const postId = uuidv4();
         db.prepare(`
-            INSERT INTO posts (id, authorId, authorName, authorAvatar, content, imageUrl)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(postId, authorId, authorName || 'Anonymous', authorAvatar || '', content.trim(), imageUrl || '');
+            INSERT INTO posts (id, authorId, authorName, authorAvatar, content, imageUrl, isCharacterPost)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(postId, authorId, authorName || 'Anonymous', authorAvatar || '', content.trim(), imageUrl || '', isCharacterPost ? 1 : 0);
 
         const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(postId);
         res.status(201).json({ ok: true, post });
@@ -200,7 +200,7 @@ router.get('/:postId', (req, res) => {
 // Body: { authorId, authorName, content, replyToId?, replyToName? }
 router.post('/:postId/comments', (req, res) => {
     try {
-        const { authorId, authorName, content, replyToId, replyToName } = req.body;
+        const { authorId, authorName, content, replyToId, replyToName, isCharacterPost } = req.body;
         if (!authorId || !content || !content.trim()) {
             return res.status(400).json({ error: 'authorId and content are required' });
         }
@@ -213,10 +213,10 @@ router.post('/:postId/comments', (req, res) => {
 
         const commentId = uuidv4();
         db.prepare(`
-            INSERT INTO comments (id, postId, authorId, authorName, content, replyToId, replyToName)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO comments (id, postId, authorId, authorName, content, replyToId, replyToName, isCharacterPost)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(commentId, req.params.postId, authorId, authorName || 'Anonymous',
-            content.trim(), replyToId || null, replyToName || null);
+            content.trim(), replyToId || null, replyToName || null, isCharacterPost ? 1 : 0);
 
         const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(commentId);
         res.status(201).json({ ok: true, comment });

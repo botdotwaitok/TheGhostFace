@@ -6,7 +6,7 @@ import { getSettings, getFeedCache, setFeedCache } from './state.js';
 import { saveSettings } from './settings.js';
 import { getNotificationType, addNotification } from './notifications.js';
 import { getContext } from '../../../../../../extensions.js';
-import { getUserNameFallback } from './momentsHelpers.js';
+import { getUserNameFallback, isCharacterAuthor } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Avatar Cache System (IndexedDB)
@@ -138,10 +138,9 @@ export function createLocalPost(content, authorName = null, authorAvatar = null,
     let finalAuthorId = settings.userId || 'guest';
     let finalAuthorUsername = settings.username || '';
     const myName = settings.displayName || 'Anonymous';
-    const myCamoName = settings.customUserName || '';
-    const stUserName = getUserNameFallback();
+    const isCharPost = isCharacterAuthor(authorName, settings);
 
-    if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
+    if (isCharPost) {
         finalAuthorId = _getLocalCharAuthorId();
         finalAuthorUsername = authorName;
     }
@@ -154,6 +153,7 @@ export function createLocalPost(content, authorName = null, authorAvatar = null,
         authorAvatar: authorAvatar || settings.avatarUrl || '',
         content,
         imageUrl: imageUrl || null,
+        isCharacterPost: isCharPost,
         createdAt: new Date().toISOString(),
         likeCount: 0,
         likedByMe: false,
@@ -226,10 +226,9 @@ export function addLocalComment(postId, content, authorName = null, replyToId = 
     let finalAuthorId = settings.userId || 'guest';
     let finalAuthorUsername = settings.username || '';
     const myName = settings.displayName || 'Anonymous';
-    const myCamoName = settings.customUserName || '';
-    const stUserName = getUserNameFallback();
+    const isCharComment = isCharacterAuthor(authorName, settings);
 
-    if (authorName && authorName !== myName && authorName !== myCamoName && authorName !== stUserName) {
+    if (isCharComment) {
         finalAuthorId = _getLocalCharAuthorId();
         finalAuthorUsername = authorName;
     }
@@ -244,6 +243,7 @@ export function addLocalComment(postId, content, authorName = null, replyToId = 
         content,
         replyToId: replyToId || null,
         replyToName: replyToName || null,
+        isCharacterPost: isCharComment,
         createdAt: new Date().toISOString(),
     };
     post.comments.push(comment);

@@ -51,6 +51,21 @@ export function getUserNameFallback() {
 export const getUserName = getUserNameFallback;
 
 /**
+ * Decide whether a given authorName indicates a character speaking
+ * rather than the local user. Uses the same heuristic as createLocalPost:
+ * if the name doesn't match any of the user's known names (displayName,
+ * customUserName, ST name1), treat it as a character.
+ */
+export function isCharacterAuthor(authorName, settings) {
+    if (!authorName) return false;
+    const s = settings || getSettings();
+    const myName = s.displayName || 'Anonymous';
+    const myCamoName = s.customUserName || '';
+    const stUserName = getUserNameFallback();
+    return authorName !== myName && authorName !== myCamoName && authorName !== stUserName;
+}
+
+/**
  * Get the current character's name, with fallback.
  * Previously in: notifications.js
  */

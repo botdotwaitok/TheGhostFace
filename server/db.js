@@ -72,6 +72,20 @@ function migrations() {
             db.prepare("ALTER TABLE users ADD COLUMN pinnedContent TEXT DEFAULT '[]'").run();
         }
 
+        // Character-post marker on posts/comments. Lets the client suppress the
+        // (@handle) suffix on posts authored by a character, since the JOIN-derived
+        // handle is just the controlling user's account and is visual noise there.
+        const postsCols = db.pragma('table_info(posts)').map(c => c.name);
+        if (!postsCols.includes('isCharacterPost')) {
+            console.log('[DB] Migrating: Adding isCharacterPost to posts');
+            db.prepare("ALTER TABLE posts ADD COLUMN isCharacterPost INTEGER NOT NULL DEFAULT 0").run();
+        }
+        const commentsCols = db.pragma('table_info(comments)').map(c => c.name);
+        if (!commentsCols.includes('isCharacterPost')) {
+            console.log('[DB] Migrating: Adding isCharacterPost to comments');
+            db.prepare("ALTER TABLE comments ADD COLUMN isCharacterPost INTEGER NOT NULL DEFAULT 0").run();
+        }
+
     } catch (err) {
         console.error('[DB] Migration failed:', err);
     }
@@ -115,6 +129,7 @@ function initTables() {
             authorAvatar TEXT DEFAULT '',
             content     TEXT NOT NULL,
             imageUrl    TEXT DEFAULT '',
+            isCharacterPost INTEGER NOT NULL DEFAULT 0,
             createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (authorId) REFERENCES users(id)
         );
@@ -127,6 +142,7 @@ function initTables() {
             content     TEXT NOT NULL,
             replyToId   TEXT DEFAULT NULL,
             replyToName TEXT DEFAULT NULL,
+            isCharacterPost INTEGER NOT NULL DEFAULT 0,
             createdAt   TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (postId)  REFERENCES posts(id) ON DELETE CASCADE,
             FOREIGN KEY (authorId) REFERENCES users(id)

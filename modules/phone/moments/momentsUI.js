@@ -515,6 +515,30 @@ function parseMediaTags(text) {
     return parsedText;
 }
 
+// Decide whether to render the (@handle) suffix for a post or comment author.
+// Goal: only show the @handle for human user posts; hide it on any character
+// post (a character has no real handle — the JOIN-derived value is just the
+// controlling user's account, which is visual noise).
+//
+// Primary signal: server-provided `isCharacterPost` (truthy → hide).
+// Heuristic fallback for legacy rows where the server-side column is still 0:
+//   - char_xxx authorId (local drafts)
+//   - authorId belongs to me but authorName isn't any of my user names
+function _shouldShowAuthorHandle(item, s) {
+    if (!item.authorUsername) return false;
+    if (item.isCharacterPost) return false;
+    if (item.authorUsername === item.authorName) return false;
+    if (String(item.authorId || '').startsWith('char_')) return false;
+    if (s.userId && item.authorId === s.userId) {
+        const myDisplay = s.displayName;
+        const myCamo = s.customUserName;
+        if (item.authorName !== myDisplay && item.authorName !== myCamo) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function renderPostCard(post) {
     const timeStr = formatTime(post.createdAt);
 
@@ -546,7 +570,7 @@ function renderPostCard(post) {
                 <div class="moments-post-header">
                     <span class="moments-post-author">
                         ${escapeHtml(getUIDisplayName(post.authorName) || 'Anonymous')}
-                        ${post.authorUsername ? `<span class="moments-post-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(post.authorUsername)})</span>` : ''}
+                        ${_shouldShowAuthorHandle(post, s) ? `<span class="moments-post-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(post.authorUsername)})</span>` : ''}
                     </span>
                     ${draftBadge}
                 </div>
@@ -714,7 +738,7 @@ async function loadCommentsForPost(postId) {
             <div class="moments-comment-item" data-comment-id="${c.id}" data-author-name="${escapeHtml(c.authorName)}" data-author-id="${c.authorId}" data-can-delete="${canDelete ? '1' : '0'}">
                 <span class="moments-comment-author">
                     ${escapeHtml(authorUIDisplay)}
-                    ${c.authorUsername ? `<span class="moments-comment-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(c.authorUsername)})</span>` : ''}
+                    ${_shouldShowAuthorHandle(c, s) ? `<span class="moments-comment-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(c.authorUsername)})</span>` : ''}
                 </span>
                 <span class="moments-comment-text">${replyPrefix}${parseMediaTags(escapeHtml(c.content))}</span>
             </div>

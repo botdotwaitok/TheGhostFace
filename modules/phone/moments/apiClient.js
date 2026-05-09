@@ -5,6 +5,7 @@ import { MOMENTS_LOG_PREFIX, logMoments } from './constants.js';
 import { getSettings, getFeedCache, setFeedCache } from './state.js';
 import { updateSettings } from './settings.js';
 import { avatarCache, saveLocalFeed, createLocalPost, addLocalComment, sortFeedCache } from './persistence.js';
+import { isCharacterAuthor } from './momentsHelpers.js';
 import { resolveProxyUrl, needsProxy } from '../utils/corsProxyFetch.js';
 
 // Fields the server is allowed to push into local settings.
@@ -267,6 +268,7 @@ export async function createPost(content, authorName = null, authorAvatar = null
                 authorAvatar: authorAvatar || settings.avatarUrl || '',
                 content,
                 imageUrl,
+                isCharacterPost: isCharacterAuthor(authorName, settings),
             });
             if (result && result.post) {
                 const feedCache = getFeedCache();
@@ -318,8 +320,9 @@ export async function publishPost(postId) {
     }
 
     let { content, authorName, authorAvatar, imageUrl, authorId } = postToPublish;
+    const wasCharAuthored = String(authorId).startsWith('char_') || authorId === 'local_user';
 
-    if (authorId === 'local_user' || String(authorId).startsWith('char_')) {
+    if (wasCharAuthored) {
         authorId = settings.userId;
     }
 
@@ -329,6 +332,7 @@ export async function publishPost(postId) {
         authorAvatar,
         content,
         imageUrl,
+        isCharacterPost: !!postToPublish.isCharacterPost || wasCharAuthored,
     });
 
     if (result && result.post) {
@@ -393,6 +397,7 @@ export async function addComment(postId, content, authorName = null, replyToId =
                 replyToId,
                 replyToName,
                 authorAvatar,
+                isCharacterPost: isCharacterAuthor(authorName, settings),
             });
 
             if (backendResult && backendResult.comment) {
