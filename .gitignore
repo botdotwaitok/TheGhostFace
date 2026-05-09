@@ -1,5 +1,9 @@
 # Agent configuration
 .agents/
+CLAUDE.md
+
+# Local planning docs (not part of the codebase)
+plan/
 
 # Server secrets and database
 server/.env
