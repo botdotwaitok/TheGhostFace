@@ -6,6 +6,7 @@ import { openAppInViewport, updateAppBadge } from '../phoneController.js';
 import {
     loadChatHistory, clearChatHistory,
     getCharacterInfo,
+    getCharacterDisplayName, loadCharacterNickname, saveCharacterNickname,
 } from './chatStorage.js';
 import {
     consumePendingResult, consumeError,
@@ -50,6 +51,7 @@ let _overlayOpenedAt = 0;          // Timestamp guard for overlay dismiss
 let _responseReadyHandler = null;  // Stored reference for cleanup
 let _retryHandler = null;          // Stored reference for cleanup
 let _autoMsgHandler = null;        // Stored reference for cleanup
+let _callDeclinedHandler = null;   // Stored reference for cleanup
 let _pendingImageData = null;      // { base64, thumbnail, fileName } | null
 
 export const CHAT_LOG_PREFIX = '[聊天]';
@@ -81,16 +83,17 @@ export function openChatApp() {
 
     // Build custom header for chat
     const charInfo = getCharacterInfo();
-    const charName = charInfo?.name || '角色';
+    const realName = charInfo?.name || '角色';
+    const displayName = getCharacterDisplayName();
 
     const avatarHtml = charInfo?.avatar
-        ? `<img src="/characters/${encodeURIComponent(charInfo.avatar)}" alt="${escHtml(charName)}" />`
+        ? `<img src="/characters/${encodeURIComponent(charInfo.avatar)}" alt="${escHtml(displayName)}" />`
         : `<i class="fa-solid fa-user"></i>`;
 
     const titleHtml = `
         <div class="chat-nav-avatar">${avatarHtml}</div>
         <div class="chat-nav-info">
-            <div class="chat-nav-name">${escHtml(charName)}</div>
+            <div class="chat-nav-name" id="chat_nav_name" title="点击设置昵称（清空恢复 ${escHtml(realName)}）">${escHtml(displayName)}</div>
             <div class="chat-nav-status">iMessage</div>
         </div>`;
 
@@ -158,8 +161,14 @@ function bindChatEvents() {
     const plusCancel = document.getElementById('chat_plus_cancel');
     const returnHomeBtn = document.getElementById('chat_return_home_btn');
     const messagesArea = document.getElementById('chat_messages_area');
+    const navName = document.getElementById('chat_nav_name');
 
     if (!input) return;
+
+    // Click character name in nav bar → inline-edit nickname
+    if (navName) {
+        navName.addEventListener('click', () => openNicknameEditor(navName));
+    }
 
     // Auto-resize textarea (batched to avoid double reflow)
     input.addEventListener('input', () => {
@@ -270,6 +279,24 @@ function bindChatEvents() {
                     openEditOverlay(idx);
                     return;
                 }
+            }
+
+            // Image bubble → lightbox
+            const imgBubble = e.target.closest('.chat-image-bubble');
+            if (imgBubble) {
+                e.stopPropagation();
+                const fullSrc = imgBubble.dataset.fullSrc;
+                if (fullSrc) showImageLightbox(fullSrc);
+                return;
+            }
+
+            // Voice bubble playback
+            const playBtn = e.target.closest('.voice-play-btn');
+            if (playBtn) {
+                e.stopPropagation();
+                const bubble = playBtn.closest('.voice-bubble');
+                if (bubble) handleVoicePlayback(bubble, playBtn);
+                return;
             }
 
             // Reaction picker emoji click
@@ -464,35 +491,11 @@ function bindChatEvents() {
         });
     }
 
-    // ─── Image bubble click → lightbox ───
-    if (messagesArea) {
-        messagesArea.addEventListener('click', (e) => {
-            const imgBubble = e.target.closest('.chat-image-bubble');
-            if (imgBubble) {
-                e.stopPropagation();
-                const fullSrc = imgBubble.dataset.fullSrc;
-                if (fullSrc) showImageLightbox(fullSrc);
-            }
-        });
-    }
-
     // ─── Lightbox close on click ───
     const lightbox = document.getElementById('chat_image_lightbox');
     if (lightbox) {
         lightbox.addEventListener('click', () => {
             lightbox.classList.remove('active');
-        });
-    }
-
-    // ─── Voice bubble playback (event delegation) ───
-    if (messagesArea) {
-        messagesArea.addEventListener('click', (e) => {
-            const playBtn = e.target.closest('.voice-play-btn');
-            if (!playBtn) return;
-            e.stopPropagation();
-            const bubble = playBtn.closest('.voice-bubble');
-            if (!bubble) return;
-            handleVoicePlayback(bubble, playBtn);
         });
     }
 
@@ -637,7 +640,60 @@ function bindChatEvents() {
     window.addEventListener('phone-auto-message-ready', _autoMsgHandler);
 
     // ── Register declined-call handler (character follow-up) ──
-    window.addEventListener('phone-call-declined', handleCallDeclined);
+    if (_callDeclinedHandler) {
+        window.removeEventListener('phone-call-declined', _callDeclinedHandler);
+    }
+    _callDeclinedHandler = () => handleCallDeclined();
+    window.addEventListener('phone-call-declined', _callDeclinedHandler);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Nickname inline editor (top nav bar)
+// ═══════════════════════════════════════════════════════════════════════
+
+function openNicknameEditor(nameEl) {
+    const realName = getCharacterInfo()?.name || '角色';
+    const current = loadCharacterNickname();
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'chat-nav-name-input';
+    input.id = 'chat_nav_name_input';
+    input.value = current;
+    input.placeholder = realName;
+    input.maxLength = 30;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const finish = (commit) => {
+        if (finished) return;
+        finished = true;
+        if (commit) saveCharacterNickname(input.value);
+        const newDisplay = getCharacterDisplayName();
+        const restored = document.createElement('div');
+        restored.className = 'chat-nav-name';
+        restored.id = 'chat_nav_name';
+        restored.title = `点击设置昵称（清空恢复 ${realName}）`;
+        restored.textContent = newDisplay;
+        restored.addEventListener('click', () => openNicknameEditor(restored));
+        input.replaceWith(restored);
+    };
+
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            finish(false);
+        }
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════

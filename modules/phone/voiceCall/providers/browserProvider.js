@@ -51,6 +51,20 @@ export class BrowserSttProvider {
         recognition.lang = language || 'zh-CN';
 
         let finalTranscript = '';
+        // onEnd / onerror 都可能 fire，且部分浏览器在 'aborted' 错误后
+        // 不会再 fire onend。用 onEndFired 做一次性闸门，保证上层只收到一次
+        // 结束事件，避免被卡在 LISTENING。
+        let onEndFired = false;
+        const fireOnEnd = () => {
+            if (onEndFired) return;
+            onEndFired = true;
+            this._listening = false;
+            this._recognition = null;
+            if (finalTranscript.trim()) {
+                onTranscript(finalTranscript.trim());
+            }
+            onEnd();
+        };
 
         recognition.onresult = (event) => {
             let interimTranscript = '';
@@ -65,9 +79,9 @@ export class BrowserSttProvider {
                         if (!/[.?!。？！]$/.test(processed)) processed += '。';
                         finalTranscript += processed;
                     }
-                    // 获得最终结果后自动停止
-                    recognition.abort();
-                    this._listening = false;
+                    // 不在第一句 final 上 abort —— continuous 模式本意就是
+                    // 让用户连说多句一起累计上来，旧版在这里 abort 会把第二句
+                    // 直接吞掉。停止改由上层 stopRecognition 显式触发。
                 } else {
                     interimTranscript += transcript;
                 }
@@ -83,6 +97,9 @@ export class BrowserSttProvider {
             // 'no-speech' 和 'aborted' 不算严重错误（abort 是我们主动调的）
             if (event.error === 'no-speech' || event.error === 'aborted') {
                 console.debug(`${LOG_PREFIX} (benign) ${event.error}`);
+                // 部分浏览器在 'aborted' 后不再 fire onend，
+                // 这里兜底走 fireOnEnd（onEndFired 保证不会和后续 onend 重复）。
+                if (event.error === 'aborted') fireOnEnd();
                 return;
             }
             console.error(`${LOG_PREFIX} error:`, event.error);
@@ -90,14 +107,8 @@ export class BrowserSttProvider {
         };
 
         recognition.onend = () => {
-            this._listening = false;
-            this._recognition = null;
             console.debug(`${LOG_PREFIX} recognition ended`);
-
-            if (finalTranscript.trim()) {
-                onTranscript(finalTranscript.trim());
-            }
-            onEnd();
+            fireOnEnd();
         };
 
         recognition.onstart = () => {
@@ -116,6 +127,9 @@ export class BrowserSttProvider {
         if (this._recognition && this._listening) {
             this._recognition.stop();
             this._listening = false;
+            // 引用立即清掉，防 onend 还没回到主线程时上层又拨新会话
+            // 拿到旧 recognition 状态。真正的 final transcript 投递走 onend → fireOnEnd。
+            this._recognition = null;
         }
     }
 

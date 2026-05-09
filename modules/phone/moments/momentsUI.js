@@ -7,6 +7,13 @@ import { renderPhoneFloatingIcon, openPhone } from '../phoneController.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { showToast } from './momentsHelpers.js';
 import { stopAppUsage } from '../utils/appUsageTracker.js';
+import { getCharacterId } from './constants.js';
+
+// 草稿按角色 namespace，避免角色 A 写一半切到角色 B 看到 A 的草稿。
+function _draftKey(suffix) {
+    const charId = getCharacterId() || '_unbound';
+    return `moments_draft_${charId}_${suffix}`;
+}
 
 // Load moments-specific CSS
 (function loadMomentsStyles() {
@@ -30,9 +37,30 @@ const POSTS_PER_PAGE = 10;
 // Panel Lifecycle
 // ═══════════════════════════════════════════════════════════════════════
 
+// 关闭后用 display:none 把 overlay 从 layout 中彻底剔除，避免移动浏览器
+// 上残留合成层导致 ST 主页面 touch 滚动延迟。这里保存定时器引用以便在
+// 重新打开时取消挂起的隐藏动作。
+let _momentsHideTimer = null;
+
+function _showMomentsOverlay() {
+    const overlay = document.getElementById('moments_overlay');
+    if (!overlay) return;
+    if (_momentsHideTimer) {
+        clearTimeout(_momentsHideTimer);
+        _momentsHideTimer = null;
+    }
+    // 清掉关闭时设置的 inline display:none，并强制重排让浏览器先应用
+    // display 变化，否则同一帧内追加 visible class 不会触发 transition。
+    if (overlay.style.display === 'none') {
+        overlay.style.display = '';
+        void overlay.offsetWidth;
+    }
+    overlay.classList.add('moments-visible');
+}
+
 export function openMomentsPanel() {
     if (panelMounted) {
-        document.getElementById('moments_overlay')?.classList.add('moments-visible');
+        _showMomentsOverlay();
         updateCoverAndUserInfo();
         refreshFeedUI();
         return;
@@ -50,9 +78,7 @@ export function openMomentsPanel() {
     updateCoverAndUserInfo();
 
     // Show with animation
-    requestAnimationFrame(() => {
-        document.getElementById('moments_overlay')?.classList.add('moments-visible');
-    });
+    requestAnimationFrame(_showMomentsOverlay);
 
     // Auth/login check is now in the phone Settings app
 
@@ -81,10 +107,20 @@ export function closeMomentsPanel() {
     overlay.classList.remove('moments-visible');
     // Don't remove from DOM — keep state for quick re-open
 
+    // 等淡出动画结束后把 overlay display:none，让浏览器释放合成层。
+    // 350ms 略大于 CSS transition (0.3s)，给动画留缓冲。
+    if (_momentsHideTimer) clearTimeout(_momentsHideTimer);
+    _momentsHideTimer = setTimeout(() => {
+        if (!overlay.classList.contains('moments-visible')) {
+            overlay.style.display = 'none';
+        }
+        _momentsHideTimer = null;
+    }, 350);
+
     // Restore the floating phone icon (it was hidden when Moments opened)
     const floatingIcon = document.getElementById('phone_floating_icon');
     if (floatingIcon) floatingIcon.style.setProperty('display', 'flex', 'important');
-    
+
     stopAppUsage();
 }
 
@@ -347,12 +383,12 @@ function renderFeed(posts) {
             const postId = btn.dataset.postId;
             try {
                 const result = await moments.toggleLike(postId);
+                // 直接信任 toggleLike 返回的真值（已包含乐观更新或回滚后的最终状态），
+                // 避免与缓存里的 likeCount 双重计数。
                 btn.classList.toggle('moments-liked', result.liked);
                 const countEl = btn.querySelector('.moments-like-count');
                 if (countEl) {
-                    let count = parseInt(countEl.textContent) || 0;
-                    count += result.liked ? 1 : -1;
-                    countEl.textContent = count > 0 ? count : '';
+                    countEl.textContent = result.likeCount > 0 ? result.likeCount : '';
                 }
             } catch (e) { console.warn('Like failed:', e); }
         });
@@ -388,7 +424,7 @@ function renderFeed(posts) {
                 await moments.addComment(postId, text, s.customUserName || s.displayName, replyToId, replyToName, s.avatarUrl);
                 input.value = '';
                 // Clear the cache since it was successfully sent
-                localStorage.removeItem(`moments_draft_comment_${postId}`);
+                localStorage.removeItem(_draftKey(`comment_${postId}`));
                 // clear reply state
                 delete input.dataset.replyToId;
                 delete input.dataset.replyToName;
@@ -543,7 +579,7 @@ function renderPostCard(post) {
                     <div class="moments-comments-list" data-post-id="${post.id}"></div>
                     <div class="moments-comment-compose">
                         <input class="moments-comment-input moments-input" data-post-id="${post.id}"
-                               placeholder="写评论..." value="${escapeHtml(localStorage.getItem('moments_draft_comment_' + post.id) || '')}" />
+                               placeholder="写评论..." value="${escapeHtml(localStorage.getItem(_draftKey('comment_' + post.id)) || '')}" />
                         <button class="moments-comment-send moments-small-btn" data-post-id="${post.id}">
                             <i class="fa-solid fa-paper-plane"></i>
                         </button>
@@ -552,6 +588,81 @@ function renderPostCard(post) {
             </div>
         </div>
     `;
+}
+
+function closeCommentContextMenu() {
+    document.querySelectorAll('.moments-comment-item.moments-comment-active').forEach(el => {
+        el.classList.remove('moments-comment-active');
+    });
+    document.querySelectorAll('.moments-comment-context-menu').forEach(m => m.remove());
+}
+
+function showCommentContextMenu(commentEl, postId) {
+    closeCommentContextMenu();
+    const commentId = commentEl.dataset.commentId;
+
+    // 高亮被长按的评论本身
+    commentEl.classList.add('moments-comment-active');
+
+    const menu = document.createElement('div');
+    menu.className = 'moments-comment-context-menu';
+    menu.innerHTML = `
+        <button class="moments-comment-context-delete" type="button">
+            <i class="fa-solid fa-trash"></i>
+            <span>删除</span>
+        </button>
+    `;
+    document.body.appendChild(menu);
+
+    // 锚定到评论项本身：默认浮在评论上方居中，
+    // 上方空间不够时翻到下方，并做左右边界保护。
+    const cmtRect = commentEl.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const margin = 8;
+    const gap = 8;
+    const cmtCenterX = cmtRect.left + cmtRect.width / 2;
+    let left = cmtCenterX - menuRect.width / 2;
+    let top = cmtRect.top - menuRect.height - gap;
+    if (left < margin) left = margin;
+    if (left + menuRect.width > window.innerWidth - margin) {
+        left = window.innerWidth - menuRect.width - margin;
+    }
+    if (top < margin) top = cmtRect.bottom + gap;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    requestAnimationFrame(() => menu.classList.add('moments-context-menu-visible'));
+
+    menu.querySelector('.moments-comment-context-delete').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        closeCommentContextMenu();
+        if (!confirm('确定删除该评论吗?')) return;
+        try {
+            await moments.deleteComment(postId, commentId);
+            showToast('评论已删除');
+            loadCommentsForPost(postId);
+        } catch (err) {
+            showToast('删除评论失败: ' + err.message);
+        }
+    });
+
+    // 外部点击 / 触摸 / 滚动 关闭菜单（用 capture + once 避免泄漏）
+    setTimeout(() => {
+        const closeOnOutside = (ev) => {
+            if (!ev.target.closest('.moments-comment-context-menu')) {
+                closeCommentContextMenu();
+                document.removeEventListener('pointerdown', closeOnOutside, true);
+                window.removeEventListener('scroll', closeOnScroll, true);
+            }
+        };
+        const closeOnScroll = () => {
+            closeCommentContextMenu();
+            document.removeEventListener('pointerdown', closeOnOutside, true);
+            window.removeEventListener('scroll', closeOnScroll, true);
+        };
+        document.addEventListener('pointerdown', closeOnOutside, true);
+        window.addEventListener('scroll', closeOnScroll, true);
+    }, 0);
 }
 
 async function loadCommentsForPost(postId) {
@@ -593,63 +704,92 @@ async function loadCommentsForPost(postId) {
         const replyToUIDisplay = c.replyToName ? getUIDisplayName(c.replyToName) : '';
         const authorUIDisplay = getUIDisplayName(c.authorName);
         const replyPrefix = replyToUIDisplay ? `回复 <b>${escapeHtml(replyToUIDisplay)}</b>: ` : '';
-        // User can delete if they own the comment or if they own the post. And my user ID is s.userId, but there might be missing conditions on how characters comment. Actually, characters commenting locally typically use `guest` or my user ID, but the original JS doesn't have a distinct ID for my character except maybe `s.displayName`. Let's check:
-        // By default comments from my character might use guest/userId if local. Let's allow deletion if comment `authorId` matches my `s.userId` OR my `s.displayName` (when it's locally generated main LLM).
-        const amICommentOwner = c.authorId === s.userId || c.authorName === s.displayName;
+        // 只按 authorId 判定所有权，避免任何与 displayName 同名的角色能伪造删除权。
+        // 与 addLocalComment 一致：本地我自己的评论 authorId === settings.userId，
+        // 或者未登录时 fallback 到 'guest'。
+        const amICommentOwner = (s.userId && c.authorId === s.userId) || (!s.userId && c.authorId === 'guest');
         const canDelete = amIPostOwner || amICommentOwner;
-        const deleteBtn = canDelete ? `<button class="moments-comment-delete" data-comment-id="${c.id}" title="删除评论" style="background: none; border: none; font-size: 11px; cursor: pointer; color: var(--SmartThemeEmColor); margin-left: auto; opacity: 0.6;"><i class="fa-solid fa-trash"></i></button>` : '';
 
         return `
-            <div class="moments-comment-item" data-comment-id="${c.id}" data-author-name="${escapeHtml(c.authorName)}" data-author-id="${c.authorId}" style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <span class="moments-comment-author">
-                        ${escapeHtml(authorUIDisplay)}
-                        ${c.authorUsername ? `<span class="moments-comment-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(c.authorUsername)})</span>` : ''}
-                    </span>
-                    <span class="moments-comment-text">${replyPrefix}${parseMediaTags(escapeHtml(c.content))}</span>
-                </div>
-                ${deleteBtn}
+            <div class="moments-comment-item" data-comment-id="${c.id}" data-author-name="${escapeHtml(c.authorName)}" data-author-id="${c.authorId}" data-can-delete="${canDelete ? '1' : '0'}">
+                <span class="moments-comment-author">
+                    ${escapeHtml(authorUIDisplay)}
+                    ${c.authorUsername ? `<span class="moments-comment-username" style="opacity:0.7;font-size:0.9em;margin-left:4px;">(@${escapeHtml(c.authorUsername)})</span>` : ''}
+                </span>
+                <span class="moments-comment-text">${replyPrefix}${parseMediaTags(escapeHtml(c.content))}</span>
             </div>
         `;
     }).join('');
 
-    // Bind click to reply (only trigger reply if not clicking delete)
-    listEl.querySelectorAll('.moments-comment-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            if (e.target.closest('.moments-comment-delete')) return; // Ignore clicks on delete button
-            const input = document.querySelector(`.moments-comment-input[data-post-id="${postId}"]`);
+    // ── 评论交互：单击 = 回复，长按 = 弹出删除菜单（仅可删除的评论） ──
+    // listEl 复用自 DOM（loadCommentsForPost 反复调用只会重写 innerHTML），
+    // 所以用 dataset flag 避免在 listEl 上累积监听器。
+    if (!listEl.dataset.cmtInteractionsBound) {
+        let _cmtPressTimer = null;
+        let _cmtPressTarget = null;
+        const LONG_PRESS_MS = 500;
+
+        const cancelPress = () => {
+            clearTimeout(_cmtPressTimer);
+            if (_cmtPressTarget) {
+                _cmtPressTarget.style.userSelect = '';
+                _cmtPressTarget.style.webkitUserSelect = '';
+            }
+            _cmtPressTarget = null;
+        };
+
+        listEl.addEventListener('pointerdown', (e) => {
+            const item = e.target.closest('.moments-comment-item');
+            if (!item || item.dataset.canDelete !== '1') return;
+            _cmtPressTarget = item;
+            listEl.dataset.didLongPress = '';
+            item.style.userSelect = 'none';
+            item.style.webkitUserSelect = 'none';
+            _cmtPressTimer = setTimeout(() => {
+                listEl.dataset.didLongPress = '1';
+                showCommentContextMenu(item, listEl.dataset.postId);
+                if (_cmtPressTarget) {
+                    _cmtPressTarget.style.userSelect = '';
+                    _cmtPressTarget.style.webkitUserSelect = '';
+                }
+                _cmtPressTarget = null;
+            }, LONG_PRESS_MS);
+        });
+
+        listEl.addEventListener('pointerup', cancelPress);
+        listEl.addEventListener('pointerleave', cancelPress);
+        listEl.addEventListener('pointercancel', cancelPress);
+        listEl.addEventListener('touchmove', cancelPress, { passive: true });
+
+        // 单击 = 回复（长按刚触发过则吞掉本次 click）
+        listEl.addEventListener('click', (e) => {
+            if (listEl.dataset.didLongPress === '1') {
+                listEl.dataset.didLongPress = '';
+                return;
+            }
+            const item = e.target.closest('.moments-comment-item');
+            if (!item) return;
+            const pid = listEl.dataset.postId;
+            const input = document.querySelector(`.moments-comment-input[data-post-id="${pid}"]`);
             if (input) {
                 const authorName = item.dataset.authorName;
                 const commentId = item.dataset.commentId;
                 const authorUIDisplay = getUIDisplayName(authorName);
                 input.dataset.replyToId = commentId;
-                input.dataset.replyToName = authorName; // Keep original
+                input.dataset.replyToName = authorName;
                 input.placeholder = `回复 ${authorUIDisplay}...`;
                 input.focus();
             }
         });
-    });
 
-    // Bind delete comment
-    listEl.querySelectorAll('.moments-comment-delete').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation(); // prevent reply triggered
-            const commentId = btn.dataset.commentId;
-            if (confirm('确定删除该评论吗?')) {
-                try {
-                    await moments.deleteComment(postId, commentId);
-                    showToast('评论已删除');
-                    loadCommentsForPost(postId); // Refresh comment list
-                } catch (e) {
-                    showToast('删除评论失败: ' + e.message);
-                }
-            }
-        });
-    });
+        listEl.dataset.cmtInteractionsBound = '1';
+    }
 
-    // Allow cancelling reply by clicking input when empty
+    // Allow cancelling reply by clicking input when empty.
+    // 用 dataset flag 防止 loadCommentsForPost 反复调用时累积监听器（评论列表
+    // 用 innerHTML 重写会清掉子元素监听，但 parentInput 是外层 input 不会被重建）。
     const parentInput = document.querySelector(`.moments-comment-input[data-post-id="${postId}"]`);
-    if (parentInput) {
+    if (parentInput && !parentInput.dataset.cancelReplyBound) {
         parentInput.addEventListener('click', () => {
             if (parentInput.value.trim() === '' && parentInput.dataset.replyToId) {
                 delete parentInput.dataset.replyToId;
@@ -657,6 +797,7 @@ async function loadCommentsForPost(postId) {
                 parentInput.placeholder = '写评论...';
             }
         });
+        parentInput.dataset.cancelReplyBound = '1';
     }
 }
 
@@ -675,7 +816,7 @@ async function manualPost() {
         // createPost will handle image upload if needed
         await moments.createPost(text, s.customUserName || s.displayName, s.avatarUrl, null);
         textarea.value = '';
-        localStorage.removeItem('moments_draft_post');
+        localStorage.removeItem(_draftKey('post'));
         
         // Hide compose area after posting
         const composeArea = document.getElementById('moments_compose_section');
@@ -697,11 +838,11 @@ function bindEvents() {
     // Restore compose text from cache
     const composeTextarea = document.getElementById('moments_compose_text');
     if (composeTextarea) {
-        const cachedPost = localStorage.getItem('moments_draft_post');
+        const cachedPost = localStorage.getItem(_draftKey('post'));
         if (cachedPost) composeTextarea.value = cachedPost;
 
         composeTextarea.addEventListener('input', (e) => {
-            localStorage.setItem('moments_draft_post', e.target.value);
+            localStorage.setItem(_draftKey('post'), e.target.value);
         });
     }
 
@@ -712,7 +853,7 @@ function bindEvents() {
             if (e.target.classList.contains('moments-comment-input')) {
                 const postId = e.target.dataset.postId;
                 if (postId) {
-                    localStorage.setItem(`moments_draft_comment_${postId}`, e.target.value);
+                    localStorage.setItem(_draftKey(`comment_${postId}`), e.target.value);
                 }
             }
         });
@@ -1726,9 +1867,7 @@ function renderProfileFeed(posts, userId) {
                 btn.classList.toggle('moments-liked', result.liked);
                 const countEl = btn.querySelector('.moments-like-count');
                 if (countEl) {
-                    let count = parseInt(countEl.textContent) || 0;
-                    count += result.liked ? 1 : -1;
-                    countEl.textContent = count > 0 ? count : '';
+                    countEl.textContent = result.likeCount > 0 ? result.likeCount : '';
                 }
             } catch (e) { console.warn('Like failed:', e); }
         });

@@ -169,12 +169,14 @@ export function buildCharGiftPrompt() {
  */
 export function getGiftEventCardHtml(giftName, charName) {
     const gift = CHARACTER_GIFTS[giftName];
+    const statusId = `gift_status_${Date.now()}`;
+
     if (!gift) {
-        return `<div class="chat-special-card gift unknown">
-            <div class="gift-card-icon">🎁</div>
-            <div class="gift-card-body">
-                <div class="gift-card-title">${charName} 送了你一份礼物</div>
-                <div class="gift-card-item">${giftName}</div>
+        return `<div class="chat-special-card gift">
+            <div class="chat-special-icon gift"><i class="ph ph-gift"></i></div>
+            <div class="chat-special-content">
+                送你「${giftName}」
+                <div class="chat-special-label">礼物</div>
             </div>
         </div>`;
     }
@@ -182,15 +184,11 @@ export function getGiftEventCardHtml(giftName, charName) {
     const typeLabel = gift.itemType === 'dbd' ? '试炼道具' : (gift.itemId < 100 ? '宠物道具' : '抢劫道具');
 
     return `<div class="chat-special-card gift">
-        <div class="gift-card-shimmer"></div>
-        <div class="gift-card-icon">${gift.emoji}</div>
-        <div class="gift-card-body">
-            <div class="gift-card-title">🎁 ${charName} 送了你一份礼物</div>
-            <div class="gift-card-item">${gift.emoji} ${giftName}</div>
-            <div class="gift-card-desc">${gift.desc}</div>
-            <div class="gift-card-tag">${typeLabel}</div>
+        <div class="chat-special-icon gift"><i class="ph ph-gift"></i></div>
+        <div class="chat-special-content">
+            送你「${giftName}」
+            <div class="chat-special-label">${typeLabel} · <span class="chat-special-status gift-card-status" id="${statusId}">投递中…</span></div>
         </div>
-        <div class="gift-card-status" id="gift_status_${Date.now()}">⏳ 正在投递到Discord背包…</div>
     </div>`;
 }
 
@@ -209,7 +207,7 @@ export async function triggerCrossplatformGift(giftName, charName, statusElement
     const gift = CHARACTER_GIFTS[giftName];
     if (!gift) {
         console.warn(`[GiftSystem] Unknown gift: ${giftName}`);
-        updateGiftStatus(statusElementId, '❌ 未知的礼物');
+        updateGiftStatus(statusElementId, '未知礼物', 'error');
         return;
     }
 
@@ -233,25 +231,28 @@ export async function triggerCrossplatformGift(giftName, charName, statusElement
 
         if (data.ok || data.success) {
             console.log(`[GiftSystem] ✅ Gift delivered: ${giftName} → Discord`);
-            updateGiftStatus(statusElementId, '✅ 礼物已送达你的Discord背包！');
+            updateGiftStatus(statusElementId, '已送达背包', 'done');
         } else {
             console.warn(`[GiftSystem] Gift delivery failed:`, data);
-            updateGiftStatus(statusElementId, `⚠️ 送达失败: ${data.error || '未知错误'}`);
+            updateGiftStatus(statusElementId, `送达失败：${data.error || '未知错误'}`, 'error');
         }
     } catch (err) {
         console.error(`[GiftSystem] Gift delivery error:`, err);
-        updateGiftStatus(statusElementId, '⚠️ 网络错误，礼物可能未送达');
+        updateGiftStatus(statusElementId, '网络错误，礼物可能未送达', 'error');
     }
 }
 
 /**
  * 更新礼物卡片上的投递状态
+ * @param {string} elementId 状态元素 ID
+ * @param {string} text 状态文字
+ * @param {'done'|'error'} [state] 状态类（控制颜色）
  */
-function updateGiftStatus(elementId, text) {
+function updateGiftStatus(elementId, text, state) {
     if (!elementId) return;
     const el = document.getElementById(elementId);
-    if (el) {
-        el.textContent = text;
-        el.classList.add('gift-status-done');
-    }
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('done', 'error');
+    if (state) el.classList.add(state);
 }

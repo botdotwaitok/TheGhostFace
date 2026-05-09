@@ -204,8 +204,13 @@ export function closePhone() {
     // Show floating icon again after phone closes
     const floatingIcon = document.getElementById('phone_floating_icon');
     if (floatingIcon) floatingIcon.style.setProperty('display', 'flex', 'important');
-    
+
     stopAppUsage();
+
+    // Phase 4 audit fix: broadcast a phone-closed event so apps can clean up
+    // window-scoped listeners (e.g. vcApp's phone-app-back detail handler) that
+    // would otherwise leak across app switches.
+    window.dispatchEvent(new CustomEvent('phone-closed'));
 }
 
 /** Update a specific app's badge count */

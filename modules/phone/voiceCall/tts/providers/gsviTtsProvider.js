@@ -18,18 +18,20 @@ export class GsviTtsProvider {
      * 合成语音
      * @param {string} text
      * @param {Object} settings - { endpoint, voiceId, model, speed, emotion, textLang, promptLang, apiFormat }
-     * @returns {Promise<ArrayBuffer>}
+     * @param {AbortSignal} [signal] - Session abort signal — cancels the in-flight fetch.
+     * @returns {Promise<{ buffer: ArrayBuffer, mime: string }>}
+     *   Both Adapter and GSVI Inference Plugin paths request WAV output.
      */
-    async synthesize(text, settings) {
+    async synthesize(text, settings, signal) {
         const endpoint = (settings.endpoint || 'http://localhost:9881').replace(/\/$/, '');
         const format = this._detectFormat(endpoint, settings.apiFormat);
 
         console.debug(`${LOG_PREFIX} Using ${format} format → ${endpoint}`);
 
         if (format === 'adapter') {
-            return this._synthesizeAdapter(text, endpoint, settings);
+            return this._synthesizeAdapter(text, endpoint, settings, signal);
         } else {
-            return this._synthesizeGSVI(text, endpoint, settings);
+            return this._synthesizeGSVI(text, endpoint, settings, signal);
         }
     }
 
@@ -95,7 +97,7 @@ export class GsviTtsProvider {
     }
 
     // ─── Format 1: GPT-SoVITS Adapter (POST /) ───
-    async _synthesizeAdapter(text, endpoint, settings) {
+    async _synthesizeAdapter(text, endpoint, settings, signal) {
         const voiceId = settings.voiceId || '';
         const rawEmotion = settings._emotion || settings.emotion || null;
 
@@ -134,6 +136,7 @@ export class GsviTtsProvider {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
+            signal,
         });
 
         if (!response.ok) {
@@ -143,11 +146,12 @@ export class GsviTtsProvider {
             throw err;
         }
 
-        return response.arrayBuffer();
+        const buffer = await response.arrayBuffer();
+        return { buffer, mime: 'audio/wav' };
     }
 
     // ─── Format 2: GSVI Inference Plugin (POST /v1/audio/speech) ───
-    async _synthesizeGSVI(text, endpoint, settings) {
+    async _synthesizeGSVI(text, endpoint, settings, signal) {
         const voiceId = settings.voiceId || '';
         const model = settings.model || 'GSVI-v4';
         const speed = settings.speed || 1;
@@ -189,6 +193,7 @@ export class GsviTtsProvider {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
+            signal,
         });
 
         if (!response.ok) {
@@ -198,7 +203,8 @@ export class GsviTtsProvider {
             throw err;
         }
 
-        return response.arrayBuffer();
+        const buffer = await response.arrayBuffer();
+        return { buffer, mime: 'audio/wav' };
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -226,7 +232,10 @@ export class GsviTtsProvider {
             const url = this._resolveUrl(
                 `${endpoint}/character_emotions?character=${encodeURIComponent(character)}`
             );
-            const response = await fetch(url);
+            // Phase 4: 3s timeout — without this, a hung GSVI backend keeps the
+            // settings panel spinning forever (saw real reports of this on stale
+            // local servers).
+            const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
             if (!response.ok) {
                 console.warn(`${LOG_PREFIX} fetchEmotions HTTP ${response.status}`);
                 return [];
@@ -322,26 +331,30 @@ export class GsviTtsProvider {
                 });
 
                 // Enrich each voice with emotions from /character_emotions
-                // (EntityWhisper pattern — the endpoint is provided by _ST_COMPAT_TEMPLATE)
-                const enriched = await Promise.all(voices.map(async (voice) => {
-                    try {
-                        const emotionUrl = this._resolveUrl(
-                            `${endpoint}/character_emotions?character=${encodeURIComponent(voice.id)}`
-                        );
-                        const emoResp = await fetch(emotionUrl);
-                        if (emoResp.ok) {
-                            const emotions = await emoResp.json();
-                            if (Array.isArray(emotions) && emotions.length > 0) {
-                                voice.promptLangs = ['auto'];
-                                voice.emotionsMap = { 'auto': emotions };
-                                voice.emotions = emotions;
-                            }
+                // (EntityWhisper pattern — the endpoint is provided by _ST_COMPAT_TEMPLATE).
+                // Phase 4: allSettled + per-request 3s timeout so one slow voice
+                // doesn't block the entire list, and one rejection doesn't drop
+                // the whole batch.
+                const settled = await Promise.allSettled(voices.map(async (voice) => {
+                    const emotionUrl = this._resolveUrl(
+                        `${endpoint}/character_emotions?character=${encodeURIComponent(voice.id)}`
+                    );
+                    const emoResp = await fetch(emotionUrl, { signal: AbortSignal.timeout(3000) });
+                    if (emoResp.ok) {
+                        const emotions = await emoResp.json();
+                        if (Array.isArray(emotions) && emotions.length > 0) {
+                            voice.promptLangs = ['auto'];
+                            voice.emotionsMap = { 'auto': emotions };
+                            voice.emotions = emotions;
                         }
-                    } catch (e) {
-                        console.debug(`${LOG_PREFIX} No emotions for "${voice.id}": ${e.message}`);
                     }
                     return voice;
                 }));
+                const enriched = settled.map((res, i) => {
+                    if (res.status === 'fulfilled') return res.value;
+                    console.debug(`${LOG_PREFIX} No emotions for "${voices[i].id}": ${res.reason?.message || res.reason}`);
+                    return voices[i];
+                });
 
                 return enriched;
             } catch (err) {
@@ -353,57 +366,66 @@ export class GsviTtsProvider {
     }
 
     // ─── GSVI Inference Plugin: GET /models/{version} ───
+    // Phase 4: probe all 5 versions in parallel with a per-request timeout. The
+    // serial loop took up to 5×(timeout) on a dead backend; parallel keeps the
+    // worst case bounded by a single timeout.
     async _fetchVoicesGSVI(endpoint) {
         const versions = ['v2', 'v3', 'v4', 'v2Pro', 'v2ProPlus'];
-        const allVoices = [];
 
-        for (const version of versions) {
-            try {
-                const response = await fetch(this._resolveUrl(`${endpoint}/models/${version}`));
-                if (!response.ok) {
-                    console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version} returned ${response.status}, skipping`);
-                    continue;
-                }
-
-                const data = await response.json();
-
-                // API returns { msg, models: { modelName: { folder: [emotions] } } }
-                const models = data.models || data;
-                if (typeof models !== 'object' || Object.keys(models).length === 0) {
-                    console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version}: ${data.msg || 'empty'}`);
-                    continue;
-                }
-
-                for (const [modelName, folders] of Object.entries(models)) {
-                    const emotions = [];
-                    const promptLangs = [];
-                    const emotionsMap = {};
-                    let promptLang = '';
-                    if (folders && typeof folders === 'object') {
-                        for (const [folderName, emotionList] of Object.entries(folders)) {
-                            if (!promptLang) promptLang = folderName;
-                            promptLangs.push(folderName);
-                            emotionsMap[folderName] = Array.isArray(emotionList) ? emotionList.filter(e => e && e.length > 0) : [];
-                            if (Array.isArray(emotionList)) {
-                                emotions.push(...emotionList.filter(e => e && e.length > 0));
-                            }
+        const probeOne = async (version) => {
+            const response = await fetch(
+                this._resolveUrl(`${endpoint}/models/${version}`),
+                { signal: AbortSignal.timeout(5000) },
+            );
+            if (!response.ok) {
+                console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version} returned ${response.status}, skipping`);
+                return [];
+            }
+            const data = await response.json();
+            const models = data.models || data;
+            if (typeof models !== 'object' || Object.keys(models).length === 0) {
+                console.warn(`⚠️ [TTS] GPT-SoVITS /models/${version}: ${data.msg || 'empty'}`);
+                return [];
+            }
+            const voices = [];
+            for (const [modelName, folders] of Object.entries(models)) {
+                const emotions = [];
+                const promptLangs = [];
+                const emotionsMap = {};
+                let promptLang = '';
+                if (folders && typeof folders === 'object') {
+                    for (const [folderName, emotionList] of Object.entries(folders)) {
+                        if (!promptLang) promptLang = folderName;
+                        promptLangs.push(folderName);
+                        emotionsMap[folderName] = Array.isArray(emotionList) ? emotionList.filter(e => e && e.length > 0) : [];
+                        if (Array.isArray(emotionList)) {
+                            emotions.push(...emotionList.filter(e => e && e.length > 0));
                         }
                     }
-                    allVoices.push({
-                        id: modelName,
-                        name: `${modelName} [${version}]`,
-                        language: promptLang || 'auto',
-                        emotions,
-                        promptLangs,
-                        emotionsMap,
-                        version,
-                        prompt_lang: promptLang || '',
-                    });
                 }
-            } catch (err) {
-                console.warn(`⚠️ [TTS] Failed to fetch /models/${version}: ${err.message}`);
+                voices.push({
+                    id: modelName,
+                    name: `${modelName} [${version}]`,
+                    language: promptLang || 'auto',
+                    emotions,
+                    promptLangs,
+                    emotionsMap,
+                    version,
+                    prompt_lang: promptLang || '',
+                });
             }
-        }
+            return voices;
+        };
+
+        const settled = await Promise.allSettled(versions.map(probeOne));
+        const allVoices = [];
+        settled.forEach((res, i) => {
+            if (res.status === 'fulfilled') {
+                allVoices.push(...res.value);
+            } else {
+                console.warn(`⚠️ [TTS] Failed to fetch /models/${versions[i]}: ${res.reason?.message || res.reason}`);
+            }
+        });
 
         if (allVoices.length === 0) {
             throw new Error('GPT-SoVITS GSVI: No models found from any version (v2/v3/v4/v2Pro)');

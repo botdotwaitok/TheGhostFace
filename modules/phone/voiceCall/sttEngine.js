@@ -48,6 +48,15 @@ export class SttEngine {
         // VAD 相关
         /** @type {VoiceActivityDetector|null} */
         this._vad = null;
+        /** @type {AudioContext|null} VAD 自己的 AudioContext，destroy 时需要 close */
+        this._vadAudioContext = null;
+
+        // Per-utterance abort controller — covers the processAudio fetch (transcribe call).
+        // Aborted when stopListening / setProvider switches happen, so a slow Whisper
+        // request from a previous utterance doesn't deliver its transcript after the user
+        // moved on. Created fresh on each MediaRecorder.onstop.
+        /** @type {AbortController|null} */
+        this._processCtrl = null;
 
         // ── 回调接口 ──
         /** @type {(text: string) => void} 最终识别结果 */
@@ -85,6 +94,14 @@ export class SttEngine {
         // 先停止当前录音
         if (this._state === SttState.LISTENING) {
             await this.stopListening();
+        }
+
+        // Cancel any in-flight transcribe request from the previous provider —
+        // we don't want a delayed transcript from the old engine surfacing on
+        // the new one's callbacks.
+        if (this._processCtrl && !this._processCtrl.signal.aborted) {
+            try { this._processCtrl.abort(); } catch { /* ignore */ }
+            this._processCtrl = null;
         }
 
         if (name === 'none' || !this._providers.has(name)) {
@@ -152,6 +169,14 @@ export class SttEngine {
             return;
         }
 
+        // Concurrency guard: refuse to start a new utterance while the previous
+        // one's transcribe call is still in flight (audit report #23). Otherwise
+        // two MediaRecorder cycles can race and deliver transcripts out of order.
+        if (this._state === SttState.PROCESSING) {
+            console.debug(`${LOG_PREFIX} transcribe in progress, deferring new startListening`);
+            return;
+        }
+
         this._setState(SttState.LISTENING);
 
         try {
@@ -185,7 +210,14 @@ export class SttEngine {
      * 停止监听并处理音频
      */
     async stopListening() {
-        if (this._state !== SttState.LISTENING) return;
+        if (this._state !== SttState.LISTENING) {
+            // If we're mid-transcribe (PROCESSING), kill the in-flight fetch so a
+            // hung request doesn't keep the engine stuck. Bail otherwise.
+            if (this._state === SttState.PROCESSING && this._processCtrl) {
+                try { this._processCtrl.abort(); } catch { /* ignore */ }
+            }
+            return;
+        }
 
         // Browser Provider
         if (this._activeProvider && typeof this._activeProvider.stopRecognition === 'function') {
@@ -323,24 +355,42 @@ export class SttEngine {
         this._mediaRecorder.onstop = async () => {
             this._setState(SttState.PROCESSING);
 
+            // Fresh per-utterance controller — stopListening / setProvider can abort
+            // this if the user moves on while the transcribe fetch is in flight.
+            this._processCtrl = new AbortController();
+            const signal = this._processCtrl.signal;
+
             try {
                 const audioBlob = new Blob(this._audioChunks, { type: 'audio/webm;codecs=opus' });
                 const wavBlob = await this._convertToWav(audioBlob);
+
+                if (signal.aborted) throw new DOMException('aborted', 'AbortError');
 
                 // 将 providerSettings（apiKey, proxyServer, model 等）+ language 传给 provider
                 const providerOpts = {
                     ...this.getProviderSettings(this._activeProviderName),
                     language: this._settings.language,
                 };
-                const transcript = await this._activeProvider.processAudio(wavBlob, providerOpts);
+                const transcript = await this._activeProvider.processAudio(wavBlob, providerOpts, signal);
 
-                if (transcript && transcript.trim()) {
+                if (signal.aborted) {
+                    console.debug(`${LOG_PREFIX} transcript dropped — aborted before delivery`);
+                } else if (transcript && transcript.trim()) {
                     console.debug(`${LOG_PREFIX} transcript: "${transcript}"`);
                     this.onTranscript(transcript.trim());
                 }
             } catch (err) {
-                console.error(`${LOG_PREFIX} processAudio failed:`, err);
-                this.onError(err);
+                if (err?.name === 'AbortError') {
+                    console.debug(`${LOG_PREFIX} processAudio aborted (session ended).`);
+                } else {
+                    console.error(`${LOG_PREFIX} processAudio failed:`, err);
+                    this.onError(err);
+                }
+            } finally {
+                this._processCtrl = null;
+                // Release the chunk array reference so GC can reclaim the encoded
+                // audio blobs (long calls otherwise keep them alive for the whole session).
+                this._audioChunks = [];
             }
 
             // 如果 VAD 未启用，释放麦克风
@@ -357,49 +407,65 @@ export class SttEngine {
 
     /**
      * 将 webm/opus Blob 转为 WAV Blob（通过 Web Worker）
+     * Both AudioContext and Worker are cleaned up via try/finally so a thrown
+     * decodeAudioData / Worker error doesn't leak the underlying resources.
      * @param {Blob} audioBlob
      * @returns {Promise<Blob>}
      */
     async _convertToWav(audioBlob) {
         const arrayBuffer = await audioBlob.arrayBuffer();
         const audioContext = new AudioContext();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        await audioContext.close();
+        let audioBuffer;
+        try {
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        } finally {
+            try { await audioContext.close(); } catch { /* already closed */ }
+        }
 
-        return new Promise((resolve, reject) => {
-            // 动态获取 Worker 路径（基于当前模块位置）
-            const scriptUrl = import.meta.url;
-            const baseDir = scriptUrl.substring(0, scriptUrl.lastIndexOf('/'));
-            const worker = new Worker(`${baseDir}/waveWorker.js`);
+        const scriptUrl = import.meta.url;
+        const baseDir = scriptUrl.substring(0, scriptUrl.lastIndexOf('/'));
+        const worker = new Worker(`${baseDir}/waveWorker.js`);
 
-            worker.onmessage = (e) => {
-                const blob = new Blob([e.data.buffer], { type: 'audio/wav' });
-                resolve(blob);
-            };
+        try {
+            return await new Promise((resolve, reject) => {
+                worker.onmessage = (e) => {
+                    const blob = new Blob([e.data.buffer], { type: 'audio/wav' });
+                    resolve(blob);
+                };
 
-            worker.onerror = (e) => {
-                console.error(`${LOG_PREFIX} waveWorker error:`, e);
-                reject(new Error('WAV conversion failed'));
-            };
+                worker.onerror = (e) => {
+                    console.error(`${LOG_PREFIX} waveWorker error:`, e);
+                    reject(new Error('WAV conversion failed'));
+                };
 
-            // 提取所有通道的 PCM 数据
-            const pcmArrays = [];
-            for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-                pcmArrays.push(audioBuffer.getChannelData(i));
-            }
+                // 提取所有通道的 PCM 数据
+                const pcmArrays = [];
+                for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+                    pcmArrays.push(audioBuffer.getChannelData(i));
+                }
 
-            worker.postMessage({
-                pcmArrays,
-                config: { sampleRate: audioBuffer.sampleRate },
+                worker.postMessage({
+                    pcmArrays,
+                    config: { sampleRate: audioBuffer.sampleRate },
+                });
             });
-        });
+        } finally {
+            // Detach handlers before terminate so a late onmessage/onerror can't
+            // invoke a stale resolve/reject (terminate alone doesn't clear them).
+            worker.onmessage = null;
+            worker.onerror = null;
+            worker.terminate();
+        }
     }
 
     /** 设置 VAD */
     _setupVAD(stream) {
         try {
-            const audioContext = new AudioContext();
-            const source = audioContext.createMediaStreamSource(stream);
+            // Hold onto the AudioContext so _destroyVAD can close it later — without
+            // this the context (and its underlying audio thread) leaks across
+            // VAD on/off toggles and reproducible startListening cycles.
+            this._vadAudioContext = new AudioContext();
+            const source = this._vadAudioContext.createMediaStreamSource(stream);
             this._vad = new VoiceActivityDetector({
                 source,
                 voice_start: () => {
@@ -417,6 +483,11 @@ export class SttEngine {
             });
         } catch (err) {
             console.warn(`${LOG_PREFIX} VAD setup failed:`, err);
+            // If construction fails after AudioContext was created, close it.
+            if (this._vadAudioContext) {
+                try { this._vadAudioContext.close(); } catch { /* ignore */ }
+                this._vadAudioContext = null;
+            }
         }
     }
 
@@ -424,6 +495,14 @@ export class SttEngine {
         if (this._vad) {
             this._vad.destroy();
             this._vad = null;
+        }
+        if (this._vadAudioContext) {
+            // close() is async but we don't need to await — VAD is destroyed
+            // synchronously, and the context just needs to stop holding its
+            // audio thread once this microtask completes.
+            const ctx = this._vadAudioContext;
+            this._vadAudioContext = null;
+            ctx.close().catch(() => { /* already closed */ });
         }
     }
 

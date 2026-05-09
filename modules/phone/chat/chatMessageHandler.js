@@ -6,7 +6,7 @@ import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import {
     loadChatHistory, saveChatHistory,
-    getCharacterInfo, getUserName,
+    getCharacterInfo, getCharacterDisplayName, getUserName,
     maybeAutoSummarize,
 } from './chatStorage.js';
 import { stripMomentsCommands, activateCommunityContext } from './chatPromptBuilder.js';
@@ -289,16 +289,14 @@ export async function sendAllMessages() {
         const emptyState = messagesArea.querySelector('.chat-empty');
         if (emptyState) emptyState.remove();
 
-        // Maybe add time divider (show if > 5 min since last divider, or no divider exists)
-        const allDividers = messagesArea.querySelectorAll('.chat-time-divider');
-        const lastTimeDiv = allDividers.length > 0 ? allDividers[allDividers.length - 1] : null;
-        let needTime = !lastTimeDiv;
-        if (lastTimeDiv && !needTime) {
-            needTime = true; // Safe default: always add a divider on new sends
-        }
+        // Maybe add time divider (show if > 5 min since last message, or empty history)
+        const lastHistMsg = historyBeforeSend[historyBeforeSend.length - 1];
+        const lastTimestamp = lastHistMsg?.timestamp ? new Date(lastHistMsg.timestamp) : null;
+        const nowDate = new Date(now);
+        const needTime = !lastTimestamp || (nowDate - lastTimestamp) > 5 * 60 * 1000;
         if (needTime) {
             messagesArea.insertAdjacentHTML('beforeend',
-                `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`
+                `<div class="chat-time-divider">${formatChatTime(nowDate)}</div>`
             );
         }
 
@@ -632,9 +630,9 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
             if (messagesArea) {
                 if (cmsg.text === '[撤回了一条消息]' && cmsg.recalledContent) {
                     // Recall blocker: show retract notice + peeked content
-                    const charName = getCharacterInfo()?.name || '对方';
+                    const displayName = getCharacterDisplayName();
                     messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-retract">${escHtml(charName)}撤回了一条消息</div>`);
+                        `<div class="chat-retract">${escHtml(displayName)}撤回了一条消息</div>`);
                     messagesArea.insertAdjacentHTML('beforeend',
                         buildRecalledPeekBubble(cmsg.recalledContent));
                 } else {
@@ -788,23 +786,17 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                 // 标记已执行（无论结果如何）+ 激活社区背景信息
                 markRobberyDone();
                 activateCommunityContext();
-                // 获取候选目标并执行
+                // 获取候选目标并执行（triggerRobbery 内部已处理空名单：
+                // 直接更新 status 元素为 error 并返回 { error, success: false }）
                 const candidates = await getRandomVictimList();
-                if (candidates && candidates.length > 0) {
-                    const result = await triggerRobbery(candidates, charName2, `${robCardId}_status`);
-                    // 展示结果卡片
-                    if (messagesArea && result && !result.error) {
-                        messagesArea.insertAdjacentHTML('beforeend',
-                            `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName2)}</div></div>`);
-                        scrollToBottom(true);
-                        // 广播到 Moments
-                        broadcastRobberyToMoments(result, charName2).catch(e =>
-                            console.warn('[RobberySystem] broadcast error:', e));
-                    }
-                } else {
-                    // 没有候选目标
-                    const statusEl = document.getElementById(`${robCardId}_status`);
-                    if (statusEl) statusEl.innerHTML = '<i class="ph ph-warning"></i> 找不到可以抢劫的目标';
+                const result = await triggerRobbery(candidates || [], charName2, `${robCardId}_status`);
+                if (messagesArea && result && !result.error) {
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName2)}</div></div>`);
+                    scrollToBottom(true);
+                    // 广播到 Moments
+                    broadcastRobberyToMoments(result, charName2).catch(e =>
+                        console.warn('[RobberySystem] broadcast error:', e));
                 }
             }
         } catch (e) { console.warn('[RobberySystem] auto-robbery error:', e); }

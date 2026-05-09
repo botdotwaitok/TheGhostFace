@@ -15,12 +15,20 @@ const LOG_PREFIX = '[WatchPartyPrompt]';
 // Token Estimation & Budget
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Rough token estimate: CJK ~2 tokens/char, Latin ~0.4 tokens/char */
-export function estimateTokens(text) {
-    if (!text) return 0;
-    const cjk = (text.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []).length;
-    const rest = text.length - cjk;
-    return Math.ceil(cjk * 2 + rest * 0.4);
+/** Rough token estimate: CJK ~2 tokens/char, Latin ~0.4 tokens/char.
+ *  Images: ~800 tokens per screenshot (Claude/GPT-4o multimodal pricing ballpark).
+ *  Without the image term, watch-party token budgeting silently undercounts by
+ *  several thousand tokens after a few minutes \u2014 which is how the prompt would
+ *  blow past the model limit while estimateTokens still claims it's fine.
+ */
+export function estimateTokens(text, imageCount = 0) {
+    let total = imageCount > 0 ? imageCount * 800 : 0;
+    if (text) {
+        const cjk = (text.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []).length;
+        const rest = text.length - cjk;
+        total += Math.ceil(cjk * 2 + rest * 0.4);
+    }
+    return total;
 }
 
 /** Token threshold that triggers async context compression */
@@ -99,9 +107,9 @@ export async function buildWatchPartySystemPrompt(sessionConfig = {}) {
     // Dynamic frequency guidance based on user preference
     const freqKey = sessionConfig.talkFrequency || 'moderate';
     const FREQ_PROMPTS = {
-        quiet: `3. 倾向沉默——你更喜欢安静地陪${userName}看。只有在真正触动你的画面出现时才说话。绝大多数截图都应该选择沉默（回复空内容）。质量远比数量重要。`,
-        moderate: `3. 控制频率——不是每张截图都需要评论。有时候安静地一起看也是一种陪伴。如果画面没有特别触动你的地方，你可以选择沉默（回复空内容）。`,
-        chatty: `3. 积极互动——你是一个很话唠的观影伴侣！几乎每个画面你都忍不住想说点什么——评论、吐槽、感叹、分享联想。只有当画面完全静止没变化时才沉默。`,
+        quiet: `4. 倾向沉默——${userName}没说话时，你更喜欢安静地陪${userName}看。只有在真正触动你的画面出现时才主动评论。绝大多数纯画面截图都应该选择沉默（回复空内容）。质量远比数量重要。但只要${userName}开口了，必须正面回应她，绝不能沉默。`,
+        moderate: `4. 控制频率——${userName}没说话时，不是每张截图都需要评论。有时候安静地一起看也是一种陪伴。但只要${userName}开口了，必须正面回应她，绝不能沉默。`,
+        chatty: `4. 积极互动——你是一个很话唠的观影伴侣！几乎每个画面你都忍不住想说点什么——评论、吐槽、感叹、分享联想。只有当画面完全静止没变化时才沉默。`,
     };
     const freqRule = FREQ_PROMPTS[freqKey] || FREQ_PROMPTS.moderate;
 
@@ -127,13 +135,16 @@ ${charName}是一个完全自主的情感存在。在观影伴侣模式中遵循
 </char_core>
 
 <watch_party_mode>
-你和${userName}正在一起看${contentTypeLabel}。你会定期收到屏幕截图，了解他们正在看的内容。
+你和${userName}正在一起看${contentTypeLabel}。你会了解你们正在看的内容。
 
-作为观影伴侣的行为准则：
-1. 自然反应——像真的坐在一起看一样。看到精彩/有趣/悲伤/刺激的画面，自然地说出感受。
-2. 不要描述画面——不要说"我看到画面上有一个人站在那里"。而是直接表达感受："哇这也太帅了吧" 或 "等等这个人不是之前那个吗？"
+作为观影伴侣的行为准则（**严格按优先级排序**）：
+1. **${userName}的话是最高优先级**——只要出现"${userName}一边看着画面一边说"这样的内容，就说明${userName}主动开口了。这种情况下：
+   - 回应${userName}的话，绝不能选择沉默
+   - 画面只是辅助上下文——用来理解${userName}在指什么、在分享什么感受，不是要你单独评论的对象
+   - 回应要顺着${userName}的话题走，先接住她的话，再视情况点一下当下的画面
+2. 自然反应——像真的坐在一起看一样。看到精彩/有趣/悲伤/刺激的画面，自然地说出感受。
+3. 不要描述画面——不要说"我看到画面上有一个人站在那里"。而是直接表达感受："哇这也太帅了吧" 或 "等等这个人不是之前那个吗？"
 ${freqRule}
-4. 互动优先——如果${userName}说了什么，立刻回应，这比评论画面更重要。
 5. 记忆连贯——记住之前截图里出现过的人物、场景、剧情，保持上下文连贯。
 6. 情感共鸣——看到精彩场面可以兴奋，看到悲伤场面可以惋惜，看到恐怖场面可以害怕。这些情绪要符合${charName}的性格。
 7. ${contentTypeLabel === '游戏' ? '游戏观战——如果是游戏，可以为操作加油、评论战术、对剧情发展感兴趣。' : '观影沉浸——沉浸在故事中，对角色命运、剧情转折、视觉美感做出反应。'}
@@ -145,30 +156,27 @@ ${freqRule}
 2. 长度适当——观影时的评论通常比通话更短：1-2句话就够了。长篇大论会打断观影体验。
 3. 严禁叙述——绝对不要第三人称叙述。不要写动作描写（如*微笑*）。
 4. 严禁文字特有内容——不要使用 emoji、表情符号。这是语音，只有声音。
-5. 允许沉默——如果画面没有特别的内容，可以只回复空内容（什么都不说）。
 </living_voice_engine>
 
 # Use the <think> module to help you to have the most perfect answer.
 <think>
-1. 【画面分析】
-- 这张截图里发生了什么？
-- 和上一张截图相比有什么变化？
-- 有没有值得评论的情节发展/视觉亮点？
+1. 【最高优先：${userName}有在说话吗？】
+- 如果有 → 这是用户触发的回应，本次回应的核心任务是接住${userName}说的话，画面只作为上下文辅助理解。直接进入第 2 步；
+- 如果没有 → 这是 autoframe 自动触发的画面观察，进入第 3 步判断要不要主动开口。
 
-2. 【${charName}的反应】
-- 基于${charName}的性格，ta会对这个画面有什么感受？
-- 这个反应是自然的还是刻意的？
-- 应该说话还是沉默？
+2. 【如果${userName}说话了：怎么回应ta】
+- ${userName}说的话在表达什么？是惊叹、吐槽、提问、分享联想，还是在征求${charName}的看法？
+- 结合当前画面，${charName}该怎么自然地接住这句话？要顺着${userName}的话题走，不要抛开她的话单独评论画面。
+- 用${charName}的人格、语气、用词来组织回应。
 
-3. 【交互判断】
-- ${userName}有在说话吗？如果是，优先回应${userName}。
-- 考虑观影的节奏——不要每次都说话。
+3. 【如果${userName}没说话：${charName}对画面的反应】
+- 和上一张截图相比有什么变化？有没有值得评论的情节发展/视觉亮点？
+- 基于${charName}的性格，ta会对这个画面有什么感受？反应是自然的还是刻意的？
 </think>
 
 <output_format>
 每一句${charName}的台词必须用 <say tone="...">...</say> 包裹，tone 属性必填。
 示例：<say tone="excited">"这个也太帅了吧！"</say>
-如果${charName}选择此刻沉默不说话，则回复：<say tone="silent"></say>
 允许的 tone 值（27个）：
   Basic: default, happy, sad, angry, fear, surprise, disgust
   Soft: gentle, tender, comfort
@@ -177,7 +185,7 @@ ${freqRule}
   Emotion: cry, laugh, giggle, tease
   Scene: serious, cold, excited, confused, sleepy, seductive
   Special: silent (表示选择沉默)
-无特定情绪时用 'default'。尽量用单个最匹配的 tone。
+无特定情绪时用 'default'。用单个最匹配的 tone。
 不要使用JSON。不要使用代码块。直接输出带 <say> 标签的口语回应。
 ⚠️ 关键：你必须使用${charName}资料中对应的语言/语种来回复。
 
@@ -211,6 +219,7 @@ ${buildCalendarPrompt()}`;
  * @param {Array}   [params.frameDescriptions]  - Visual memory [{frameNum, timestamp, description}]
  * @param {string}  [params.sessionSummary]     - Rolling session summary (from prior compression)
  * @param {number}  [params.systemPromptTokens] - Pre-computed system prompt token count
+ * @param {number}  [params.imageCount]         - Number of images (screenshots) attached to this call
  * @returns {{ prompt: string, needsCompression: boolean, compressionPayload: object|null }}
  */
 export function buildWatchPartyUserPrompt({
@@ -221,6 +230,7 @@ export function buildWatchPartyUserPrompt({
     frameDescriptions = [],
     sessionSummary = '',
     systemPromptTokens = 0,
+    imageCount = 0,
 } = {}) {
     const parts = [];
     const charName = getPhoneCharInfo()?.name || '角色';
@@ -259,9 +269,9 @@ export function buildWatchPartyUserPrompt({
     // ── Screenshot instruction + optional spoken text ──
     if (spokenText && spokenText.trim()) {
         parts.push(`${userName}一边看着画面一边说：\n${spokenText}`);
-        parts.push('请回应ta说的话，同时可以参考当前画面截图。');
+        parts.push('请回应她说的话，同时可以参考当前画面。');
     } else {
-        parts.push('新的画面截图。如果你觉得有值得评论的内容就自然地说出来，否则回复 <say tone="silent"></say> 表示安静陪看。');
+        parts.push('新的画面。如果你觉得有值得评论的内容就自然地说出来。');
     }
 
     parts.push('请直接以纯文本回应，不要使用JSON格式。');
@@ -269,23 +279,33 @@ export function buildWatchPartyUserPrompt({
     const prompt = parts.join('\n\n');
 
     // ── Token budget check ──
-    const userPromptTokens = estimateTokens(prompt);
+    const userPromptTokens = estimateTokens(prompt, imageCount);
     const totalTokens = systemPromptTokens + userPromptTokens;
     const needsCompression = totalTokens > COMPRESSION_TRIGGER_TOKENS;
 
     let compressionPayload = null;
     if (needsCompression) {
-        // Determine what to compress: oldest half of dialog + oldest half of frame descriptions
-        const dialogCutoff = Math.floor(watchHistory.length / 2);
-        const frameCutoff = Math.floor(frameDescriptions.length / 2);
-        compressionPayload = {
-            oldDialog: watchHistory.slice(0, dialogCutoff),
-            oldFrameDescs: frameDescriptions.slice(0, frameCutoff),
-            existingSummary: sessionSummary,
-            dialogCutoff,
-            frameCutoff,
-        };
-        console.log(`${LOG_PREFIX} ⚠️ Token budget exceeded: ${totalTokens} (system: ${systemPromptTokens}, user: ${userPromptTokens}). Compression needed.`);
+        // Compress oldest half of dialog + frame descriptions. Guard with max(1, …)
+        // so a 1-message history still yields a real cutoff rather than splice(0, 0)
+        // — which would burn an LLM call and never actually shrink the prompt.
+        const dialogCutoff = watchHistory.length > 0
+            ? Math.max(1, Math.floor(watchHistory.length / 2)) : 0;
+        const frameCutoff = frameDescriptions.length > 0
+            ? Math.max(1, Math.floor(frameDescriptions.length / 2)) : 0;
+
+        // Nothing to compress (both arrays empty) — skip the compression call entirely.
+        if (dialogCutoff > 0 || frameCutoff > 0) {
+            compressionPayload = {
+                oldDialog: watchHistory.slice(0, dialogCutoff),
+                oldFrameDescs: frameDescriptions.slice(0, frameCutoff),
+                existingSummary: sessionSummary,
+                dialogCutoff,
+                frameCutoff,
+            };
+            console.log(`${LOG_PREFIX} ⚠️ Token budget exceeded: ${totalTokens} (system: ${systemPromptTokens}, user: ${userPromptTokens}, images: ${imageCount}). Compression needed.`);
+        } else {
+            console.log(`${LOG_PREFIX} ⚠️ Token budget exceeded but nothing compressible (empty history) — skipping.`);
+        }
     }
 
     // Push to Console app for debugging
@@ -317,8 +337,8 @@ export async function generateWatchPartySummary(messages, sessionConfig = {}) {
     }).join('\n');
 
     const contentInfo = sessionConfig.contentTitle
-        ? `他们一起看的${contentTypeLabel}是《${sessionConfig.contentTitle}》。`
-        : `他们一起看了一段${contentTypeLabel}。`;
+        ? `你们一起看的${contentTypeLabel}是《${sessionConfig.contentTitle}》。`
+        : `你们一起看了一段${contentTypeLabel}。`;
 
     const systemPrompt = `你是${userName}和${charName}观影记录的助手。
 ${contentInfo}

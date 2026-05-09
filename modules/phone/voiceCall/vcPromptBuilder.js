@@ -20,8 +20,11 @@ import { callPhoneLLM } from '../../api.js';
  * @param {boolean} [options.chatContext=false] - If true, inject chat summary + recent messages
  *   (used when calling from the chat app to continue the SMS conversation).
  *   If false, standalone mode (used from vcApp, no chat context).
+ * @param {string} [options.proactiveInstruction=''] - Optional directive injected at the
+ *   end of the system prompt when the AI is being asked to speak proactively (no user
+ *   utterance triggered this turn). Wrapped in <proactive_directive>...</proactive_directive>.
  */
-export async function buildVcSystemPrompt({ chatContext = false } = {}) {
+export async function buildVcSystemPrompt({ chatContext = false, proactiveInstruction = '' } = {}) {
     const charInfo = getPhoneCharInfo();
     const userName = getPhoneUserName();
     const charName = charInfo?.name || '角色';
@@ -44,7 +47,7 @@ export async function buildVcSystemPrompt({ chatContext = false } = {}) {
         ? `<world_info>\n以下是${charName}和${userName}之间已有的记忆与世界设定：\n${worldBookText}\n</world_info>`
         : '';
 
-    // Core Foundation Prompt (生态圈奠基石)
+    // Core Foundation Prompt
     const foundation = getCoreFoundationPrompt();
 
     // ── Chat context blocks (only when calling from chat app) ──
@@ -177,7 +180,7 @@ ${chatContext
 不要使用JSON。不要使用代码块。直接输出带 <say> 标签的口语回应。
 ⚠️ 关键：你必须使用${charName}资料中对应的语言/语种来回复。使用的语言需要始终如一，不要中途切换语言。
 </output_format>
-${buildCalendarPrompt()}`;
+${buildCalendarPrompt()}${proactiveInstruction ? `\n\n<proactive_directive>\n${proactiveInstruction}\n</proactive_directive>` : ''}`;
 
     // Push to Console app for debugging
     try { pushPromptLog('VoiceCall System', result); } catch (e) { /* console not loaded */ }
@@ -191,12 +194,17 @@ ${buildCalendarPrompt()}`;
 
 /**
  * Build the user prompt from current call transcript + latest spoken text.
- * @param {string} spokenText - The user's latest spoken text (from STT)
+ * @param {string} spokenText - The user's latest spoken text (from STT). Ignored when
+ *   `options.proactive` is true.
  * @param {Array} callHistory - Current call's message history [{role, content, timestamp}]
- * @param {number} maxHistoryMessages - How many recent messages to include
+ * @param {number} [maxHistoryMessages=20] - How many recent messages to include
+ * @param {object} [options]
+ * @param {boolean} [options.proactive=false] - If true, the user did not speak this turn.
+ *   Replace the "user said …" line with an explanatory placeholder pointing the AI back
+ *   at <proactive_directive> in the system prompt.
  * @returns {string}
  */
-export function buildVcUserPrompt(spokenText, callHistory = [], maxHistoryMessages = 20) {
+export function buildVcUserPrompt(spokenText, callHistory = [], maxHistoryMessages = 20, { proactive = false } = {}) {
     const parts = [];
     const charName = getPhoneCharInfo()?.name || '角色';
     const userName = getPhoneUserName();
@@ -214,8 +222,11 @@ export function buildVcUserPrompt(spokenText, callHistory = [], maxHistoryMessag
         }
     }
 
-    // Current spoken text
-    parts.push(`${userName}在电话里说：\n${spokenText}`);
+    if (proactive) {
+        parts.push(`此刻${userName}没有开口说话。请按照系统提示中的 <proactive_directive> 指示，主动说点什么。`);
+    } else {
+        parts.push(`${userName}在电话里说：\n${spokenText}`);
+    }
     parts.push('请直接以纯文本回应，不要使用JSON格式。');
 
     const result = parts.join('\n\n');

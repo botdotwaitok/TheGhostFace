@@ -524,58 +524,6 @@
     color: #6a0dad;
 }
 
-/* ── Phase 2: Chat Buff Bar ── */
-.chat-buff-bar {
-    display: none;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #f5edfc 0%, #ede4f8 100%);
-    border-bottom: 1px solid #e0cff2;
-}
-
-.chat-buff-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    background: rgba(106, 13, 173, 0.1);
-    border: 1px solid rgba(106, 13, 173, 0.2);
-    border-radius: 12px;
-    padding: 2px 8px;
-    font-size: 0.75em;
-    cursor: default;
-}
-
-.chat-buff-emoji {
-    font-size: 1.1em;
-}
-
-.chat-buff-count {
-    font-weight: bold;
-    color: #6a0dad;
-    font-size: 0.9em;
-}
-
-/* ── Phase 2: Recalled Peek Bubble ── */
-.chat-recalled-peek {
-    background: rgba(200, 200, 200, 0.3) !important;
-    border: 1px dashed rgba(150, 150, 150, 0.5) !important;
-    opacity: 0.85;
-    font-style: italic;
-}
-
-.chat-recalled-peek-label {
-    font-size: 0.7em;
-    color: #888;
-    margin-bottom: 4px;
-    font-style: normal;
-}
-
-.chat-recalled-peek-text {
-    text-decoration: line-through;
-    color: #555;
-}
-
 /* ── Phase 5: Prank Event Card ── */
 .chat-prank-event-card {
     display: flex;
@@ -641,218 +589,54 @@
     color: #fff !important;
 }
 
-/* ── Phase 5: Gift Event Card ── */
-.chat-special-card.gift {
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(135deg, #fef3c7, #fde68a, #fbbf24);
-    border: 2px solid #f59e0b;
-    border-radius: 16px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3), inset 0 1px 0 rgba(255,255,255,0.5);
-    min-width: 200px;
+/* ── Phase 5: Gift / Robbery cards (simplified, share .chat-special-card) ── */
+
+/* Gift icon (warm amber) */
+.chat-special-icon.gift {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    color: #fff;
 }
 
-.chat-special-card.gift.unknown {
-    background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
-    border-color: #9ca3af;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+/* Robbery in-progress icon (dark red) */
+.chat-special-icon.robbery {
+    background: linear-gradient(135deg, #991b1b, #7f1d1d);
+    color: #fff;
 }
 
-.gift-card-shimmer {
-    display: none;
+/* Robbery result icons — colored by outcome */
+.chat-special-icon.robbery-success {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+}
+.chat-special-icon.robbery-fail {
+    background: linear-gradient(135deg, #6b7280, #4b5563);
+    color: #fff;
+}
+.chat-special-icon.robbery-counter {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: #fff;
+}
+.chat-special-icon.robbery-shield {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: #fff;
 }
 
-.gift-card-icon {
-    font-size: 2.5em;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-    animation: giftPop 0.5s ease-out;
-    flex-shrink: 0;
-}
+/* Subtle border tint on robbery result cards (no full background gradient) */
+.chat-special-card.robbery-result.success { border: 1px solid rgba(245, 158, 11, 0.45); }
+.chat-special-card.robbery-result.fail    { border: 1px solid rgba(107, 114, 128, 0.35); }
+.chat-special-card.robbery-result.counter { border: 1px solid rgba(239, 68, 68, 0.45); }
+.chat-special-card.robbery-result.shield  { border: 1px solid rgba(59, 130, 246, 0.45); }
 
-@keyframes giftPop {
-    0% { transform: scale(0) rotate(-15deg); opacity: 0; }
-    50% { transform: scale(1.2) rotate(5deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0deg); }
-}
-
-.gift-card-body {
-    flex: 1;
-    position: relative;
-    z-index: 1;
-}
-
-.gift-card-title {
-    font-size: 0.75em;
-    font-weight: bold;
-    color: #92400e;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-}
-
-.gift-card-item {
-    font-size: 1.15em;
-    font-weight: bold;
-    color: #78350f;
-    margin-bottom: 4px;
-    text-shadow: 0 1px 0 rgba(255,255,255,0.5);
-}
-
-.gift-card-desc {
-    font-size: 0.8em;
-    color: #92400e;
-    line-height: 1.35;
-    margin-bottom: 4px;
-}
-
-.gift-card-tag {
-    display: inline-block;
-    font-size: 0.65em;
-    background: rgba(120, 53, 15, 0.15);
-    color: #78350f;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-weight: 600;
-}
-
-.gift-card-status {
-    font-size: 0.75em;
-    color: #92400e;
-    padding-top: 6px;
-    border-top: 1px solid rgba(245, 158, 11, 0.3);
-    position: relative;
-    z-index: 1;
+/* Inline status text inside .chat-special-label (used by gift / robbery cards) */
+.chat-special-status {
     transition: color 0.3s ease;
 }
-
-.gift-card-status.gift-status-done {
-    color: #065f46;
+.chat-special-status.done {
+    color: #059669;
     font-weight: 600;
 }
-
-/* ═══════════════════════════════════════════════════════════════════════
-   Phase 7: Robbery System Cards
-   ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Robbery Auto Card (simplified, no buttons) ── */
-.chat-special-card.robbery-auto {
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(135deg, #1a0a0a 0%, #3b0d0d 50%, #5c1010 100%);
-    border: 2px solid #8b0000;
-    border-radius: 16px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: 0 4px 15px rgba(139, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-    min-width: 200px;
-}
-
-.robbery-card-shimmer {
-    display: none;
-}
-
-.robbery-card-icon {
-    font-size: 2.2em;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
-    animation: robberyPop 0.5s ease-out;
-    flex-shrink: 0;
-}
-
-@keyframes robberyPop {
-    0% { transform: scale(0) rotate(-10deg); opacity: 0; }
-    60% { transform: scale(1.2) rotate(5deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0deg); }
-}
-
-.robbery-card-body {
-    flex: 1;
-    position: relative;
-    z-index: 1;
-}
-
-.robbery-card-title {
-    font-size: 0.85em;
-    font-weight: bold;
-    color: #ff6b6b;
-    margin-bottom: 6px;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-}
-
-.robbery-card-desc {
-    font-size: 0.8em;
-    color: #e0c0c0;
-    line-height: 1.4;
-    font-style: italic;
-}
-
-.robbery-card-status {
-    font-size: 0.8em;
-    color: #fbbf24;
-    padding-top: 8px;
-    border-top: 1px solid rgba(139, 0, 0, 0.3);
-    position: relative;
-    z-index: 1;
-}
-
-/* ── Robbery Result Card ── */
-.chat-special-card.robbery-result {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    margin: 8px 0;
-    border-radius: 16px;
-    border: 1px solid;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.chat-special-card.robbery-result.success {
-    background: linear-gradient(135deg, #064e3b, #065f46, #047857);
-    border-color: rgba(16, 185, 129, 0.5);
-}
-
-.chat-special-card.robbery-result.fail {
-    background: linear-gradient(135deg, #1f1f1f, #374151);
-    border-color: rgba(107, 114, 128, 0.5);
-}
-
-.chat-special-card.robbery-result.counter {
-    background: linear-gradient(135deg, #7f1d1d, #991b1b, #b91c1c);
-    border-color: rgba(239, 68, 68, 0.5);
-}
-
-.chat-special-card.robbery-result.shield {
-    background: linear-gradient(135deg, #1e3a5f, #1e40af, #2563eb);
-    border-color: rgba(59, 130, 246, 0.5);
-}
-
-.robbery-result-icon {
-    font-size: 2.2em;
-    flex-shrink: 0;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-}
-
-.robbery-result-body {
-    flex: 1;
-}
-
-.robbery-result-title {
-    font-size: 0.95em;
-    font-weight: bold;
-    color: #fff;
-    margin-bottom: 4px;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
-
-.robbery-result-desc {
-    font-size: 0.8em;
-    color: rgba(255,255,255,0.8);
-    line-height: 1.35;
+.chat-special-status.error {
+    color: #dc2626;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1261,4 +1045,19 @@
 
 .phone-dark-mode .shop-use-btn:active {
     background: #48484a;
+}
+
+/* Prank card — dark mode (浅紫渐变在暗色下太刺眼，改深紫底) */
+.phone-dark-mode .chat-special-card.prank {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(109, 40, 217, 0.22));
+    border-color: rgba(167, 139, 250, 0.35);
+}
+
+/* Gift / robbery status text — dark mode (深绿深红在暗底对比度偏低) */
+.phone-dark-mode .chat-special-status.done {
+    color: #34d399;
+}
+
+.phone-dark-mode .chat-special-status.error {
+    color: #f87171;
 }

@@ -8,14 +8,36 @@ import { createLocalPost } from './persistence.js';
 import { useMomentCustomApi } from '../../api.js';
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { getContext } from '../../../../../../extensions.js';
-import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getCharAuthorId, getBase64FromUrl, showToast } from './momentsHelpers.js';
+import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getCharAuthorId, resolveCharAvatar, showToast } from './momentsHelpers.js';
 // (Helpers moved to momentsHelpers.js)
+
+// ═══════════════════════════════════════════════════════════════════════
+// Short-ID 计算：取 ID 末段的最后 8 位 base36
+// 8 字符 base36 ≈ 2.8 万亿空间，远高于 5 字符 (~6000 万)，规避 birthday paradox。
+// 命中规则改为精确相等，避免 endsWith 把含同样后缀的多个 ID 误判到第一个。
+// ═══════════════════════════════════════════════════════════════════════
+const SHORT_ID_LEN = 8;
+export function computeShortId(fullId) {
+    if (!fullId) return '';
+    const lastSegment = String(fullId).split('_').pop();
+    return lastSegment.slice(-SHORT_ID_LEN).toLowerCase();
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Mutual Sync (Main LLM Integration)
 // ═══════════════════════════════════════════════════════════════════════
 
-export async function updateMomentsWorldInfo() {
+// 串行化锁：sync / addComment / deletePost / createLocalPost / publishPost 都会
+// 触发 updateMomentsWorldInfo，并发执行时 loadWorldInfo → modify → saveWorldInfo 的
+// RMW 会互相覆盖。用 promise 链把所有调用排成队列。
+let _wiUpdateChain = Promise.resolve();
+export function updateMomentsWorldInfo() {
+    const next = _wiUpdateChain.then(_runUpdateMomentsWorldInfo, _runUpdateMomentsWorldInfo);
+    _wiUpdateChain = next.catch(() => { }); // 不让上一次的异常阻断后续调用
+    return next;
+}
+
+async function _runUpdateMomentsWorldInfo() {
     try {
         // Import WI utilities
         const { saveWorldInfo, loadWorldInfo } = await import('../../../../../../world-info.js');
@@ -48,7 +70,7 @@ export async function updateMomentsWorldInfo() {
         const userName = getUserNameFallback();
         const feedText = recentPosts.map(p => {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const shortId = p.id.split('_').pop().slice(-5);
+            const shortId = computeShortId(p.id);
 
             // ── 双重匹配：authorId 或 authorName 匹配角色即视为角色评论 ──
             // 本地创建的评论 authorId = "char_42"，后端同步回来的可能是服务器 userId
@@ -93,7 +115,7 @@ export async function updateMomentsWorldInfo() {
 
             if (p.comments && p.comments.length > 0) {
                 const recentComments = p.comments.slice(-5).map(c => {
-                    const cShortId = c.id.split('_').pop().slice(-5);
+                    const cShortId = computeShortId(c.id);
                     const replyStr = c.replyToName ? ` 回复 ${c.replyToName}` : '';
                     // 角色自己的评论永远不注入 ID（角色不会回复自己）
                     if (_isCharComment(c)) {
@@ -124,8 +146,8 @@ export async function updateMomentsWorldInfo() {
 1. 只有带有 [ID:xxxxx] 标记的帖子和评论才可以被评论或回复！没有 ID 的内容是纯背景信息，绝对不可以互动！
 2. 绝对不要在括号内或外添加 【帖子】[ID:xxx]、【评论】[ID:xxx] 或 [角色名 回复] 等前缀，直接写内容！
 3. 错误示范：(朋友圈: 评论xxx) 【评论】[ID:123] 回复: 内容...
-4. 正确评论示范：(评论 92808: 居然是这样！太有趣了。)
-5. 请直接使用动态列表中被评论者的5位字母数字ID。
+4. 正确评论示范：(评论 9280abcd: 居然是这样！太有趣了。)
+5. 请直接使用动态列表中被评论者的8位字母数字ID。
 6. 鼓励批量回复多条评论，也可以同时发布朋友圈。
 
 
@@ -193,9 +215,9 @@ Recent social feed is in World Info. To interact:
 - Comment on a post or reply to a comment: (评论 ID: your text)
 
 【FORMATTING RULES - CRITICAL】
-1. You may ONLY interact with posts/comments that have an [ID:xxxxx] marker. Items without an ID are read-only background context — DO NOT attempt to comment on or reply to them.
-2. Example using a 5-character ID: (评论 a1b2c: Hello there!)
-3. DO NOT use names in the command, ONLY use the 5-character ID.
+1. You may ONLY interact with posts/comments that have an [ID:xxxxxxxx] marker. Items without an ID are read-only background context — DO NOT attempt to comment on or reply to them.
+2. Example using an 8-character ID: (评论 a1b2c3d4: Hello there!)
+3. DO NOT use names in the command, ONLY use the 8-character ID.
 4. DO NOT output fake IDs or prefix your text with 【帖子】[ID:xxx], 【评论】[ID:xxx] or [Name] outside or inside the command.
 5. ALWAYS output the pure text inside the command syntax.`;
 
@@ -215,6 +237,14 @@ export async function handleMainChatOutput(content) {
     // ── Cooldown gate: skip new posts if on cooldown ──
     const postCooldownActive = isMomentsPostOnCooldown();
 
+    // 整次调用复用同一份 charInfo + 头像 base64，避免在每个匹配里重复 fetch
+    const charInfo = getCharacterInfo();
+    let _resolvedAvatar = null;
+    const _getAvatar = async () => {
+        if (_resolvedAvatar === null) _resolvedAvatar = await resolveCharAvatar(charInfo);
+        return _resolvedAvatar;
+    };
+
     // Regex for (朋友圈: ...)
     const postMatches = Array.from(content.matchAll(/\((?:朋友圈|Moments):\s*(.+?)\)/gi));
     for (const postMatch of postMatches) {
@@ -226,12 +256,7 @@ export async function handleMainChatOutput(content) {
                     console.log(`${MOMENTS_LOG_PREFIX} 🕐 朋友圈发帖冷却中，跳过: ${text.substring(0, 50)}...`);
                     continue;
                 }
-                const charInfo = getCharacterInfo();
-                let avatarData = charInfo?.avatar;
-                if (avatarData && !avatarData.startsWith('http') && !avatarData.startsWith('data:') && !avatarData.startsWith('/')) {
-                    const base64 = await getBase64FromUrl(`characters/${avatarData}`);
-                    if (base64) avatarData = base64;
-                }
+                const avatarData = await _getAvatar();
                 await createLocalPost(text, charInfo?.name, avatarData, null, true);
                 logMoments(`📝 ${charInfo.name} 的朋友圈草稿等你审核: ${text}`);
                 showToast && showToast(`已生成待发布草稿`);
@@ -253,13 +278,15 @@ export async function handleMainChatOutput(content) {
 
                 if (targetId) {
                     const cleanTargetId = targetId.toLowerCase().trim();
+                    // 精确匹配 computeShortId(p.id) === cleanTargetId，避免 endsWith 把
+                    // 多个含相同后缀的 ID 都命中第一个，也避免 5-char 短ID 的碰撞风险。
                     for (const p of feedCache) {
-                        if (p.id.toLowerCase().trim().endsWith(cleanTargetId)) {
+                        if (computeShortId(p.id) === cleanTargetId) {
                             targetPost = p;
                             break;
                         }
                         if (p.comments) {
-                            const matchedComment = p.comments.find(c => c.id.toLowerCase().trim().endsWith(cleanTargetId));
+                            const matchedComment = p.comments.find(c => computeShortId(c.id) === cleanTargetId);
                             if (matchedComment) {
                                 targetPost = p;
                                 targetComment = matchedComment;
@@ -277,8 +304,6 @@ export async function handleMainChatOutput(content) {
                 }
 
                 if (targetPost) {
-                    const charInfo = getCharacterInfo();
-
                     if (charInfo && charInfo.name && targetPost.comments) {
                         // 只检查角色自身的 authorId，避免用户评论被误判为角色已互动
                         const charAuthorId = getCharAuthorId();
@@ -314,11 +339,12 @@ export async function handleMainChatOutput(content) {
                         }
                     }
 
+                    const avatarData = await _getAvatar();
                     if (targetComment) {
-                        await addComment(targetPost.id, text, charInfo?.name, targetComment.id, targetComment.authorName, charInfo?.avatar);
+                        await addComment(targetPost.id, text, charInfo?.name, targetComment.id, targetComment.authorName, avatarData);
                         logMoments(`💬 ${charInfo.name} 回复了 ${targetComment.authorName} 的评论: ${text}`);
                     } else {
-                        await addComment(targetPost.id, text, charInfo?.name, null, null, charInfo?.avatar);
+                        await addComment(targetPost.id, text, charInfo?.name, null, null, avatarData);
                         logMoments(`💬 ${charInfo.name} 评论了 ${targetPost.authorName}: ${text}`);
                     }
                     showToast && showToast(`已评论: ${text.substring(0, 10)}...`);

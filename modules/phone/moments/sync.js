@@ -74,8 +74,9 @@ export async function syncFeed(force = false) {
             for (const backendPost of result.posts) {
                 const localPost = oldPostsMap.get(backendPost.id);
                 if (localPost) {
-                    const localCommentIds = new Set(localPost.comments.map(c => c.id));
-                    const newComments = backendPost.comments.filter(c => !localCommentIds.has(c.id));
+                    // 守护：后端 post 不一定带 comments 字段；缺失时抛错会触发熔断器
+                    const localCommentIds = new Set((localPost.comments || []).map(c => c.id));
+                    const newComments = (backendPost.comments || []).filter(c => !localCommentIds.has(c.id));
                     for (const newComment of newComments) {
                         if (top5Ids.has(backendPost.id)) {
                             newCommentsToReply.push({ post: backendPost, comment: newComment });
@@ -139,6 +140,23 @@ export async function syncFeed(force = false) {
 // Lifecycle Management
 // ═══════════════════════════════════════════════════════════════════════
 
+// 递归 setTimeout：上一次 syncFeed 完成后再 schedule 下一次，避免慢网络下
+// setInterval 触发的多次并发同步互相覆盖 setFeedCache。
+function _scheduleNextSync() {
+    const settings = getSettings();
+    let id;
+    id = setTimeout(async () => {
+        // 触发回调时 stopSync 可能已经把 syncTimerId 清掉，这里要识别外部停机
+        if (getSyncTimerId() !== id) return;
+        try { await syncFeed(); } catch (e) { /* syncFeed 内部已处理 */ }
+        // syncFeed 期间 stopSync 也可能被调用，再确认一次
+        if (getSyncTimerId() === id) {
+            _scheduleNextSync();
+        }
+    }, settings.syncInterval);
+    setSyncTimerId(id);
+}
+
 export function startSync() {
     stopSync();
     const settings = getSettings();
@@ -148,8 +166,8 @@ export function startSync() {
     resetConsecutiveFailures();
     syncFeed();
 
-    // Periodic sync
-    setSyncTimerId(setInterval(() => syncFeed(), settings.syncInterval));
+    // Periodic sync — 递归调度，确保不会出现并发 syncFeed
+    _scheduleNextSync();
 
     logMoments('云端已成功连接');
 }
@@ -157,7 +175,7 @@ export function startSync() {
 export function stopSync() {
     const timerId = getSyncTimerId();
     if (timerId) {
-        clearInterval(timerId);
+        clearTimeout(timerId);
         setSyncTimerId(null);
     }
 }

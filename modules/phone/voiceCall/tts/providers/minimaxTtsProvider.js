@@ -14,9 +14,11 @@ export class MinimaxTtsProvider {
      * 合成语音（经由云服务器代理）
      * @param {string} text
      * @param {Object} settings - { apiKey, voiceId, model, speed, proxyServer }
-     * @returns {Promise<ArrayBuffer>}
+     * @param {AbortSignal} [signal] - Session abort signal — cancels the in-flight fetch.
+     * @returns {Promise<{ buffer: ArrayBuffer, mime: string }>}
+     *   The cloud proxy returns WAV PCM (audio/wav).
      */
-    async synthesize(text, settings) {
+    async synthesize(text, settings, signal) {
         const proxyServer = (settings.proxyServer || DEFAULT_PROXY).replace(/\/$/, '');
         const apiKey = settings.apiKey || '';
         const voiceId = settings.voiceId || 'female-shaonv';
@@ -35,6 +37,7 @@ export class MinimaxTtsProvider {
                 text,
                 settings: { apiKey, voiceId, model, speed },
             }),
+            signal,
         });
 
         if (!response.ok) {
@@ -44,7 +47,8 @@ export class MinimaxTtsProvider {
             throw err;
         }
 
-        return response.arrayBuffer();
+        const buffer = await response.arrayBuffer();
+        return { buffer, mime: 'audio/wav' };
     }
 
     /**

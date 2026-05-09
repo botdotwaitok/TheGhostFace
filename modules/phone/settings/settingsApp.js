@@ -2048,9 +2048,14 @@ export function openSettingsApp() {
                         if (!provider) throw new Error('TTS Provider 初始化失败');
 
                         const testText = '你好，这是一段语音测试合成效果。';
-                        const audioBuffer = await provider.synthesize(testText, tempSettings);
+                        // Providers now return { buffer, mime }; for the GSVI test
+                        // button the mime is always audio/wav, but destructure
+                        // defensively to stay consistent with the new contract.
+                        const result = await provider.synthesize(testText, tempSettings);
+                        const audioBuffer = result?.buffer ?? result;
+                        const mime = result?.mime || 'audio/wav';
 
-                        const blob = new Blob([audioBuffer], { type: 'audio/wav' });
+                        const blob = new Blob([audioBuffer], { type: mime });
                         const url = URL.createObjectURL(blob);
                         const audio = new Audio(url);
 

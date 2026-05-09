@@ -114,9 +114,11 @@ export class TtsEngine {
      * Synthesize text and play the result through AudioContext.
      * @param {string} text
      * @param {string} [emotion] - Optional emotion/tone for TTS (e.g. 'gentle', 'happy')
+     * @param {{ signal?: AbortSignal }} [options] - Pass session signal to abort
+     *   the underlying fetch when the call ends mid-synthesis.
      * @returns {Promise<number>} Duration in seconds (0 if skipped)
      */
-    async speak(text, emotion) {
+    async speak(text, emotion, options = {}) {
         if (!this._activeProvider || this._activeProviderName === 'none') {
             console.debug(`${LOG_PREFIX} No TTS provider configured, skipping.`);
             return 0;
@@ -124,68 +126,99 @@ export class TtsEngine {
 
         if (!text || text.trim().length === 0) return 0;
 
-        // Stop any ongoing playback before starting new
-        this.stop();
+        const signal = options.signal;
+        if (signal?.aborted) return 0;
+
+        // Note: no implicit stop() here — _playBuffer now resolves on real `onended`,
+        // so serial callers naturally chain. Callers that need to interrupt an
+        // in-flight utterance (e.g. user starts talking) must call stop() explicitly.
 
         console.debug(`${LOG_PREFIX} Speaking: "${text.substring(0, 40)}..." emotion=${emotion || 'none'}`);
 
         try {
-            const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
-            // Inject emotion into settings for the provider to use
-            if (emotion && emotion !== 'default') {
-                // If GPT-SoVITS, check if requested emotion exists in saved list
-                if (this._activeProviderName === 'GPT-SoVITS') {
-                    const promptLang = providerSettings.promptLang || '';
-                    const emotionsMap = providerSettings.emotionsMap || {};
-                    const validEmotions = emotionsMap[promptLang] || [];
-                    if (validEmotions.length > 0 && !validEmotions.includes(emotion)) {
-                        console.debug(`${LOG_PREFIX} Emotion "${emotion}" not found for ${promptLang}, using default: ${providerSettings.emotion}`);
-                        providerSettings._emotion = providerSettings.emotion || '默认';
-                    } else {
-                        providerSettings._emotion = emotion;
-                    }
-                } else {
-                    providerSettings._emotion = emotion;
-                }
-            }
+            const providerSettings = this._buildProviderSettings(emotion);
             console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
 
-            // Retry synthesize with exponential backoff (500ms → 1000ms → 2000ms)
-            const audioBuffer = await this._retryWithBackoff(
-                () => this._activeProvider.synthesize(text, providerSettings),
+            // Retry synthesize with exponential backoff (500ms → 1000ms → 2000ms).
+            // Providers now return { buffer, mime } — we only need buffer for playback.
+            const result = await this._retryWithBackoff(
+                () => this._activeProvider.synthesize(text, providerSettings, signal),
+                signal,
             );
+            const buffer = result?.buffer ?? result;
 
-            return await this._playBuffer(audioBuffer);
+            return await this._playBuffer(buffer, signal);
         } catch (err) {
+            if (err?.name === 'AbortError') {
+                console.debug(`${LOG_PREFIX} speak() aborted.`);
+                return 0;
+            }
             console.error(`${LOG_PREFIX} speak() failed after retries:`, err);
             return 0;
         }
     }
 
     /**
+     * Build providerSettings object with emotion injected. Shared by speak / speakAndCapture.
+     * @param {string} [emotion]
+     * @returns {Object}
+     */
+    _buildProviderSettings(emotion) {
+        const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
+        if (emotion && emotion !== 'default') {
+            if (this._activeProviderName === 'GPT-SoVITS') {
+                const promptLang = providerSettings.promptLang || '';
+                const emotionsMap = providerSettings.emotionsMap || {};
+                const validEmotions = emotionsMap[promptLang] || [];
+                if (validEmotions.length > 0 && !validEmotions.includes(emotion)) {
+                    console.debug(`${LOG_PREFIX} Emotion "${emotion}" not found for ${promptLang}, using default: ${providerSettings.emotion}`);
+                    providerSettings._emotion = providerSettings.emotion || '默认';
+                } else {
+                    providerSettings._emotion = emotion;
+                }
+            } else {
+                providerSettings._emotion = emotion;
+            }
+        }
+        return providerSettings;
+    }
+
+    /**
      * Execute an async function with 3-attempt exponential backoff.
      * Silently retries — no UI disruption for TTS failures.
      * Does not retry 4xx client errors (bad API key, invalid params).
+     * Bails immediately on AbortError so session-cancellation doesn't keep retrying.
      * @param {Function} fn
+     * @param {AbortSignal} [signal] - Optional session signal; aborts the inter-retry sleep.
      * @returns {Promise<*>}
      */
-    async _retryWithBackoff(fn) {
+    async _retryWithBackoff(fn, signal) {
         const maxAttempts = 3;
         const baseDelay = 500;
         let lastError;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
             try {
                 return await fn();
             } catch (err) {
                 lastError = err;
+                // Hard exit for abort — don't retry a cancelled fetch.
+                if (err?.name === 'AbortError') throw err;
                 // Don't retry 4xx client errors
                 if (err?.status >= 400 && err?.status < 500) throw err;
                 if (attempt >= maxAttempts) throw err;
 
                 const delay = baseDelay * Math.pow(2, attempt - 1);
                 console.warn(`${LOG_PREFIX} TTS attempt ${attempt}/${maxAttempts} failed, retrying in ${delay}ms...`, err.message);
-                await new Promise(r => setTimeout(r, delay));
+                // Abortable sleep
+                await new Promise((resolve, reject) => {
+                    const t = setTimeout(resolve, delay);
+                    signal?.addEventListener('abort', () => {
+                        clearTimeout(t);
+                        reject(new DOMException('aborted', 'AbortError'));
+                    }, { once: true });
+                });
             }
         }
         throw lastError;
@@ -195,51 +228,49 @@ export class TtsEngine {
      * 合成文字，播放，并返回音频 Blob + 时长 — 供调用方持久化保存。
      * @param {string} text
      * @param {string} [emotion] - Optional emotion/tone for TTS (e.g. 'gentle', 'happy')
+     * @param {{ signal?: AbortSignal }} [options] - Pass session signal to abort
+     *   the underlying fetch when the call ends mid-synthesis.
      * @returns {Promise<{ duration: number, audioBlob: Blob } | null>}
      */
-    async speakAndCapture(text, emotion) {
+    async speakAndCapture(text, emotion, options = {}) {
         if (!this._activeProvider || this._activeProviderName === 'none') {
             console.debug(`${LOG_PREFIX} No TTS provider configured, skipping.`);
             return null;
         }
         if (!text || text.trim().length === 0) return null;
 
-        this.stop();
+        const signal = options.signal;
+        if (signal?.aborted) return null;
+
+        // No implicit stop() — see speak() comment above.
         console.debug(`${LOG_PREFIX} speakAndCapture: "${text.substring(0, 40)}..." emotion=${emotion || 'none'}`);
 
         try {
-            const providerSettings = { ...(this._settings.providerSettings[this._activeProviderName] || {}) };
-            // Inject emotion into settings for the provider to use
-            if (emotion && emotion !== 'default') {
-                // If GPT-SoVITS, check if requested emotion exists in saved list
-                if (this._activeProviderName === 'GPT-SoVITS') {
-                    const promptLang = providerSettings.promptLang || '';
-                    const emotionsMap = providerSettings.emotionsMap || {};
-                    const validEmotions = emotionsMap[promptLang] || [];
-                    if (validEmotions.length > 0 && !validEmotions.includes(emotion)) {
-                        console.debug(`${LOG_PREFIX} Emotion "${emotion}" not found for ${promptLang}, using default: ${providerSettings.emotion}`);
-                        providerSettings._emotion = providerSettings.emotion || '默认';
-                    } else {
-                        providerSettings._emotion = emotion;
-                    }
-                } else {
-                    providerSettings._emotion = emotion;
-                }
-            }
+            const providerSettings = this._buildProviderSettings(emotion);
             console.log(`${LOG_PREFIX} [speakAndCapture] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
 
-            const audioBuffer = await this._retryWithBackoff(
-                () => this._activeProvider.synthesize(text, providerSettings),
+            const result = await this._retryWithBackoff(
+                () => this._activeProvider.synthesize(text, providerSettings, signal),
+                signal,
             );
+            // Providers return { buffer, mime }; the iOS <audio> element relies
+            // on the Blob mime to pick a decoder, so a hard-coded 'audio/mpeg'
+            // for a WAV payload silently fails playback in Safari history view.
+            const buffer = result?.buffer ?? result;
+            const mime = result?.mime || 'audio/mpeg';
 
-            // Create Blob from the raw ArrayBuffer (before decoding)
-            const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+            // Create Blob from the raw ArrayBuffer (before decoding) using real mime
+            const audioBlob = new Blob([buffer], { type: mime });
 
-            // Play and get duration
-            const duration = await this._playBuffer(audioBuffer);
+            // Play and get duration (waits for actual onended)
+            const duration = await this._playBuffer(buffer, signal);
 
             return { duration, audioBlob };
         } catch (err) {
+            if (err?.name === 'AbortError') {
+                console.debug(`${LOG_PREFIX} speakAndCapture() aborted.`);
+                return null;
+            }
             console.error(`${LOG_PREFIX} speakAndCapture() failed:`, err);
             return null;
         }
@@ -259,12 +290,34 @@ export class TtsEngine {
     }
 
     /**
-     * 解码并通过 Web Audio API 播放 ArrayBuffer。
-     * Resolves once playback starts (source.start() called).
-     * @param {ArrayBuffer} arrayBuffer
-     * @returns {Promise<number>} Duration of the audio in seconds
+     * Tear down the AudioContext entirely. Called once when the user leaves
+     * the entire voice-call App (phoneController switches away), NOT between
+     * calls — within a single voice-call session we want the warmed-up
+     * AudioContext to persist so playback unlock survives across utterances.
+     * Safe to call repeatedly; subsequent calls no-op until warmUp recreates it.
      */
-    async _playBuffer(arrayBuffer) {
+    async destroy() {
+        this.stop();
+        if (this._audioContext) {
+            const ctx = this._audioContext;
+            this._audioContext = null;
+            try { await ctx.close(); } catch { /* already closed */ }
+            console.debug(`${LOG_PREFIX} destroyed (AudioContext closed)`);
+        }
+    }
+
+    /**
+     * 解码并通过 Web Audio API 播放 ArrayBuffer。
+     * Resolves once playback finishes naturally (onended) or is aborted via signal.
+     * Returning only on real playback end is what lets serial callers await the
+     * next sentence without inter-sentence overlap or premature truncation.
+     * @param {ArrayBuffer} arrayBuffer
+     * @param {AbortSignal} [signal] - Session signal; abort stops playback and resolves with 0.
+     * @returns {Promise<number>} Duration in seconds (0 if aborted before/while playing)
+     */
+    async _playBuffer(arrayBuffer, signal) {
+        if (signal?.aborted) return 0;
+
         if (!this._audioContext) {
             this._audioContext = new AudioContext();
         }
@@ -275,21 +328,35 @@ export class TtsEngine {
         }
 
         const decodedBuffer = await this._audioContext.decodeAudioData(arrayBuffer.slice(0));
+        if (signal?.aborted) return 0;
 
-        const source = this._audioContext.createBufferSource();
-        source.buffer = decodedBuffer;
-        source.connect(this._audioContext.destination);
+        return new Promise((resolve) => {
+            const source = this._audioContext.createBufferSource();
+            source.buffer = decodedBuffer;
+            source.connect(this._audioContext.destination);
 
-        this._currentSource = source;
-        this._isPlaying = true;
+            this._currentSource = source;
+            this._isPlaying = true;
 
-        source.onended = () => {
-            this._isPlaying = false;
-            this._currentSource = null;
-        };
+            let settled = false;
+            const finish = (duration) => {
+                if (settled) return;
+                settled = true;
+                this._isPlaying = false;
+                if (this._currentSource === source) this._currentSource = null;
+                if (signal) signal.removeEventListener('abort', onAbort);
+                resolve(duration);
+            };
 
-        source.start(0);
-        return decodedBuffer.duration;
+            const onAbort = () => {
+                try { source.stop(); } catch (_) { /* already stopped */ }
+                finish(0);
+            };
+
+            source.onended = () => finish(decodedBuffer.duration);
+            signal?.addEventListener('abort', onAbort, { once: true });
+            source.start(0);
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════

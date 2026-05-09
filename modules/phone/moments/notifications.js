@@ -32,8 +32,12 @@ export function getNotificationType(post, comment) {
     if (isReplyToMe) return 'reply';
 
     // 2. Regex check for "回复 user" (Requested filter)
+    // 名字里可能含有正则元字符（例如 (test)、a+b、??角色），必须 escape
+    // 否则要么抛 SyntaxError 让本函数失败，要么误匹配。
     for (const name of targetNames) {
-        const regex = new RegExp(`^回复\\s*${name}`, 'i');
+        if (!name) continue;
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`^回复\\s*${escaped}`, 'i');
         if (regex.test(comment.content)) return 'reply';
     }
 

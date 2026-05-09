@@ -2,20 +2,52 @@
 // modules/moments/generation.js — AI 自动生成 (Post, Comment, Reply, Like)
 
 import { MOMENTS_LOG_PREFIX, logMoments, getCharacterId } from './constants.js';
-import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike } from './state.js';
+import { getSettings, getIsGeneratingPost, setIsGeneratingPost, getIsGeneratingComment, setIsGeneratingComment, getIsGeneratingLike, setIsGeneratingLike, getFeedCache } from './state.js';
 import { callPhoneLLM, useMomentCustomApi } from '../../api.js';
 import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneRecentChat, getPhoneUserPersona, getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { markMomentsPostCooldown, isMomentsPostOnCooldown } from '../chat/chatPromptBuilder.js';
 import { loadChatHistory } from '../chat/chatStorage.js';
 import { addComment, toggleLike } from './apiClient.js';
-import { getMyAuthorIds, getCharAuthorId, getBase64FromUrl, showToast } from './momentsHelpers.js';
+import { getMyAuthorIds, getCharAuthorId, getCharNameFallback, getBase64FromUrl, showToast } from './momentsHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Pending Interactions Queue
 // ═══════════════════════════════════════════════════════════════════════
 
 export let pendingInteractions = [];
+
+// 队列若只在主聊天 GENERATION_ENDED 时排空，用户长时间不发消息会一直膨胀；
+// 下一次主消息来时一次性把所有积压评论塞进同一次 LLM 调用。
+// 所以同时维护一个 debounced drain：每次入队后 60s 内无新动作就主动 drain。
+const _DRAIN_DEBOUNCE_MS = 60 * 1000;
+const _DRAIN_QUEUE_HARD_CAP = 30;
+let _drainTimer = null;
+
+function _scheduleDrain() {
+    if (_drainTimer) clearTimeout(_drainTimer);
+    // 队列触顶就立刻 drain，不再等 debounce。
+    if (pendingInteractions.length >= _DRAIN_QUEUE_HARD_CAP) {
+        _drainTimer = null;
+        processPendingInteractions().catch(e =>
+            console.warn(`${MOMENTS_LOG_PREFIX} debounced drain failed:`, e)
+        );
+        return;
+    }
+    _drainTimer = setTimeout(() => {
+        _drainTimer = null;
+        processPendingInteractions().catch(e =>
+            console.warn(`${MOMENTS_LOG_PREFIX} debounced drain failed:`, e)
+        );
+    }, _DRAIN_DEBOUNCE_MS);
+}
+
+function _cancelDrainTimer() {
+    if (_drainTimer) {
+        clearTimeout(_drainTimer);
+        _drainTimer = null;
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Helpers
@@ -116,17 +148,20 @@ export async function queueComment(post) {
     if (!charInfo) return;
 
     // ── 防重复：如果角色已评论过此帖且无新外部活动，则不再评论 ──
-    // 注意：只检查角色自身的 authorId，不包含用户 ID，
-    // 否则用户评论会被误判为角色已互动。
+    // 双重匹配：本地创建时 authorId = "char_42"，但后端同步回来时
+    // 服务器会把 authorId 改成 settings.userId（apiClient.js:386），
+    // 所以同时按 authorName 匹配，避免 sync 后过滤永远空集导致死循环刷评论。
     const charAuthorId = getCharAuthorId();
+    const charName = getCharNameFallback();
+    const _isCharComment = (c) => c.authorId === charAuthorId || (charName && c.authorName === charName);
     if (post.comments && post.comments.length > 0) {
         const myCommentTimes = post.comments
-            .filter(c => c.authorId === charAuthorId && !c.replyToId)
+            .filter(c => _isCharComment(c) && !c.replyToId)
             .map(c => new Date(c.createdAt).getTime());
         const myLastCommentTime = myCommentTimes.length > 0 ? Math.max(...myCommentTimes) : 0;
         if (myLastCommentTime > 0) {
             const hasNewExternalActivity = post.comments.some(c =>
-                c.authorId !== charAuthorId &&
+                !_isCharComment(c) &&
                 new Date(c.createdAt).getTime() > myLastCommentTime
             );
             if (!hasNewExternalActivity) {
@@ -158,6 +193,7 @@ export async function queueComment(post) {
         post: post,
         contextDesc: relationshipDesc
     });
+    _scheduleDrain();
 }
 
 export async function queueReply(post, comment) {
@@ -174,11 +210,13 @@ export async function queueReply(post, comment) {
     if (_isMyContent(comment)) return;
 
     // ── 防重复：如果角色已回复过此条评论，不再回复 ──
-    // 同样只检查角色自身的 authorId
+    // 同样使用 authorId/authorName 双重匹配（sync 后 authorId 会变成 userId）
     const charAuthorId = getCharAuthorId();
+    const charName = getCharNameFallback();
     if (post.comments) {
         const alreadyReplied = post.comments.some(c =>
-            c.authorId === charAuthorId && c.replyToId === comment.id
+            (c.authorId === charAuthorId || (charName && c.authorName === charName)) &&
+            c.replyToId === comment.id
         );
         if (alreadyReplied) return;
     }
@@ -210,9 +248,14 @@ export async function queueReply(post, comment) {
         comment: comment,
         contextDesc: relationshipDesc
     });
+    _scheduleDrain();
 }
 
 export async function processPendingInteractions() {
+    // 进入处理流程就取消 debounced 计时器，避免 GENERATION_ENDED 触发后
+    // 60s 后又跑一次空 drain。
+    _cancelDrainTimer();
+
     const settings = getSettings();
     if (!settings.enabled || pendingInteractions.length === 0 || getIsGeneratingComment()) return;
 
@@ -304,6 +347,12 @@ export async function processPendingInteractions() {
                     }
                 }
             }
+
+            // 批次写完显式派发一次 feed-updated，保证 UI 即便错过逐条 addLocalComment
+            // 派发也能 sync 到角色刚发的评论。
+            window.dispatchEvent(new CustomEvent('moments-feed-updated', {
+                detail: { posts: getFeedCache() }
+            }));
         }
 
     } catch (e) {

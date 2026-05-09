@@ -3,6 +3,7 @@
 // 通过 SillyTavern 代理 API 调用 KoboldCpp 的 Whisper 功能。
 
 import { getRequestHeaders } from '../../../../../../../../script.js';
+import { withTimeout } from '../../utils/corsProxyFetch.js';
 
 const LOG_PREFIX = '[STT:KoboldCpp]';
 
@@ -23,9 +24,10 @@ export class KoboldCppSttProvider {
      * 处理音频 Blob → 调用 KoboldCpp Whisper → 返回文本
      * @param {Blob} audioBlob - WAV 格式音频
      * @param {Object} [opts] - { language }
+     * @param {AbortSignal} [signal] - Session abort signal — cancels the transcribe fetch.
      * @returns {Promise<string>}
      */
-    async processAudio(audioBlob, opts = {}) {
+    async processAudio(audioBlob, opts = {}, signal) {
         const language = opts.language || '';
 
         // 获取 KoboldCpp 服务器地址
@@ -53,12 +55,15 @@ export class KoboldCppSttProvider {
             method: 'POST',
             headers: getRequestHeaders({ omitContentType: true }),
             body: formData,
+            signal: withTimeout(signal, 60000),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`${LOG_PREFIX} API error (${response.status}):`, errorText);
-            throw new Error(`KoboldCpp STT 失败 (${response.status}): ${response.statusText}`);
+            const err = new Error(`KoboldCpp STT 失败 (${response.status}): ${response.statusText}`);
+            err.status = response.status;
+            throw err;
         }
 
         const result = await response.json();

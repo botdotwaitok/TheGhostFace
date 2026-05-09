@@ -3,6 +3,9 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ── Full-screen Overlay ─────────────────────────────────────────────── */
+/* 注意：backdrop-filter 与 visibility 仅在 .moments-visible 时启用，
+   防止移动浏览器上 fixed + backdrop-filter 残留合成层吞掉 ST 主页 touch
+   事件（关闭后无法滚动 ST 主页面的 bug）。详见 phone.css 同段说明。*/
 .moments-overlay {
     position: fixed;
     top: 0;
@@ -11,18 +14,22 @@
     height: 100vh;
     z-index: 99999;
     background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.3s;
 }
 
 .moments-overlay.moments-visible {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0s;
 }
 
 .moments-container {
@@ -340,13 +347,13 @@
 }
 
 .moments-friend-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--SmartThemeBodyColor);
 }
 
 .moments-friend-id {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--SmartThemeEmColor);
     opacity: 0.6;
     font-family: monospace;
@@ -554,14 +561,14 @@
 }
 
 .moments-post-author {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--SmartThemeQuoteColor);
     margin-bottom: 4px;
 }
 
 .moments-post-content {
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1.6;
     color: var(--SmartThemeBodyColor);
     word-break: break-word;
@@ -600,7 +607,7 @@
 }
 
 .moments-media-content {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--SmartThemeEmColor);
     line-height: 1.4;
     word-break: break-word;
@@ -634,7 +641,7 @@
 }
 
 .moments-post-time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--SmartThemeEmColor);
     opacity: 0.6;
 }
@@ -728,9 +735,17 @@
 }
 
 .moments-comment-item {
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1.5;
     padding: 3px 0;
+    transition: background 0.18s ease, padding 0.18s ease, margin 0.18s ease;
+}
+
+.moments-comment-item.moments-comment-active {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+    border-radius: 6px;
+    padding: 3px 6px;
+    margin: 0 -6px;
 }
 
 .moments-comment-author {
@@ -745,7 +760,7 @@
 }
 
 .moments-no-comments {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--SmartThemeEmColor);
     opacity: 0.5;
     text-align: center;
@@ -760,7 +775,7 @@
 .moments-comment-compose .moments-input {
     flex: 1;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 13px;
     border-radius: 8px;
 }
 
@@ -771,13 +786,63 @@
     font-size: 11px;
 }
 
+/* ── Comment Long-Press Context Menu ─────────────────────────────────── */
+.moments-comment-context-menu {
+    position: fixed;
+    z-index: 999999;
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+    min-width: 110px;
+    opacity: 0;
+    transform: scale(0.92);
+    transform-origin: center bottom;
+    transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.moments-comment-context-menu.moments-context-menu-visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.moments-comment-context-menu button {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.15s ease;
+}
+
+.moments-comment-context-menu button:hover {
+    background: var(--ghost-error, #e74c3c);
+    color: #fff;
+}
+
+.moments-comment-context-menu button i {
+    font-size: 12px;
+    width: 14px;
+    text-align: center;
+}
+
 /* ── Empty State ─────────────────────────────────────────────────────── */
 .moments-empty-state {
     text-align: center;
     padding: 40px 20px;
     color: var(--SmartThemeEmColor);
     opacity: 0.6;
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .moments-empty-icon {
@@ -1606,7 +1671,7 @@
 
 .moments-pin-card-title {
     padding: 4px 6px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--SmartThemeBodyColor);
     line-height: 1.3;
     white-space: nowrap;

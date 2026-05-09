@@ -69,8 +69,22 @@ export const avatarCache = new AvatarCache();
 export function saveLocalFeed() {
     try {
         const feedCache = getFeedCache();
-        if (feedCache.length > 50) feedCache.length = 50;
-        const key = `${LOCAL_FEED_KEY_PREFIX}${getCharacterId()}`;
+        // 先按 createdAt 倒序保留 50 条非草稿，再把所有 pendingUpload 草稿无条件留下，
+        // 避免直接 length=50 把排在尾部的草稿误删。
+        if (feedCache.length > 50) {
+            const drafts = feedCache.filter(p => p.pendingUpload);
+            const nonDrafts = feedCache
+                .filter(p => !p.pendingUpload)
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0, 50);
+            feedCache.length = 0;
+            feedCache.push(...drafts, ...nonDrafts);
+            sortFeedCache();
+        }
+        const charId = getCharacterId();
+        // 角色切换瞬间 charId 可能为 null，此时不写避免污染共享 fallback 命名空间。
+        if (!charId) return;
+        const key = `${LOCAL_FEED_KEY_PREFIX}${charId}`;
         localStorage.setItem(key, JSON.stringify(feedCache));
     } catch (e) {
         console.warn(`${MOMENTS_LOG_PREFIX} Failed to save local feed: `, e);
@@ -79,7 +93,9 @@ export function saveLocalFeed() {
 
 export function loadLocalFeed() {
     try {
-        const key = `${LOCAL_FEED_KEY_PREFIX}${getCharacterId()}`;
+        const charId = getCharacterId();
+        if (!charId) return;
+        const key = `${LOCAL_FEED_KEY_PREFIX}${charId}`;
         const raw = localStorage.getItem(key);
         if (raw) {
             const parsed = JSON.parse(raw);
@@ -234,6 +250,9 @@ export function addLocalComment(postId, content, authorName = null, replyToId = 
     if (post.comments.length > 50) post.comments.shift(); // keep newest 50
     post.commentCount = post.comments.length;
     saveLocalFeed();
+    window.dispatchEvent(new CustomEvent('moments-feed-updated', {
+        detail: { posts: feedCache }
+    }));
     import('./momentsWorldInfo.js').then(m => m.updateMomentsWorldInfo()).catch(() => { });
 
     // Notification check

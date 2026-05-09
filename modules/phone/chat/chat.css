@@ -8,7 +8,9 @@
     flex-direction: column;
     height: 100%;
     background: #f2f2f7;
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     position: relative;
     overflow: hidden;
 }
@@ -47,6 +49,29 @@
     font-weight: 600;
     color: #1c1c1e;
     line-height: 1.2;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+}
+
+.chat-nav-name:hover {
+    background: rgba(0, 122, 255, 0.08);
+}
+
+.chat-nav-name-input {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1c1c1e;
+    line-height: 1.2;
+    text-align: center;
+    width: 140px;
+    padding: 2px 6px;
+    border: 1px solid rgba(0, 122, 255, 0.5);
+    border-radius: 6px;
+    background: #fff;
+    outline: none;
+    font-family: inherit;
 }
 
 .chat-nav-status {
@@ -114,10 +139,12 @@
 
 .chat-bubble {
     max-width: 75%;
-    padding: 9px 14px;
+    padding: 8px 14px;
     border-radius: 20px;
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 17px;
+    line-height: 1.3;
+    font-weight: 400;
+    letter-spacing: -0.2px;
     word-wrap: break-word;
     word-break: break-word;
     position: relative;
@@ -229,11 +256,12 @@
 .chat-draft-bubble {
     align-self: flex-end;
     max-width: 75%;
-    padding: 9px 14px;
+    padding: 8px 14px;
     border-radius: 18px;
     border-bottom-right-radius: 6px;
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 17px;
+    line-height: 1.3;
+    letter-spacing: -0.2px;
     background: rgba(0, 122, 255, 0.15);
     color: #418ef6;
     border: 1.5px dashed rgba(0, 122, 255, 0.4);
@@ -451,8 +479,9 @@
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 17px;
+    line-height: 1.3;
+    letter-spacing: -0.2px;
     background: transparent !important;
     color: #1c1c1e;
     resize: none;
@@ -603,6 +632,58 @@
     animation-delay: 0.4s;
 }
 
+/* ─── Buff Indicator Bar (above messages) ─── */
+.chat-buff-bar {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #f5edfc 0%, #ede4f8 100%);
+    border-bottom: 1px solid #e0cff2;
+}
+
+.chat-buff-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(106, 13, 173, 0.1);
+    border: 1px solid rgba(106, 13, 173, 0.2);
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 0.75em;
+    cursor: default;
+}
+
+.chat-buff-emoji {
+    font-size: 1.1em;
+}
+
+.chat-buff-count {
+    font-weight: bold;
+    color: #6a0dad;
+    font-size: 0.9em;
+}
+
+/* ─── Recalled Peek Bubble ─── */
+.chat-recalled-peek {
+    background: rgba(200, 200, 200, 0.3) !important;
+    border: 1px dashed rgba(150, 150, 150, 0.5) !important;
+    opacity: 0.85;
+    font-style: italic;
+}
+
+.chat-recalled-peek-label {
+    font-size: 0.7em;
+    color: #888;
+    margin-bottom: 4px;
+    font-style: normal;
+}
+
+.chat-recalled-peek-text {
+    text-decoration: line-through;
+    color: #555;
+}
+
 /* ─── Special Message Cards ─── */
 .chat-special-card {
     display: flex;
@@ -616,10 +697,12 @@
 
 .chat-bubble-row.char .chat-special-card {
     background: rgba(0, 0, 0, 0.05);
+    color: #1c1c1e;
 }
 
 .chat-bubble-row.user .chat-special-card {
     background: rgba(255, 255, 255, 0.15);
+    color: #fff;
 }
 
 .chat-special-icon {
@@ -795,7 +878,7 @@
 }
 
 .chat-thought-bubble {
-    font-size: 14px;
+    font-size: 15px;
     color: #8e8e93;
     font-style: italic;
     cursor: pointer;
@@ -1079,8 +1162,12 @@
     justify-content: flex-start;
 }
 
-/* ─── Clear History Menu ─── */
-.chat-menu-overlay {
+/* ─── Chat Overlay Base ─── */
+/* 共享 overlay 定位骨架。menu / edit / plus / inventory 4 个 overlay 都挂 .chat-overlay-base，
+   用于在 ST 主题注入 position / display / background / z-index 时抢回控制权。
+   默认值: bg=0.3 / z-index=100 / padding-bottom=80px / align-items=flex-end。
+   各 overlay 仅覆盖差异属性。 */
+.chat-overlay-base {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
@@ -1097,10 +1184,13 @@
     isolation: isolate;
 }
 
-.chat-menu-overlay.active {
+.chat-overlay-base.active {
     display: flex !important;
     pointer-events: auto !important;
 }
+
+/* ─── Clear History Menu ─── */
+/* .chat-menu-overlay 全部沿用 .chat-overlay-base 默认值，无差异属性 */
 
 .chat-menu-sheet {
     background: #fff;
@@ -1139,25 +1229,12 @@
 }
 
 /* ─── Edit Message Overlay ─── */
+/* 仅覆盖差异: bg=0.4 / z-index=110 / padding-bottom=0 (面板顶到底部, 不留菜单空隙)。
+   z-index=110 高于其他 overlay 的 100, 让 edit 能盖在 menu 之上 (连续交互). */
 .chat-edit-overlay {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
     background: rgba(0, 0, 0, 0.4) !important;
     z-index: 110 !important;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-    animation: fadeIn 0.2s;
-    pointer-events: none;
-    isolation: isolate;
-}
-
-.chat-edit-overlay.active {
-    display: flex !important;
-    pointer-events: auto !important;
+    padding-bottom: 0;
 }
 
 .chat-edit-panel {
@@ -1203,6 +1280,10 @@
     background: #d1d1d6;
 }
 
+/* SmartTheme override: ST 的 textarea[id] 全局规则 + SmartTheme 主题变量
+   会强行覆盖 color/background。三层选择器叠加 + !important 是为了在
+   不污染全局选择器优先级的前提下抢回控制权（class、class-of-class、
+   tag#id 三种特异性都能盖住）。 */
 .chat-edit-textarea,
 .chat-page .chat-edit-textarea,
 textarea#chat_edit_textarea {
@@ -1432,27 +1513,7 @@ textarea#chat_edit_textarea {
    Plus Action Panel (Bottom Sheet)
    ═══════════════════════════════════════════════════════════════════════ */
 
-.chat-plus-overlay {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    background: rgba(0, 0, 0, 0.3) !important;
-    z-index: 100 !important;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 80px;
-    animation: fadeIn 0.2s;
-    pointer-events: none;
-    isolation: isolate;
-}
-
-.chat-plus-overlay.active {
-    display: flex !important;
-    pointer-events: auto !important;
-}
+/* .chat-plus-overlay 全部沿用 .chat-overlay-base 默认值，无差异属性 */
 
 .chat-plus-row {
     display: flex;
@@ -1527,6 +1588,16 @@ textarea#chat_edit_textarea {
 
 .phone-dark-mode .chat-nav-name {
     color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-nav-name:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-nav-name-input {
+    color: #f2f2f7;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .phone-dark-mode .chat-nav-status {
@@ -1638,11 +1709,26 @@ textarea#chat_edit_textarea {
 /* Special cards in char bubble */
 .phone-dark-mode .chat-bubble-row.char .chat-special-card {
     background: rgba(255, 255, 255, 0.06);
+    color: #f2f2f7;
 }
 
 /* Voice wave in char bubble */
 .phone-dark-mode .chat-bubble-row.char .chat-voice-wave {
     background: #636366;
+}
+
+/* Voice message bubble — char side dark mode (浅黑半透在暗底看不见，改浅白半透) */
+.phone-dark-mode .chat-bubble-row.char .voice-play-btn {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.phone-dark-mode .chat-bubble-row.char .voice-waveform-bar {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.phone-dark-mode .voice-bubble.playing .chat-bubble-row.char .voice-waveform-bar,
+.phone-dark-mode .chat-bubble-row.char .voice-bubble.playing .voice-waveform-bar {
+    background: rgba(255, 255, 255, 0.7);
 }
 
 /* Menu overlay */
@@ -1753,31 +1839,40 @@ textarea#chat_edit_textarea {
     color: #30D158;
 }
 
+/* Buff indicator bar */
+.phone-dark-mode .chat-buff-bar {
+    background: linear-gradient(135deg, #2a1f3a 0%, #1f1830 100%);
+    border-bottom-color: rgba(186, 134, 230, 0.18);
+}
+
+.phone-dark-mode .chat-buff-pill {
+    background: rgba(186, 134, 230, 0.15);
+    border-color: rgba(186, 134, 230, 0.3);
+}
+
+.phone-dark-mode .chat-buff-count {
+    color: #c08fed;
+}
+
+/* Recalled peek bubble */
+.phone-dark-mode .chat-recalled-peek {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.phone-dark-mode .chat-recalled-peek-label {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-recalled-peek-text {
+    color: #c7c7cc;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    In-Chat Inventory Overlay (道具背包)
    ═══════════════════════════════════════════════════════════════════════ */
 
-.chat-inventory-overlay {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    background: rgba(0, 0, 0, 0.3) !important;
-    z-index: 100 !important;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 80px;
-    animation: fadeIn 0.2s;
-    pointer-events: none;
-    isolation: isolate;
-}
-
-.chat-inventory-overlay.active {
-    display: flex !important;
-    pointer-events: auto !important;
-}
+/* .chat-inventory-overlay 全部沿用 .chat-overlay-base 默认值，无差异属性 */
 
 .chat-inventory-panel {
     background: #fff;

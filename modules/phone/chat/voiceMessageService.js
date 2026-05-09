@@ -235,8 +235,12 @@ export async function synthesizeToBlob(text) {
     if (!text?.trim()) return null;
 
     const providerSettings = engine.getProviderSettings(providerName);
-    const arrayBuffer = await provider.synthesize(text, providerSettings);
-    const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+    // Providers return { buffer, mime }; use real mime so iOS Safari accepts
+    // the Blob when the saved voice message plays back later.
+    const result = await provider.synthesize(text, providerSettings);
+    const arrayBuffer = result?.buffer ?? result;
+    const mime = result?.mime || 'audio/mpeg';
+    const audioBlob = new Blob([arrayBuffer], { type: mime });
 
     // 获取时长
     const duration = await _getAudioDuration(arrayBuffer);
@@ -244,7 +248,7 @@ export async function synthesizeToBlob(text) {
     // base64
     const base64 = await blobToBase64(audioBlob);
 
-    console.debug(`${LOG} TTS synthesized: ${duration.toFixed(1)}s, ${audioBlob.size} bytes`);
+    console.debug(`${LOG} TTS synthesized: ${duration.toFixed(1)}s, ${audioBlob.size} bytes (${mime})`);
     return { audioBlob, duration, base64 };
 }
 

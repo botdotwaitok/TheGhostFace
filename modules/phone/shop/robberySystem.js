@@ -114,13 +114,11 @@ export function buildRobBuffPrompts(charName, activeRobBuffs) {
  */
 export function getAutoRobberyCardHtml(charName) {
     const cardId = `rob_auto_${Date.now()}`;
-    const html = `<div class="chat-special-card robbery-auto" id="${cardId}">
-        <div class="robbery-card-shimmer"></div>
-        <div class="robbery-card-icon">🔪</div>
-        <div class="robbery-card-body">
-            <div class="robbery-card-title">🔪 ${charName} 决定搞事情！</div>
-            <div class="robbery-card-desc">正在社区里寻找目标…</div>
-            <div class="robbery-card-status" id="${cardId}_status">⏳ 出击中…</div>
+    const html = `<div class="chat-special-card robbery" id="${cardId}">
+        <div class="chat-special-icon robbery"><i class="ph ph-crosshair"></i></div>
+        <div class="chat-special-content">
+            ${charName} 出击中
+            <div class="chat-special-label">抢劫 · <span class="chat-special-status" id="${cardId}_status">寻找目标…</span></div>
         </div>
     </div>`;
     return { html, cardId };
@@ -133,39 +131,39 @@ export function getAutoRobberyCardHtml(charName) {
  * @returns {string} HTML
  */
 export function getRobberyResultCardHtml(result, charName) {
-    let icon, title, desc, cssClass;
+    let iconClass, title, desc, cssClass;
 
     if (result.shielded) {
-        icon = '🛡️';
-        title = '护盾挡住了！';
-        desc = `${charName}撞上了对方的钛合金防盗门，铩羽而归。`;
+        iconClass = 'ph-shield-check';
+        title = '被护盾挡住';
+        desc = `${charName}撞上了对方的钛合金防盗门`;
         cssClass = 'shield';
     } else if (result.success) {
-        icon = '💰';
-        title = `抢劫成功！+${result.amount} 暗金细胞`;
+        iconClass = 'ph-coins';
+        title = `抢到 ${result.amount} 暗金细胞`;
         desc = result.doubled
-            ? `${charName}成功出击，高利贷合同生效，收益翻倍！`
-            : `${charName}出手迅速，成功抢到了 ${result.amount} 暗金细胞！`;
+            ? '高利贷合同生效，收益翻倍'
+            : `${charName}出手迅速`;
         cssClass = 'success';
     } else if (result.countered) {
-        icon = '💀';
-        title = `翻车了！-${result.robber_lost} 暗金细胞`;
+        iconClass = 'ph-skull';
+        title = `翻车 −${result.robber_lost}`;
         desc = result.bailed
-            ? `${charName}被逮住了，但律师函救了一命！免除罚款。`
-            : `${charName}被反击了，损失了 ${result.robber_lost} 暗金细胞。`;
+            ? '律师函救了一命，免除罚款'
+            : `${charName}被反击了`;
         cssClass = 'counter';
     } else {
-        icon = '💨';
+        iconClass = 'ph-wind';
         title = '抢劫失败';
-        desc = `${charName}的行动失败了，但好在全身而退。`;
+        desc = `${charName}全身而退`;
         cssClass = 'fail';
     }
 
     return `<div class="chat-special-card robbery-result ${cssClass}">
-        <div class="robbery-result-icon">${icon}</div>
-        <div class="robbery-result-body">
-            <div class="robbery-result-title">${title}</div>
-            <div class="robbery-result-desc">${desc}</div>
+        <div class="chat-special-icon robbery-${cssClass}"><i class="ph ${iconClass}"></i></div>
+        <div class="chat-special-content">
+            ${title}
+            <div class="chat-special-label">${desc}</div>
         </div>
     </div>`;
 }
@@ -185,7 +183,7 @@ const MAX_ROBBERY_ATTEMPTS = 5;
  */
 export async function triggerRobbery(candidates, charName, statusElementId) {
     if (!candidates || candidates.length === 0) {
-        updateRobberyStatus(statusElementId, '⚠️ 找不到可以抢劫的目标');
+        updateRobberyStatus(statusElementId, '找不到可以抢劫的目标', 'error');
         return { error: '没有可用目标', success: false };
     }
 
@@ -195,7 +193,7 @@ export async function triggerRobbery(candidates, charName, statusElementId) {
     for (let i = 0; i < maxAttempts; i++) {
         const victim = candidates[i];
         const attemptLabel = maxAttempts > 1 ? ` (${i + 1}/${maxAttempts})` : '';
-        updateRobberyStatus(statusElementId, `⏳ 正在出击${attemptLabel}…`);
+        updateRobberyStatus(statusElementId, `出击中${attemptLabel}…`);
 
         try {
             const data = await apiRequest('POST', '/api/wallet/rob', {
@@ -205,13 +203,13 @@ export async function triggerRobbery(candidates, charName, statusElementId) {
 
             // Successful API response (200) — robbery executed (may still fail in-game)
             if (data.success) {
-                updateRobberyStatus(statusElementId, `✅ 成功抢到 ${data.amount} 暗金细胞！`);
+                updateRobberyStatus(statusElementId, `抢到 ${data.amount} 暗金细胞`, 'done');
             } else if (data.shielded) {
-                updateRobberyStatus(statusElementId, '🛡️ 护盾抵挡了攻击！');
+                updateRobberyStatus(statusElementId, '护盾抵挡了攻击', 'error');
             } else if (data.countered) {
-                updateRobberyStatus(statusElementId, `💀 被反击！损失 ${data.robber_lost} 暗金细胞`);
+                updateRobberyStatus(statusElementId, `被反击，损失 ${data.robber_lost}`, 'error');
             } else {
-                updateRobberyStatus(statusElementId, '💨 行动失败，全身而退');
+                updateRobberyStatus(statusElementId, '行动失败，全身而退', 'error');
             }
             // Attach victim name for broadcast use
             data.victimName = victim.displayName || victim.name || '某人';
@@ -222,18 +220,18 @@ export async function triggerRobbery(candidates, charName, statusElementId) {
 
             // 400 = target-specific errors (newbie protection, etc.) → try next
             if (err.message?.includes('400') && i < maxAttempts - 1) {
-                updateRobberyStatus(statusElementId, `⏳ 目标受保护，换一个…${attemptLabel}`);
+                updateRobberyStatus(statusElementId, `目标受保护，换一个${attemptLabel}…`);
                 continue;
             }
 
             // Non-retryable error or last attempt
             console.error('[RobberySystem] triggerRobbery error:', err);
-            updateRobberyStatus(statusElementId, `⚠️ ${err.message?.includes('400') ? '所有目标都受保护，抢劫失败' : '网络错误，抢劫可能未执行'}`);
+            updateRobberyStatus(statusElementId, err.message?.includes('400') ? '所有目标都受保护' : '网络错误，抢劫可能未执行', 'error');
             return { error: err.message, success: false };
         }
     }
 
-    updateRobberyStatus(statusElementId, '⚠️ 所有目标都受保护，抢劫失败');
+    updateRobberyStatus(statusElementId, '所有目标都受保护', 'error');
     return { error: '所有候选目标都不可抢劫', success: false };
 }
 
@@ -272,13 +270,13 @@ export async function broadcastRobberyToMoments(result, charName, userName) {
 // Utilities
 // ═══════════════════════════════════════════════════════════════════════
 
-function updateRobberyStatus(elementId, text) {
+function updateRobberyStatus(elementId, text, state) {
     if (!elementId) return;
     const el = document.getElementById(elementId);
-    if (el) {
-        el.textContent = text;
-        el.style.display = 'block';
-    }
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('done', 'error');
+    if (state) el.classList.add(state);
 }
 
 // ── 已知 Bot Discord ID 列表（抢劫跳过这些账号）──────────────────────

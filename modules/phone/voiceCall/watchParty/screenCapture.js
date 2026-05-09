@@ -60,41 +60,53 @@ export async function startScreenCapture() {
         throw err;
     }
 
-    // ── Create hidden video element to render the stream ──
-    _videoEl = document.createElement('video');
-    _videoEl.srcObject = _stream;
-    _videoEl.muted = true;
-    _videoEl.playsInline = true;
-    _videoEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
-    document.body.appendChild(_videoEl);
+    // Phase 4: any failure after getDisplayMedia returned must run _cleanup,
+    // otherwise the user's screen-share permission stays "active" in the browser
+    // chrome (the red recording indicator) even though our state is dead.
+    try {
+        // ── Create hidden video element to render the stream ──
+        _videoEl = document.createElement('video');
+        _videoEl.srcObject = _stream;
+        _videoEl.muted = true;
+        _videoEl.playsInline = true;
+        _videoEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+        document.body.appendChild(_videoEl);
 
-    // Wait for video to be ready
-    await new Promise((resolve, reject) => {
-        _videoEl.onloadedmetadata = () => {
-            _videoEl.play().then(resolve).catch(reject);
-        };
-        _videoEl.onerror = reject;
-        // Timeout after 5s
-        setTimeout(() => reject(new Error('视频流加载超时')), 5000);
-    });
-
-    // ── Create hidden canvas for frame extraction ──
-    _canvasEl = document.createElement('canvas');
-    _canvasEl.style.cssText = 'display:none;';
-    document.body.appendChild(_canvasEl);
-    _canvasCtx = _canvasEl.getContext('2d');
-
-    // ── Listen for user stopping the share via browser UI ──
-    const videoTrack = _stream.getVideoTracks()[0];
-    if (videoTrack) {
-        videoTrack.addEventListener('ended', () => {
-            console.log(`${LOG_PREFIX} Screen share ended by user (browser UI).`);
-            _cleanup();
-            if (_onEndedCallback) _onEndedCallback();
+        // Wait for video to be ready. Capture the timeout id so resolve clears
+        // it — otherwise the late timer fires `reject(new Error(...))` against
+        // an already-settled Promise (no-op) but still keeps a closure alive.
+        await new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => reject(new Error('视频流加载超时')), 5000);
+            const finishOk = () => { clearTimeout(timeoutId); resolve(); };
+            const finishErr = (err) => { clearTimeout(timeoutId); reject(err); };
+            _videoEl.onloadedmetadata = () => {
+                _videoEl.play().then(finishOk).catch(finishErr);
+            };
+            _videoEl.onerror = finishErr;
         });
-    }
 
-    console.log(`${LOG_PREFIX} ✅ Screen capture started. Video: ${_videoEl.videoWidth}x${_videoEl.videoHeight}`);
+        // ── Create hidden canvas for frame extraction ──
+        _canvasEl = document.createElement('canvas');
+        _canvasEl.style.cssText = 'display:none;';
+        document.body.appendChild(_canvasEl);
+        _canvasCtx = _canvasEl.getContext('2d');
+
+        // ── Listen for user stopping the share via browser UI ──
+        const videoTrack = _stream.getVideoTracks()[0];
+        if (videoTrack) {
+            videoTrack.addEventListener('ended', () => {
+                console.log(`${LOG_PREFIX} Screen share ended by user (browser UI).`);
+                _cleanup();
+                if (_onEndedCallback) _onEndedCallback();
+            });
+        }
+
+        console.log(`${LOG_PREFIX} ✅ Screen capture started. Video: ${_videoEl.videoWidth}x${_videoEl.videoHeight}`);
+    } catch (err) {
+        console.warn(`${LOG_PREFIX} startScreenCapture failed mid-init, cleaning up:`, err);
+        _cleanup();
+        throw err;
+    }
 }
 
 /**

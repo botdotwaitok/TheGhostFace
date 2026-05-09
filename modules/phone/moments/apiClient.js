@@ -10,9 +10,13 @@ import { resolveProxyUrl, needsProxy } from '../utils/corsProxyFetch.js';
 // Fields the server is allowed to push into local settings.
 // `enabled`, `backendUrl`, `secretToken` etc. are local-only and MUST NOT
 // be overwritten by the server to prevent the "auto-disable" bug.
+//
+// customCharName 是 per-character 本地设置（每个角色想用什么伪装名是独立的），
+// 但服务器只能存账号级单值。所以两端同步会让登录回传覆盖当前角色的自定义名，
+// 切到别的角色时本地依然保留各自的值，造成永远不一致。直接不同步，保持纯本地。
 const SERVER_SETTINGS_WHITELIST = new Set([
     'autoPostChance', 'autoCommentChance', 'autoLikeChance',
-    'customUserName', 'customCharName',
+    'customUserName',
 ]);
 
 function filterServerSettings(raw) {
@@ -422,28 +426,38 @@ export async function getComments(postId) {
 export async function toggleLike(postId) {
     const settings = getSettings();
     const feedCache = getFeedCache();
-    // Update local cache first
     const post = feedCache.find(p => p.id === postId);
-    let liked = false;
-    if (post) {
-        post.likedByMe = !post.likedByMe;
-        post.likeCount = (post.likeCount || 0) + (post.likedByMe ? 1 : -1);
-        liked = post.likedByMe;
-        saveLocalFeed();
-    }
+    if (!post) return { ok: false, liked: false, likeCount: 0 };
+
+    // 乐观更新：先记录 prev，方便后端失败时回滚
+    const prevLiked = !!post.likedByMe;
+    const prevCount = post.likeCount || 0;
+    post.likedByMe = !prevLiked;
+    post.likeCount = Math.max(0, prevCount + (post.likedByMe ? 1 : -1));
+    saveLocalFeed();
 
     // Sync to backend if configured
     if (settings.backendUrl && settings.secretToken) {
         try {
-            return await apiRequest('POST', `/api/posts/${postId}/like`, {
+            const result = await apiRequest('POST', `/api/posts/${postId}/like`, {
                 userId: settings.userId,
                 userName: settings.displayName || 'Anonymous',
             });
+            // 后端返回真值时直接覆盖本地估算，避免下一次 sync 才纠偏
+            if (typeof result?.likeCount === 'number') post.likeCount = result.likeCount;
+            if (typeof result?.liked === 'boolean') post.likedByMe = result.liked;
+            saveLocalFeed();
+            return { ok: true, liked: post.likedByMe, likeCount: post.likeCount };
         } catch (e) {
-            console.warn(`${MOMENTS_LOG_PREFIX} Backend like failed, saved locally only:`, e);
+            // 后端失败回滚到 prev 状态，UI 收到 ok:false 后不会再显示乐观值
+            post.likedByMe = prevLiked;
+            post.likeCount = prevCount;
+            saveLocalFeed();
+            console.warn(`${MOMENTS_LOG_PREFIX} Backend like failed, rolled back:`, e);
+            return { ok: false, liked: prevLiked, likeCount: prevCount };
         }
     }
-    return { ok: true, liked };
+    return { ok: true, liked: post.likedByMe, likeCount: post.likeCount };
 }
 
 // ═══════════════════════════════════════════════════════════════════════

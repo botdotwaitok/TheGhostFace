@@ -3,6 +3,7 @@
 // 使用 ST 的 /api/speech/recognize 端点，无需额外服务。
 
 import { getRequestHeaders } from '../../../../../../../../script.js';
+import { withTimeout } from '../../utils/corsProxyFetch.js';
 
 const LOG_PREFIX = '[STT:WhisperLocal]';
 
@@ -40,9 +41,12 @@ export class WhisperLocalSttProvider {
      * 处理音频 Blob → base64 编码 → 调用 ST 内置 Whisper → 返回文本
      * @param {Blob} audioBlob - WAV 格式音频
      * @param {Object} [opts] - { model, language }
+     * @param {AbortSignal} [signal] - Session abort signal — cancels the transcribe fetch.
+     *   Local Whisper inference can be slow on first model download, so we use a longer
+     *   60s timeout instead of the default 30s.
      * @returns {Promise<string>}
      */
-    async processAudio(audioBlob, opts = {}) {
+    async processAudio(audioBlob, opts = {}, signal) {
         const model = opts.model || this.defaultSettings.model;
         const language = opts.language || null;
 
@@ -55,12 +59,15 @@ export class WhisperLocalSttProvider {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ audio, lang: language, model }),
+            signal: withTimeout(signal, 60000),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`${LOG_PREFIX} API error (${response.status}):`, errorText);
-            throw new Error(`Whisper Local STT 失败 (${response.status}): ${response.statusText}`);
+            const err = new Error(`Whisper Local STT 失败 (${response.status}): ${response.statusText}`);
+            err.status = response.status;
+            throw err;
         }
 
         const result = await response.json();

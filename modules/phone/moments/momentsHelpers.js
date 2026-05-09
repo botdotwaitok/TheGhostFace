@@ -20,8 +20,8 @@ export function getMyAuthorIds() {
     const ids = new Set();
     if (settings.userId) ids.add(settings.userId);
     ids.add('guest');
-    const charId = getCharacterId(); // char_{numericId}
-    ids.add(charId);
+    const charId = getCharacterId(); // char_{numericId} or null when no char loaded
+    if (charId) ids.add(charId);
     return ids;
 }
 
@@ -92,6 +92,20 @@ export function getCharacterInfo() {
 // ═══════════════════════════════════════════════════════════════════════
 // Utility Helpers
 // ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve charInfo.avatar to something the front-end can render.
+ * 当 avatar 是 "xyz.png" 之类的相对文件名时，把它转成 base64 data URI；
+ * http / data: / 绝对路径直接保留。
+ */
+export async function resolveCharAvatar(charInfo) {
+    let avatarData = charInfo?.avatar;
+    if (avatarData && !avatarData.startsWith('http') && !avatarData.startsWith('data:') && !avatarData.startsWith('/')) {
+        const base64 = await getBase64FromUrl(`characters/${avatarData}`);
+        if (base64) avatarData = base64;
+    }
+    return avatarData || '';
+}
 
 /**
  * Convert a URL to base64 data URI.

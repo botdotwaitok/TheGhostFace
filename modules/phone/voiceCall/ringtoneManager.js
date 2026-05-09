@@ -20,6 +20,13 @@ const META_KEY = 'gf_phone_ringtone';
 /** @type {HTMLAudioElement|null} */
 let _audioEl = null;
 
+/** @type {number|null} setInterval id for vibration fallback */
+let _vibrationIntervalId = null;
+
+// Standard ring-burst-then-pause pattern (~3.1s active + 1.5s gap ≈ 3.5s cycle).
+const _VIBRATION_PATTERN = [400, 200, 400, 200, 400, 1500];
+const _VIBRATION_CYCLE_MS = 3500;
+
 // ═══════════════════════════════════════════════════════════════════════
 // Manifest — fetch ringtone list from cloud server
 // ═══════════════════════════════════════════════════════════════════════
@@ -249,40 +256,105 @@ export function clearRingtoneSelection() {
 /**
  * Play the ringtone audio in a loop.
  * Uses HTMLAudioElement for simplicity and loop support.
+ * If audio playback is blocked (e.g. iOS Safari NotAllowedError without prior
+ * user gesture), falls back to a looping vibration so the user still feels the
+ * incoming call. The ringing UI is already mounted by the caller, providing
+ * the visual cue.
  * @param {string} [audioPath] - ST web path. If omitted, uses current selection.
- * @returns {boolean} true if playback started
+ * @returns {boolean} true if playback was attempted (fell back to vibration on failure)
  */
 export function playRingtone(audioPath) {
     const path = audioPath || getCurrentRingtone()?.audioPath;
     if (!path) {
-        console.log(`${LOG} No ringtone to play (silent fallback)`);
+        console.log(`${LOG} No ringtone selected — vibration fallback only`);
+        _startVibrationLoop();
         return false;
     }
 
-    stopRingtone(); // Stop any existing playback
+    stopRingtone(); // Stop any existing playback (also clears vibration loop)
 
     _audioEl = new Audio(path.startsWith('/') ? path : `/${path}`);
     _audioEl.loop = true;
     _audioEl.volume = 0.7;
-    _audioEl.play().catch(e => {
-        console.warn(`${LOG} Playback failed:`, e);
-    });
+    _audioEl.play()
+        .then(() => {
+            console.log(`${LOG} Playing ringtone: ${path}`);
+        })
+        .catch(e => {
+            // NotAllowedError is the iOS / Chrome autoplay-policy block. Other
+            // failures (decode error, network) end up here too — in all cases
+            // vibration is a reasonable degraded experience.
+            console.warn(`${LOG} Audio playback failed (${e?.name || 'Error'}): ${e?.message}, falling back to vibration`);
+            _startVibrationLoop();
+            try {
+                window.dispatchEvent(new CustomEvent('ringtone-fallback', {
+                    detail: { reason: e?.name || 'unknown' },
+                }));
+            } catch { /* ignore */ }
+        });
 
-    console.log(`${LOG} Playing ringtone: ${path}`);
     return true;
 }
 
 /**
- * Stop the ringtone playback.
+ * Stop the ringtone playback (audio + vibration fallback).
  */
 export function stopRingtone() {
+    let stopped = false;
     if (_audioEl) {
         _audioEl.pause();
         _audioEl.currentTime = 0;
         _audioEl.src = ''; // Release resource
         _audioEl = null;
-        console.log(`${LOG} Ringtone stopped`);
+        stopped = true;
     }
+    if (_stopVibrationLoop()) stopped = true;
+    if (stopped) console.log(`${LOG} Ringtone stopped`);
+}
+
+/**
+ * Start a looping vibration as a fallback when audio cannot play.
+ * Vibration API only fires once per call, so we re-trigger on an interval
+ * matching the pattern length. No-op on devices without the API (desktop).
+ */
+function _startVibrationLoop() {
+    if (_vibrationIntervalId !== null) return;
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+        console.debug(`${LOG} Vibration API not available — silent ringing`);
+        return;
+    }
+    const tick = () => {
+        try { navigator.vibrate(_VIBRATION_PATTERN); } catch { /* ignore */ }
+    };
+    tick();
+    _vibrationIntervalId = setInterval(tick, _VIBRATION_CYCLE_MS);
+    console.log(`${LOG} Vibration fallback started`);
+}
+
+/**
+ * Stop the vibration loop. Returns true if a loop was actually running.
+ */
+function _stopVibrationLoop() {
+    if (_vibrationIntervalId === null) return false;
+    clearInterval(_vibrationIntervalId);
+    _vibrationIntervalId = null;
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try { navigator.vibrate(0); } catch { /* ignore */ }
+    }
+    return true;
+}
+
+// Hook phone-closed: if the user closes the entire phone container while a
+// ringtone is playing (e.g. tap outside, swipe close), the audio element would
+// otherwise keep looping. vcApp.js already uses this same event for ttsEngine
+// teardown; we piggyback for symmetry.
+if (typeof window !== 'undefined') {
+    window.addEventListener('phone-closed', () => {
+        if (_audioEl || _vibrationIntervalId !== null) {
+            console.log(`${LOG} phone-closed — stopping ringtone`);
+            stopRingtone();
+        }
+    });
 }
 
 /**

@@ -10,9 +10,11 @@ export class ElevenlabsTtsProvider {
      * 合成语音（直接调用 ElevenLabs API）
      * @param {string} text
      * @param {Object} settings - { apiKey, voiceId, model, speed }
-     * @returns {Promise<ArrayBuffer>}
+     * @param {AbortSignal} [signal] - Session abort signal — cancels the in-flight fetch.
+     * @returns {Promise<{ buffer: ArrayBuffer, mime: string }>}
+     *   mime is `audio/mpeg` since output_format=mp3_44100_128.
      */
-    async synthesize(text, settings) {
+    async synthesize(text, settings, signal) {
         const apiKey = settings.apiKey || '';
         const voiceId = settings.voiceId || 'pNInz6obpgDQGcFmaJgB';
         const model = settings.model || 'eleven_multilingual_v2';
@@ -40,6 +42,7 @@ export class ElevenlabsTtsProvider {
                     speed,
                 },
             }),
+            signal,
         });
 
         if (!response.ok) {
@@ -49,7 +52,8 @@ export class ElevenlabsTtsProvider {
             throw err;
         }
 
-        return response.arrayBuffer();
+        const buffer = await response.arrayBuffer();
+        return { buffer, mime: 'audio/mpeg' };
     }
 
     /**

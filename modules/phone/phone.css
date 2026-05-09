@@ -3,6 +3,11 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ─── Full-screen Overlay ─── */
+/* 注意：backdrop-filter 与 visibility 仅在 .phone-visible 时启用。
+   原因：iOS Safari / Android Chrome 上 fixed + backdrop-filter 即便
+   pointer-events:none 也会把元素强制提到合成层并吞掉底层 touch 事件，
+   导致关闭后 ST 主页面无法滚动。改成 visibility:hidden 让浏览器彻底
+   跳过这一层。transition 用 visibility 0s 0.35s 延迟切换，避免动画断裂。*/
 .phone-overlay {
     position: fixed;
     top: 0;
@@ -16,16 +21,19 @@
     align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.35s cubic-bezier(.4, 0, .2, 1);
+    transition: opacity 0.35s cubic-bezier(.4, 0, .2, 1), visibility 0s linear 0.35s;
 }
 
 .phone-overlay.phone-visible {
     opacity: 1;
+    visibility: visible;
     pointer-events: auto;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: opacity 0.35s cubic-bezier(.4, 0, .2, 1), visibility 0s linear 0s;
 }
 
 /* ─── Phone Container (the "device") ─── */

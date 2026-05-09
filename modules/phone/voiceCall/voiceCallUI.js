@@ -14,6 +14,8 @@ import { saveCallLog, generateCallId } from './vcStorage.js';
 import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { playRingtone, stopRingtone, getCurrentRingtone } from './ringtoneManager.js';
 import { initAmbient, startAmbient, stopAmbient, stopAmbientImmediate, warmUpAmbient } from './ambientManager.js';
+import { initProactive, startProactive, stopProactive, notifyUserSpoke } from './proactiveSpeech.js';
+import { acquireWakeLock, releaseWakeLock } from './wakeLockManager.js';
 
 const LOG_PREFIX = '[VoiceCallUI]';
 
@@ -35,6 +37,26 @@ let _callOptions = {};     // Options passed from caller (e.g. { chatContext: tr
 let _isRinging = false;           // true while in ringing phase
 let _greetingAudioBlob = null;    // Pre-generated greeting TTS blob
 let _greetingText = '';           // Pre-generated greeting text
+
+// ─── Session-Wide Abort + Reentry Guards ───
+// Phase 1 audit fix: a single AbortController per call session lets closeVoiceCall
+// kill all in-flight LLM/TTS/STT fetches at once. _isClosing guards against
+// double-entry from rapid clicks / [挂断] auto-hangup colliding with manual hangup.
+// _pendingTimeouts tracks every session-scoped setTimeout so closeVoiceCall can clear
+// them all (otherwise the 300ms unmount timeout from a previous call can delete a
+// freshly-mounted overlay when the user immediately re-dials).
+let _sessionAbortCtrl = null;
+let _isClosing = false;
+const _pendingTimeouts = new Set();
+// Phase 4: typewriter setInterval handles. Without tracking, hanging up mid-typewriter
+// leaves the interval running after the bubble is detached — small leak but adds up
+// across reproducible reopens. closeVoiceCall clears them all. We store {id, resolve}
+// pairs so force-clear can also resolve the corresponding Promise — otherwise
+// _sendToLLM's `await typewriterDone` would hang forever after a hangup.
+const _typewriterIntervals = new Set();
+// Phase 4: greeting object URLs that must be revoked when the call ends or the
+// session is reset. Otherwise the greeting Blob is held alive for the page lifetime.
+const _activeGreetingUrls = new Set();
 
 // ═══════════════════════════════════════════════════════════════════════
 // Template & Mounting
@@ -98,11 +120,67 @@ function _unmountUI() {
     const overlay = document.getElementById('phone_voice_call_overlay');
     if (overlay) {
         overlay.classList.remove('active');
-        setTimeout(() => {
+        // Tracked via _pendingTimeouts: if user re-dials inside the 300ms window,
+        // _resetSessionState will clear this before the new overlay can be deleted.
+        _scheduleTimeout(() => {
             overlay.remove();
             _overlayMounted = false;
         }, 300); // Wait for fade out
     }
+}
+
+// ─── Session timer tracking + reentry guards ───
+
+/**
+ * Schedule a session-scoped setTimeout. Auto-registers into _pendingTimeouts so
+ * closeVoiceCall / _resetSessionState can cancel it. Auto-deregisters on fire.
+ * @param {Function} fn
+ * @param {number} ms
+ * @returns {number} timeout id
+ */
+function _scheduleTimeout(fn, ms) {
+    const id = setTimeout(() => {
+        _pendingTimeouts.delete(id);
+        fn();
+    }, ms);
+    _pendingTimeouts.add(id);
+    return id;
+}
+
+function _clearPendingTimeouts() {
+    for (const id of _pendingTimeouts) clearTimeout(id);
+    _pendingTimeouts.clear();
+}
+
+function _clearTypewriterIntervals() {
+    for (const entry of _typewriterIntervals) {
+        clearInterval(entry.id);
+        try { entry.resolve(); } catch { /* already resolved */ }
+    }
+    _typewriterIntervals.clear();
+}
+
+function _revokeGreetingUrls() {
+    for (const url of _activeGreetingUrls) {
+        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+    }
+    _activeGreetingUrls.clear();
+}
+
+/**
+ * Initialize per-session state at the start of a new call. Cancels any leftover
+ * timeouts and aborts any in-flight tasks from a previous session that hasn't
+ * fully torn down (e.g. user re-dials within the 300ms unmount fade window).
+ */
+function _resetSessionState() {
+    _clearPendingTimeouts();
+    _clearTypewriterIntervals();
+    _revokeGreetingUrls();
+    if (_sessionAbortCtrl && !_sessionAbortCtrl.signal.aborted) {
+        try { _sessionAbortCtrl.abort(); } catch { /* ignore */ }
+    }
+    _sessionAbortCtrl = new AbortController();
+    _isClosing = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -223,9 +301,16 @@ async function _preGenerateGreeting(providedText = '') {
     const charInfo = getPhoneCharInfo();
     const charName = charInfo?.name || '角色';
 
+    // Snapshot the session controller so a decline-then-redial flow doesn't write
+    // stale greeting data onto the new session's state.
+    const snapshotCtrl = _sessionAbortCtrl;
+    const signal = snapshotCtrl?.signal;
+    const isStillCurrent = () => !_isClosing && snapshotCtrl === _sessionAbortCtrl && !signal?.aborted;
+
     try {
         if (providedText && providedText.trim()) {
             // ── Optimized path: text already provided, skip LLM ──
+            if (!isStillCurrent()) return;
             _greetingText = providedText.replace(/^["'「]|["'」]$/g, '').trim();
             console.log(`${LOG_PREFIX} Greeting text provided: "${_greetingText}"`);
         } else {
@@ -242,21 +327,31 @@ async function _preGenerateGreeting(providedText = '') {
             const userPrompt = `${userName}接了你的电话，说一句开场白吧。`;
 
             console.log(`${LOG_PREFIX} Pre-generating greeting for ${charName}...`);
-            _greetingText = await callPhoneLLM(systemPrompt, userPrompt);
-            _greetingText = _greetingText.replace(/^["'「]|["'」]$/g, '').trim();
+            const greetingResponse = await callPhoneLLM(systemPrompt, userPrompt);
+            if (!isStillCurrent()) return;
+            _greetingText = greetingResponse.replace(/^["'「]|["'」]$/g, '').trim();
             console.log(`${LOG_PREFIX} Greeting text: "${_greetingText}"`);
         }
 
         // Synthesize TTS without playing — access provider directly
         if (_ttsEngine && _ttsEngine.currentProvider && _greetingText) {
             const providerSettings = { ...(_ttsEngine.getProviderSettings(_ttsEngine.currentProviderName) || {}) };
-            const audioBuffer = await _ttsEngine.currentProvider.synthesize(_greetingText, providerSettings);
-            if (audioBuffer) {
-                _greetingAudioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-                console.log(`${LOG_PREFIX} Greeting TTS ready: ${_greetingAudioBlob.size} bytes`);
+            const result = await _ttsEngine.currentProvider.synthesize(_greetingText, providerSettings, signal);
+            if (!isStillCurrent()) return;
+            // Providers return { buffer, mime }; use real mime so iOS Safari
+            // accepts the Blob when the greeting plays back from history.
+            const buffer = result?.buffer ?? result;
+            const mime = result?.mime || 'audio/mpeg';
+            if (buffer) {
+                _greetingAudioBlob = new Blob([buffer], { type: mime });
+                console.log(`${LOG_PREFIX} Greeting TTS ready: ${_greetingAudioBlob.size} bytes (${mime})`);
             }
         }
     } catch (e) {
+        if (e?.name === 'AbortError' || !isStillCurrent()) {
+            console.log(`${LOG_PREFIX} Greeting pre-gen aborted (call ended).`);
+            return;
+        }
         console.warn(`${LOG_PREFIX} Greeting pre-generation failed:`, e);
         _greetingText = '';
         _greetingAudioBlob = null;
@@ -274,6 +369,9 @@ async function _acceptIncomingCall() {
     // 🔊 Warm up AudioContext during user gesture (tap) to unlock mobile audio
     if (_ttsEngine) await _ttsEngine.warmUp();
     warmUpAmbient();
+
+    // Keep screen awake — user gesture (accept tap) is required by Wake Lock API
+    acquireWakeLock();
 
     // Transition to active call UI
     _transitionToActiveCall();
@@ -303,18 +401,19 @@ async function _acceptIncomingCall() {
         if (_greetingAudioBlob) {
             try {
                 const blobUrl = URL.createObjectURL(_greetingAudioBlob);
+                _activeGreetingUrls.add(blobUrl);
                 const audioEl = new Audio(blobUrl);
                 await audioEl.play();
                 // Wait for playback to finish
                 await new Promise((resolve) => {
-                    audioEl.onended = () => {
-                        URL.revokeObjectURL(blobUrl);
+                    const cleanup = () => {
+                        if (_activeGreetingUrls.delete(blobUrl)) {
+                            try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
+                        }
                         resolve();
                     };
-                    audioEl.onerror = () => {
-                        URL.revokeObjectURL(blobUrl);
-                        resolve();
-                    };
+                    audioEl.onended = cleanup;
+                    audioEl.onerror = cleanup;
                 });
                 // Upload for persistence
                 try {
@@ -344,6 +443,9 @@ async function _acceptIncomingCall() {
         addSystemSubtitle(`录音失败: ${e.message}`);
     }
 
+    // Start proactive-speech timer once the incoming call is active.
+    startProactive();
+
     // Cleanup greeting state
     _greetingAudioBlob = null;
     _greetingText = '';
@@ -355,6 +457,14 @@ async function _acceptIncomingCall() {
  */
 function _declineIncomingCall() {
     console.log(`${LOG_PREFIX} Incoming call declined.`);
+    // Abort any in-flight greeting pre-gen (LLM + TTS) before tearing down state
+    // so the response doesn't land on the next call's overlay.
+    if (_sessionAbortCtrl) {
+        try { _sessionAbortCtrl.abort(); } catch { /* ignore */ }
+    }
+    _clearPendingTimeouts();
+    _clearTypewriterIntervals();
+    _revokeGreetingUrls();
     stopRingtone();
     _isRinging = false;
     _greetingAudioBlob = null;
@@ -381,6 +491,11 @@ function _declineIncomingCall() {
  */
 export async function openVoiceCall({ chatContext = false, incoming = false, greetingText = '' } = {}) {
     console.log(`${LOG_PREFIX} Opening Voice Call... (chatContext: ${chatContext}, incoming: ${incoming}, greeting: ${greetingText ? 'provided' : 'none'})`);
+
+    // Reset session state — cancels stale 300ms unmount timeouts / aborts orphaned
+    // tasks from a previous call that hasn't fully torn down yet.
+    _resetSessionState();
+
     _sttEngine = getSttEngine();
 
     // Verify STT setup
@@ -397,6 +512,16 @@ export async function openVoiceCall({ chatContext = false, incoming = false, gre
     _callMessages = [];
     _isProcessingLLM = false;
     _callOptions = { chatContext, incoming };
+
+    // Console-debug hook for proactive-speech testing (Phase 1 verification).
+    // Use from devtools: window.__vcSendToLLM(null, { proactiveInstruction: '...' })
+    window.__vcSendToLLM = _sendToLLM;
+
+    // Wire up proactive-speech callbacks (Phase 2). startProactive 由接通点触发。
+    initProactive({
+        onFire: (instruction) => _sendToLLM(null, { proactiveInstruction: instruction }),
+        canFire: () => !_isTtsPlaying && !_isProcessingLLM,
+    });
 
     // Pre-load ambient audio (downloads default if needed)
     initAmbient();
@@ -423,6 +548,9 @@ export async function openVoiceCall({ chatContext = false, incoming = false, gre
     if (_ttsEngine) await _ttsEngine.warmUp();
     warmUpAmbient();
 
+    // Keep screen awake — user gesture (call tap) is required by Wake Lock API
+    acquireWakeLock();
+
     addSystemSubtitle('正在建立加密通话...');
 
     try {
@@ -440,6 +568,9 @@ export async function openVoiceCall({ chatContext = false, incoming = false, gre
             addSystemSubtitle('通话完毕请点击挂断，进行小总结');
         }
 
+        // Start proactive-speech timer once the call is fully active.
+        startProactive();
+
     } catch (e) {
         console.error(`${LOG_PREFIX} Start failed:`, e);
         addSystemSubtitle(`录音失败: ${e.message}`);
@@ -452,7 +583,40 @@ export async function openVoiceCall({ chatContext = false, incoming = false, gre
  * @param {boolean} [options.skipSummary=false] - If true, skip AI summary generation
  */
 export async function closeVoiceCall({ skipSummary = false } = {}) {
+    // Reentry guard: rapid clicks, [挂断] auto-hangup colliding with manual hangup,
+    // or onCaptureEnded firing during teardown could all call us twice. Bail early.
+    if (_isClosing) {
+        console.log(`${LOG_PREFIX} closeVoiceCall already in progress — ignoring re-entry`);
+        return;
+    }
+    _isClosing = true;
+
     console.log(`${LOG_PREFIX} Closing Voice Call... (skipSummary: ${skipSummary})`);
+
+    // Snapshot the session controller — if openVoiceCall replaces it during the
+    // long summary await (user re-dials), we must NOT keep tearing down state
+    // that now belongs to a fresh call.
+    const closingCtrl = _sessionAbortCtrl;
+
+    // Abort all in-flight session tasks (LLM, TTS, STT fetches) so their await
+    // continuations bail out without writing to _callMessages or DOM.
+    if (closingCtrl) {
+        try { closingCtrl.abort(); } catch { /* ignore */ }
+    }
+
+    // Cancel all pending session timeouts (STT auto-restart, [挂断] 1.5s delay,
+    // any unmount fade scheduled by a prior call).
+    _clearPendingTimeouts();
+    // Phase 4: also clear typewriter intervals + revoke any greeting object URLs
+    // so a long teardown (summary generation) doesn't leave them dangling.
+    _clearTypewriterIntervals();
+    _revokeGreetingUrls();
+
+    // Release screen wake lock — call is ending
+    releaseWakeLock();
+
+    // Stop proactive-speech first so no late tick fires after teardown.
+    stopProactive();
 
     // Clear hangup confirmation timeout if pending
     if (_hangupConfirmTimeout) {
@@ -487,18 +651,23 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
 
     _stopTimer();
 
-    // ── Save call log ──
-    if (_callMessages.length > 0) {
+    // ── Save call log — snapshot fields BEFORE any await, since the user
+    // may re-dial during summary generation and clobber module state. ──
+    const messagesSnapshot = [..._callMessages];
+    const callIdSnapshot = _callId;
+    const callStartTimeSnapshot = _callStartTime;
+
+    if (messagesSnapshot.length > 0) {
         const endTime = new Date().toISOString();
-        const duration = _callStartTime ? Math.floor((Date.now() - _callStartTime) / 1000) : 0;
+        const duration = callStartTimeSnapshot ? Math.floor((Date.now() - callStartTimeSnapshot) / 1000) : 0;
 
         // Generate summary unless skipped
         let summary = '';
         if (!skipSummary) {
             addSystemSubtitle('正在生成通话总结...');
             try {
-                if (_callMessages.length >= 2) {
-                    summary = await generateCallSummary(_callMessages);
+                if (messagesSnapshot.length >= 2) {
+                    summary = await generateCallSummary(messagesSnapshot);
                 }
             } catch (e) {
                 console.warn(`${LOG_PREFIX} Summary generation failed:`, e);
@@ -508,16 +677,24 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
         }
 
         const callLog = {
-            id: _callId,
-            startTime: new Date(_callStartTime).toISOString(),
+            id: callIdSnapshot,
+            startTime: new Date(callStartTimeSnapshot).toISOString(),
             endTime,
             duration,
             summary,
-            messages: [..._callMessages],
+            messages: messagesSnapshot,
         };
 
         saveCallLog(callLog);
-        console.log(`${LOG_PREFIX} Call log saved: ${_callMessages.length} messages, ${duration}s, summary: ${skipSummary ? 'skipped' : 'generated'}`);
+        console.log(`${LOG_PREFIX} Call log saved: ${messagesSnapshot.length} messages, ${duration}s, summary: ${skipSummary ? 'skipped' : 'generated'}`);
+    }
+
+    // If the user re-dialed while summary was generating, openVoiceCall already
+    // ran _resetSessionState (replacing _sessionAbortCtrl). DO NOT touch any
+    // shared module state or the overlay — they belong to the new session now.
+    if (_sessionAbortCtrl !== closingCtrl) {
+        console.log(`${LOG_PREFIX} A new session started during summary generation — leaving fresh state alone.`);
+        return;
     }
 
     // Reset session state
@@ -526,6 +703,9 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
     _isProcessingLLM = false;
     _isTtsPlaying = false;
     _callOptions = {};
+
+    // Tear down debug hook
+    if (window.__vcSendToLLM) delete window.__vcSendToLLM;
 
     _unmountUI();
 }
@@ -675,6 +855,9 @@ function _handleTextSubmit(text) {
         timestamp: new Date().toISOString(),
     });
 
+    // Text input is also a user utterance — reset proactive timer.
+    notifyUserSpoke(text);
+
     _sendToLLM(text);
 }
 
@@ -802,6 +985,9 @@ function _onSttTranscript(text) {
         timestamp: new Date().toISOString(),
     });
 
+    // Reset proactive-speech silence timer — user just spoke.
+    notifyUserSpoke(text);
+
     // 🔥 Send to LLM
     _sendToLLM(text);
 }
@@ -820,10 +1006,11 @@ function _onSttStateChange(state) {
     // 🔄 Auto-restart STT when it goes idle — keeps the voice call loop alive
     if (state === 'idle' && _overlayMounted && _sttEngine) {
         const isMuted = micBtn.classList.contains('muted');
-        if (!isMuted && !_isTtsPlaying) {
+        if (!isMuted && !_isTtsPlaying && !_isClosing) {
             // Small delay to avoid race conditions with MediaRecorder cleanup
-            setTimeout(() => {
-                // Re-check conditions after delay
+            _scheduleTimeout(() => {
+                // Re-check conditions after delay (closeVoiceCall may have fired meanwhile)
+                if (_isClosing) return;
                 if (_overlayMounted && _sttEngine && _sttEngine.state === 'idle' && !_isTtsPlaying) {
                     console.debug('[VoiceCallUI] Auto-restarting STT...');
                     _sttEngine.startListening({ continuous: true }).catch(e => {
@@ -841,14 +1028,15 @@ function _onSttStateChange(state) {
  * because _isTtsPlaying was true at the time of the idle transition.
  */
 function _restartSttAfterTts() {
-    if (!_overlayMounted || !_sttEngine) return;
+    if (!_overlayMounted || !_sttEngine || _isClosing) return;
     const micBtn = document.getElementById('voice_call_mic_btn');
     const isMuted = micBtn?.classList.contains('muted');
     if (isMuted || _isTtsPlaying) return;
     if (_sttEngine.state !== 'idle') return;
 
-    setTimeout(() => {
+    _scheduleTimeout(() => {
         // Re-check after short delay to avoid race conditions
+        if (_isClosing) return;
         if (_overlayMounted && _sttEngine && _sttEngine.state === 'idle' && !_isTtsPlaying) {
             console.debug(`${LOG_PREFIX} Restarting STT after TTS finished`);
             _sttEngine.startListening({ continuous: true }).catch(e => {
@@ -899,15 +1087,21 @@ async function _retryWithBackoff(fn, opts = {}) {
 
     let lastError;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (_isClosing) throw new DOMException('aborted', 'AbortError');
         try {
             return await fn();
         } catch (err) {
             lastError = err;
+            if (err?.name === 'AbortError' || _isClosing) throw err;
             if (attempt >= maxAttempts || !shouldRetry(err)) throw err;
             const delay = baseDelay * Math.pow(2, attempt - 1); // 500, 1000, 2000
             console.warn(`${LOG_PREFIX} Attempt ${attempt}/${maxAttempts} failed, retrying in ${delay}ms...`, err.message);
             onRetry(attempt, err);
-            await new Promise(r => setTimeout(r, delay));
+            // Abortable sleep — close interrupts the wait immediately
+            await new Promise(resolve => {
+                const t = setTimeout(resolve, delay);
+                _sessionAbortCtrl?.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+            });
         }
     }
     throw lastError;
@@ -920,14 +1114,32 @@ async function _retryWithBackoff(fn, opts = {}) {
 /**
  * Send the user's spoken text to the LLM and display the response.
  * Uses 3-attempt exponential backoff for transient failures.
- * @param {string} text - User's spoken text from STT
+ * @param {string|null} text - User's spoken text from STT. Pass null/empty in proactive mode.
+ * @param {object} [options]
+ * @param {string} [options.proactiveInstruction=''] - When set, the call is being driven
+ *   by the proactive-speech timer (no user utterance). The instruction is injected as a
+ *   <proactive_directive> block in the system prompt and the user prompt switches to
+ *   placeholder mode. Char output is still recorded into _callMessages; user side is not.
  */
-async function _sendToLLM(text) {
+async function _sendToLLM(text, options = {}) {
     if (_isProcessingLLM) {
         console.log(`${LOG_PREFIX} LLM already processing, queuing...`);
         // Simple approach: skip overlapping requests in voice call context
         return;
     }
+    if (_isClosing) {
+        console.log(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
+        return;
+    }
+
+    const proactiveInstruction = options.proactiveInstruction || '';
+    const isProactive = !!proactiveInstruction;
+    let wantsHangUp = false;
+
+    // Snapshot session identifiers so post-await continuation can detect that
+    // the call has ended (or been replaced by a new call) and bail out.
+    const snapshotCallId = _callId;
+    const signal = _sessionAbortCtrl?.signal;
 
     _isProcessingLLM = true;
 
@@ -948,24 +1160,42 @@ async function _sendToLLM(text) {
         }
 
         // Build prompts
-        const systemPrompt = await buildVcSystemPrompt(_callOptions);
-        const userPrompt = buildVcUserPrompt(text, _callMessages);
+        const systemPrompt = await buildVcSystemPrompt({ ..._callOptions, proactiveInstruction });
+        const userPrompt = buildVcUserPrompt(text || '', _callMessages, 20, { proactive: isProactive });
+
+        if (_isClosing || _callId !== snapshotCallId) return;
 
         // Call LLM with retry
         const response = await _retryWithBackoff(
             () => callPhoneLLM(systemPrompt, userPrompt),
             {
                 onRetry: (attempt, err) => {
+                    if (_isClosing) return;
                     addSystemSubtitle(`信号不好，重新连接中... (${attempt}/3)`);
                 },
             }
         );
 
+        // Session closed (or replaced) while LLM was thinking — discard the response
+        // entirely. Do NOT push to _callMessages, do NOT touch DOM (the bubble may
+        // belong to a different call now).
+        if (_isClosing || _callId !== snapshotCallId) {
+            console.log(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
+            return;
+        }
+
         if (!response || !response.trim()) {
             throw new Error('LLM returned empty response');
         }
 
-        const cleanResponse = stripLLMTags(response.trim());
+        const rawClean = stripLLMTags(response.trim());
+        // [挂断] is a system-action marker — strip it before TTS / parseSayTags so it
+        // never makes it into the spoken text. We schedule closeVoiceCall after playback.
+        wantsHangUp = rawClean.includes('[挂断]');
+        const cleanResponse = rawClean.replace(/\[挂断\]/g, '').trim();
+        if (wantsHangUp) {
+            console.log(`${LOG_PREFIX} [挂断] marker detected — call will end after TTS finishes.`);
+        }
 
         // 🎭 Parse <say tone="..."> tags from LLM output
         const parsed = parseSayTags(cleanResponse);
@@ -1016,29 +1246,30 @@ async function _sendToLLM(text) {
                 console.log(`${LOG_PREFIX} TTS segment ${i + 1}/${parsed.segments.length}: tone="${seg.tone}", ${sentences.length} sentence(s)`);
 
                 for (let j = 0; j < sentences.length; j++) {
+                    if (_isClosing || _callId !== snapshotCallId) break;
                     const sentence = sentences[j];
                     console.debug(`${LOG_PREFIX}   sentence ${j + 1}/${sentences.length}: "${sentence.substring(0, 50)}..."`);
                     try {
-                        const ttsResult = await _ttsEngine.speakAndCapture(sentence, seg.tone);
+                        // speakAndCapture awaits real `onended` (or session abort),
+                        // so no extra setTimeout(duration*1000) wait is needed here.
+                        const ttsResult = await _ttsEngine.speakAndCapture(sentence, seg.tone, { signal });
+                        if (_isClosing || _callId !== snapshotCallId) break;
                         if (ttsResult) {
-                            const segDuration = ttsResult.duration || 0;
-                            totalAudioDuration += segDuration;
+                            totalAudioDuration += ttsResult.duration || 0;
                             if (ttsResult.audioBlob) {
                                 audioBlobs.push(ttsResult.audioBlob);
                             }
-                            // Wait for this sentence's audio to finish before playing next
-                            if (segDuration > 0) {
-                                await new Promise(r => setTimeout(r, segDuration * 1000));
-                            }
                         }
                     } catch (e) {
+                        if (e?.name === 'AbortError') break;
                         console.warn(`${LOG_PREFIX} TTS sentence ${j + 1} failed, skipping:`, e);
                     }
                 }
+                if (_isClosing || _callId !== snapshotCallId) break;
             }
 
-            // Upload merged audio for persistence
-            if (audioBlobs.length > 0) {
+            // Upload merged audio for persistence (only if session is still alive)
+            if (audioBlobs.length > 0 && !_isClosing && _callId === snapshotCallId) {
                 try {
                     const mergedBlob = new Blob(audioBlobs, { type: 'audio/mpeg' });
                     const audioPath = await uploadAudioToST(mergedBlob, 'voice_call');
@@ -1061,9 +1292,23 @@ async function _sendToLLM(text) {
 
         // 🔑 Clear flag and restart STT after audio + typewriter both finish
         _isTtsPlaying = false;
-        _restartSttAfterTts();
+        if (_isClosing || _callId !== snapshotCallId) return;
+        if (wantsHangUp) {
+            // Brief breath after the last word before tearing down the call.
+            // Tracked via _pendingTimeouts so a manual hangup before the 1.5s
+            // mark cancels this scheduled call (otherwise closeVoiceCall fires twice).
+            _scheduleTimeout(() => closeVoiceCall(), 1500);
+        } else {
+            _restartSttAfterTts();
+        }
 
     } catch (e) {
+        // Aborted via session controller (user hung up) — silent bail.
+        if (e?.name === 'AbortError' || _isClosing || _callId !== snapshotCallId) {
+            console.log(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
+            if (charBubble && !_isClosing) charBubble.remove();
+            return;
+        }
         console.error(`${LOG_PREFIX} LLM call failed after retries:`, e);
         if (charBubble) {
             charBubble.removeAttribute('id');
@@ -1076,7 +1321,7 @@ async function _sendToLLM(text) {
         // Safety net: ensure TTS flag is always cleared
         if (_isTtsPlaying) {
             _isTtsPlaying = false;
-            _restartSttAfterTts();
+            if (!_isClosing) _restartSttAfterTts();
         }
     }
 }
@@ -1132,7 +1377,26 @@ function _typewriterDisplay(bubble, text, audioDuration = 0) {
         bubble.textContent = '';
         bubble.insertAdjacentHTML('beforeend', '<span class="streaming-cursor"></span>');
 
-        const interval = setInterval(() => {
+        const entry = { id: 0, resolve };
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearInterval(entry.id);
+            _typewriterIntervals.delete(entry);
+            // Remove cursor (best-effort — bubble may already be detached)
+            const cursor = bubble.querySelector?.('.streaming-cursor');
+            if (cursor) cursor.remove();
+            resolve();
+        };
+
+        entry.id = setInterval(() => {
+            // Bail if the call is closing — leftover ticks shouldn't keep firing
+            // against a detached bubble.
+            if (_isClosing) {
+                finish();
+                return;
+            }
             if (idx < text.length) {
                 // Insert character before cursor
                 const cursor = bubble.querySelector('.streaming-cursor');
@@ -1144,12 +1408,9 @@ function _typewriterDisplay(bubble, text, audioDuration = 0) {
                 idx++;
                 _scrollToBottom();
             } else {
-                clearInterval(interval);
-                // Remove cursor
-                const cursor = bubble.querySelector('.streaming-cursor');
-                if (cursor) cursor.remove();
-                resolve();
+                finish();
             }
         }, charDelay);
+        _typewriterIntervals.add(entry);
     });
 }

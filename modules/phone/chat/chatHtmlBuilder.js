@@ -2,7 +2,7 @@
 // Extracted from chatApp.js
 
 import { escHtml } from './chatApp.js';
-import { getCharacterInfo, getUserName } from './chatStorage.js';
+import { getCharacterInfo, getCharacterDisplayName, getUserName } from './chatStorage.js';
 import { getGiftEventCardHtml } from '../shop/giftSystem.js';
 import { isKeepAliveEnabled } from '../keepAlive.js';
 
@@ -11,8 +11,7 @@ import { isKeepAliveEnabled } from '../keepAlive.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 export function buildChatPage(history) {
-    const charInfo = getCharacterInfo();
-    const charName = charInfo?.name || '角色';
+    const charName = getCharacterDisplayName();
 
     // Messages HTML
     const displayHistory = history.slice(-20);
@@ -77,7 +76,7 @@ export function buildChatPage(history) {
         </div>
 
         <!-- Plus action panel (bottom sheet) -->
-        <div class="chat-plus-overlay" id="chat_plus_overlay">
+        <div class="chat-overlay-base chat-plus-overlay" id="chat_plus_overlay">
             <div class="chat-menu-sheet">
                 <div class="chat-plus-row">
                     <div class="chat-plus-action" id="chat_return_home_btn">
@@ -106,7 +105,7 @@ export function buildChatPage(history) {
         </div>
 
         <!-- Inventory (道具背包) overlay -->
-        <div class="chat-inventory-overlay" id="chat_inventory_overlay">
+        <div class="chat-overlay-base chat-inventory-overlay" id="chat_inventory_overlay">
             <div class="chat-inventory-panel">
                 <div class="chat-inventory-header">
                     <div class="chat-inventory-title"><i class="fa-solid fa-box-open"></i> 道具背包</div>
@@ -118,7 +117,7 @@ export function buildChatPage(history) {
         </div>
 
         <!-- Action sheet menu (top-right ⋯) -->
-        <div class="chat-menu-overlay" id="chat_menu_overlay">
+        <div class="chat-overlay-base chat-menu-overlay" id="chat_menu_overlay">
             <div class="chat-menu-sheet">
                 <div class="chat-menu-item" id="chat_reroll_btn">重新生成</div>
                 <div class="chat-menu-item" id="chat_edit_mode_btn">编辑消息</div>
@@ -129,7 +128,7 @@ export function buildChatPage(history) {
         </div>
 
         <!-- Edit message overlay -->
-        <div class="chat-edit-overlay" id="chat_edit_overlay">
+        <div class="chat-overlay-base chat-edit-overlay" id="chat_edit_overlay">
             <div class="chat-edit-panel">
                 <div class="chat-edit-header">
                     <span class="chat-edit-title">编辑消息</span>
@@ -184,7 +183,7 @@ export function buildMessagesHtml(history, startIndex = 0) {
 
         // Check for retracted message
         if (msg.content === '[撤回了一条消息]') {
-            const name = msg.role === 'char' ? (getCharacterInfo()?.name || '对方') : getUserName();
+            const name = msg.role === 'char' ? getCharacterDisplayName() : getUserName();
             html += `<div class="chat-retract">${escHtml(name)}撤回了一条消息</div>`;
             if (msg.recalledContent && msg.role === 'char') {
                 html += buildRecalledPeekBubble(msg.recalledContent);

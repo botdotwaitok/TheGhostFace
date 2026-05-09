@@ -35,13 +35,20 @@ export const defaultSettings = {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
+// Returns the per-character namespace `char_{id}` when a character is active,
+// or `null` when no character is loaded (e.g. during character-switch transitions
+// or before any character is selected). Callers MUST guard against null on write
+// paths — previously we returned a sentinel like 'global_fallback' which silently
+// swallowed writes into a shared namespace and polluted other characters' data.
 export function getCharacterId() {
     try {
         const context = getContext();
-        // Use characterId if available, otherwise fallback to 'global'
-        return context.characterId ? `char_${context.characterId}` : 'global_fallback';
+        if (context.characterId !== undefined && context.characterId !== null) {
+            return `char_${context.characterId}`;
+        }
+        return null;
     } catch {
-        return 'global_system';
+        return null;
     }
 }
 

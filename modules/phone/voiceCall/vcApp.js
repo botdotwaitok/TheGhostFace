@@ -12,6 +12,7 @@ import { saveMetadataDebounced } from '../../../../../../extensions.js';
 import { chat_metadata } from '../../../../../../../script.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { getPhoneSetting, setPhoneSetting } from '../phoneSettings.js';
+import { getTtsEngine } from './tts/ttsInit.js';
 
 const LOG_PREFIX = '[VcApp]';
 
@@ -20,6 +21,36 @@ let _activeTab = 'phone'; // 'phone' | 'watch'
 
 // Resume-from state (set when user taps a "continue watching" card)
 let _resumeFromLog = null;
+
+// Phase 4 audit fix: track the call-detail back handler so we can clean it up
+// when the phone closes mid-detail-view. Without this, the listener stays bound
+// to `window`, and a later back press inside any other app would call
+// openVcApp('phone'), unexpectedly switching the user back to vcApp.
+let _detailBackHandler = null;
+
+function _clearDetailBackHandler() {
+    if (_detailBackHandler) {
+        window.removeEventListener('phone-app-back', _detailBackHandler);
+        _detailBackHandler = null;
+    }
+}
+
+// Register once at module load: phone-closed always clears any detail listener
+// AND destroys the TTS engine's AudioContext so reproducible phone open/close
+// doesn't accumulate audio threads. (TTS is only torn down on full phone close,
+// not between calls within a single voice-call session — that's the goal stated
+// in the audit risk #5.)
+window.addEventListener('phone-closed', () => {
+    _clearDetailBackHandler();
+    try {
+        const tts = getTtsEngine();
+        if (tts && typeof tts.destroy === 'function') {
+            tts.destroy();
+        }
+    } catch (e) {
+        console.debug(`${LOG_PREFIX} ttsEngine destroy on phone-closed skipped:`, e?.message);
+    }
+});
 
 // ═══════════════════════════════════════════════════════════════════════
 // Entry Point
@@ -32,6 +63,10 @@ let _resumeFromLog = null;
  */
 export function openVcApp(tab) {
     if (tab) _activeTab = tab;
+    // Defensive: any stale detail handler from a previous session must not
+    // intercept the back press in the main vcApp view (would cause back to
+    // re-render the call list instead of exiting the app).
+    _clearDetailBackHandler();
 
     // Build header tabs HTML — inject into the title area
     const titleHtml = `
@@ -474,13 +509,16 @@ function _openCallDetail(callId) {
     if (titleEl) titleEl.textContent = detailTitle;
     if (actionsEl) actionsEl.innerHTML = '';
 
-    // Intercept back button to return to call list
-    const _backHandler = (e) => {
+    // Intercept back button to return to call list. Replace any previously-bound
+    // handler (e.g. user opened one detail, closed phone without going back, then
+    // reopened a different detail) so only one handler is ever live.
+    _clearDetailBackHandler();
+    _detailBackHandler = (e) => {
         e.preventDefault();
-        window.removeEventListener('phone-app-back', _backHandler);
+        _clearDetailBackHandler();
         openVcApp('phone');
     };
-    window.addEventListener('phone-app-back', _backHandler);
+    window.addEventListener('phone-app-back', _detailBackHandler);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -568,6 +606,10 @@ function _bindResumeCardEvents() {
             // Pre-fill title
             const titleEl = document.getElementById('wp_content_title');
             if (titleEl && log.contentTitle) titleEl.value = log.contentTitle;
+
+
+            const descEl = document.getElementById('wp_content_desc');
+            if (descEl) descEl.value = log.contentDescription || '';
 
             // Show resume badge
             const badge = document.getElementById('wp_resume_badge');

@@ -2,7 +2,7 @@
 // Extracted from chatApp.js
 
 import {
-    escHtml, CHAT_LOG_PREFIX, scrollToBottom, showTypingIndicator, sleep,
+    escHtml, CHAT_LOG_PREFIX, scrollToBottom, showTypingIndicator,
     getIsGenerating, setIsGenerating, getIsDeleteMode, setIsDeleteMode,
     getSelectedForDeletion,
     getIsEditMode, setIsEditMode, getSelectedEditIndex, setSelectedEditIndex,
@@ -11,13 +11,10 @@ import {
 import {
     loadChatHistory, saveChatHistory,
     deleteMessagesByIndices, updateMessageByIndex,
-    getCharacterInfo,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
-import { buildChatSystemPrompt, buildChatUserPrompt, stripMomentsCommands } from './chatPromptBuilder.js';
-import { buildBubbleRow, buildRecalledPeekBubble } from './chatHtmlBuilder.js';
-import { parseApiResponse } from './chatMessageHandler.js';
-import { renderBuffBar } from './chatInventory.js';
+import { buildChatSystemPrompt, buildChatUserPrompt } from './chatPromptBuilder.js';
+import { renderResponseToDom } from './chatMessageHandler.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Delete Mode (iMessage-style Batch Select) & Reroll
@@ -281,67 +278,18 @@ export async function rerollLastMessage() {
 
         const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 4000 });
 
-        // ─── Route moments commands (朋友圈/评论) to moments system ───
+        // Route moments commands (朋友圈/评论) to moments system — must run
+        // before renderResponseToDom so the JSON has moments commands stripped
+        // by the same logic the regular send path uses.
         try {
             const { handleMainChatOutput } = await import('../moments/momentsWorldInfo.js');
             handleMainChatOutput(rawResponse).catch(e =>
                 console.warn(`${CHAT_LOG_PREFIX} Moments routing (reroll) failed:`, e));
         } catch (e) { /* moments module not loaded */ }
 
-        const cleanedResponse = stripMomentsCommands(rawResponse);
-        const { messages: charMessages } = parseApiResponse(cleanedResponse);
-
-        // Strip moments commands from message text
-        for (const cmsg of charMessages) {
-            cmsg.text = stripMomentsCommands(cmsg.text) || cmsg.text;
-        }
-
-        if (charMessages.length === 0) {
-            throw new Error('LLM返回了空的消息数组');
-        }
-
-        showTypingIndicator(false);
-
-        const updatedHistory = loadChatHistory();
-        const responseTime = new Date().toISOString();
-
-        for (let i = 0; i < charMessages.length; i++) {
-            const cmsg = charMessages[i];
-            const delay = i === 0 ? 0 : (cmsg.delay || 1) * 300;
-
-            if (delay > 0) {
-                showTypingIndicator(true);
-                await sleep(Math.min(delay, 2000));
-                showTypingIndicator(false);
-            }
-
-            const historyEntry = {
-                role: 'char',
-                content: cmsg.text,
-                thought: cmsg.thought || '',
-                timestamp: responseTime,
-            };
-            if (cmsg.recalledContent) {
-                historyEntry.recalledContent = cmsg.recalledContent;
-            }
-            updatedHistory.push(historyEntry);
-
-            if (messagesArea) {
-                if (cmsg.text === '[撤回了一条消息]' && cmsg.recalledContent) {
-                    const charName = getCharacterInfo()?.name || '对方';
-                    messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-retract">${escHtml(charName)}撤回了一条消息</div>`);
-                    messagesArea.insertAdjacentHTML('beforeend',
-                        buildRecalledPeekBubble(cmsg.recalledContent));
-                } else {
-                    messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', cmsg.text, cmsg.thought));
-                }
-            }
-            scrollToBottom(true);
-        }
-
-        saveChatHistory(updatedHistory);
-        renderBuffBar();
+        // Delegate to the unified render path so reroll picks up buff decrement,
+        // gift detection, robbery, AI reactions, auto-summarize — same as a normal send.
+        await renderResponseToDom(rawResponse, lastUserMessages);
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} Reroll failed:`, error);

@@ -8,6 +8,7 @@ import {
     loadChatHistory, getCharacterInfo, getUserName,
     sendSummaryAsUserMessage, sendRawTranscriptAsUserMessage,
     loadChatSummary, saveChatSummary,
+    getMessagesSinceHome, saveHomeMarker,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
@@ -208,14 +209,25 @@ export async function handleReturnHome() {
         return;
     }
 
+    // Only sync messages newer than the previous 回家 — never re-send what was
+    // already folded into a prior summary. Marker advances on success below.
+    const newMessages = getMessagesSinceHome(history);
+    if (newMessages.length === 0) {
+        alert('上次回家之后还没有新的聊天记录，不需要再同步～');
+        return;
+    }
+
     // Read user preferences from persistent settings
     const doMemoryFragments = getPhoneSetting('rhMemory', false);
     const syncMode = getPhoneSetting('rhSyncMode', 'summary');
 
     const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
     const memoryLabel = doMemoryFragments ? '[ ON ] 提取记忆碎片' : '[ OFF ] 不提取记忆碎片';
+    const scopeLabel = newMessages.length === history.length
+        ? `本次同步 ${newMessages.length} 条消息`
+        : `本次同步 ${newMessages.length} 条新消息（共 ${history.length} 条，已跳过上次回家前的 ${history.length - newMessages.length} 条）`;
 
-    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n当前设置：\n同步方式: ${modeLabel}\n${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
+    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n${scopeLabel}\n同步方式: ${modeLabel}\n${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
         return;
     }
 
@@ -240,8 +252,10 @@ export async function handleReturnHome() {
             console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
 
             try {
-                // Convert phone chat messages to the format generateSummary() expects
-                const summarizerMessages = history.map(msg => ({
+                // Convert phone chat messages to the format generateSummary() expects.
+                // Use newMessages (post-marker slice) so we don't re-extract memory
+                // from chats that a previous 回家 already processed.
+                const summarizerMessages = newMessages.map(msg => ({
                     parsedContent: msg.content || '',
                     parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
                     is_user: msg.role === 'user',
@@ -271,18 +285,18 @@ export async function handleReturnHome() {
         if (syncMode === 'raw') {
             // ── Raw transcript mode ──
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-file-text"></i> 正在将原文聊天记录同步…';
-            console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript...`);
+            console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript (${newMessages.length} new msgs)...`);
 
-            await sendRawTranscriptAsUserMessage(history);
+            await sendRawTranscriptAsUserMessage(newMessages);
 
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！原文聊天记录已发送，你对象正在回应～';
 
         } else {
             // ── AI compressed summary mode (default) ──
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-robot"></i> 正在生成AI压缩总结…';
-            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary...`);
+            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${newMessages.length} new msgs)...`);
 
-            const transcript = history.map(msg => {
+            const transcript = newMessages.map(msg => {
                 const role = msg.role === 'user' ? userName : charName;
                 const timeStr = msg.timestamp
                     ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -306,6 +320,21 @@ export async function handleReturnHome() {
             await sendSummaryAsUserMessage(summary.trim());
 
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！总结已作为消息发送，你对象正在回应～';
+        }
+
+        // Advance the 回家 marker. Re-read history here instead of using
+        // newMessages.end — during the LLM call (5–30s) autoMessage or the
+        // user can append new messages to phone history. Anchoring to
+        // history's true tail folds those concurrent messages into "已处理"
+        // for the same 回家 batch, avoiding a re-sync window.
+        const latestHistory = loadChatHistory();
+        let newMarker = '';
+        for (let i = latestHistory.length - 1; i >= 0; i--) {
+            if (latestHistory[i].timestamp) { newMarker = latestHistory[i].timestamp; break; }
+        }
+        if (newMarker) {
+            saveHomeMarker(newMarker);
+            console.log(`${CHAT_LOG_PREFIX} 回家 marker → ${newMarker}`);
         }
 
         console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);

@@ -51,6 +51,20 @@ const DEFAULT_FRAME_INTERVAL_MS = 20_000;   // Default: 20 seconds per frame
 const DEFAULT_MIN_LLM_INTERVAL_MS = 15_000; // Default: minimum 15s between auto-triggered LLM calls
 let _lastLLMCallTime = 0;
 
+// ─── User-Speech Queue Slot ───
+// 当 autoframe 调用正在跑时，用户说话不会被丢弃，而是暂存到这个槽位。
+// autoframe 的 LLM + TTS 全部播完后，finally 块会自动 dequeue 触发用户那一次。
+// 槽只保留最新一次：用户连说两句时取较新那次（截图更新、意图更近）。
+let _pendingUserCall = null;       // { frameDataUrl, spokenText } | null
+let _lastUserSpokenAt = 0;         // STT 重复触发同一句话的 dedup 时间戳
+
+// ─── Session-Wide Abort + Reentry Guards (Phase 1 audit fix) ───
+// Mirrors the pattern in voiceCallUI.js — single controller per session lets
+// closeWatchParty kill all in-flight LLM/TTS/screen-capture-frame fetches.
+let _sessionAbortCtrl = null;
+let _isClosing = false;
+const _pendingTimeouts = new Set();
+
 // ═══════════════════════════════════════════════════════════════════════
 // Template & Mounting
 // ═══════════════════════════════════════════════════════════════════════
@@ -103,12 +117,42 @@ function _mountOverlay() {
 function _unmountOverlay() {
     const overlay = document.getElementById('phone_watch_party_overlay');
     if (overlay) {
+        // Mark unmounted synchronously so any concurrent _sendToLLM continuations
+        // see _overlayMounted=false BEFORE the 300ms fade completes (otherwise
+        // they may try to insert subtitles into an overlay that's about to die).
+        _overlayMounted = false;
         overlay.classList.remove('active');
-        setTimeout(() => {
+        // Tracked timeout: if a new watch party starts inside the 300ms fade,
+        // _resetSessionState clears this so it can't delete the new overlay.
+        _scheduleTimeout(() => {
             overlay.remove();
-            _overlayMounted = false;
         }, 300);
     }
+}
+
+// ─── Session timer tracking + reentry guards ───
+
+function _scheduleTimeout(fn, ms) {
+    const id = setTimeout(() => {
+        _pendingTimeouts.delete(id);
+        fn();
+    }, ms);
+    _pendingTimeouts.add(id);
+    return id;
+}
+
+function _clearPendingTimeouts() {
+    for (const id of _pendingTimeouts) clearTimeout(id);
+    _pendingTimeouts.clear();
+}
+
+function _resetSessionState() {
+    _clearPendingTimeouts();
+    if (_sessionAbortCtrl && !_sessionAbortCtrl.signal.aborted) {
+        try { _sessionAbortCtrl.abort(); } catch { /* ignore */ }
+    }
+    _sessionAbortCtrl = new AbortController();
+    _isClosing = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -124,6 +168,10 @@ function _unmountOverlay() {
  */
 export async function openWatchParty(sessionConfig = {}) {
     console.log(`${LOG_PREFIX} Opening Watch Party...`, sessionConfig);
+
+    // Reset session state — cancel any leftover unmount timer / aborted controller
+    // from a prior watch party that's still inside its 300ms fade window.
+    _resetSessionState();
 
     // ── Initialize engines ──
     _sttEngine = getSttEngine();
@@ -153,6 +201,8 @@ export async function openWatchParty(sessionConfig = {}) {
     _isPaused = false;
     _lastFrameDataUrl = null;
     _lastLLMCallTime = 0;
+    _pendingUserCall = null;
+    _lastUserSpokenAt = 0;
 
     // ── Inject previous session context ("Continue Watching" mode) ──
     _frameDescriptions = [];
@@ -215,10 +265,35 @@ export async function openWatchParty(sessionConfig = {}) {
  * @param {boolean} [options.skipSummary=false]
  */
 export async function closeWatchParty({ skipSummary = false } = {}) {
+    // Reentry guard — onCaptureEnded firing during teardown, double-clicks on
+    // hangup, or hangup colliding with browser "stop sharing" can all reach here twice.
+    if (_isClosing) {
+        console.log(`${LOG_PREFIX} closeWatchParty already in progress — ignoring re-entry`);
+        return;
+    }
+    _isClosing = true;
+
     console.log(`${LOG_PREFIX} Closing Watch Party... (skipSummary: ${skipSummary})`);
+
+    // Snapshot the controller — if openWatchParty replaces it during the long
+    // summary await, we must not destroy the new session's state at the end.
+    const closingCtrl = _sessionAbortCtrl;
+
+    // Abort all in-flight session tasks so their await continuations bail out.
+    if (closingCtrl) {
+        try { closingCtrl.abort(); } catch { /* ignore */ }
+    }
+    _clearPendingTimeouts();
 
     // Stop frame capture loop
     _stopFrameLoop();
+
+    // Snapshot a final thumbnail BEFORE tearing the stream down. captureThumbnail
+    // reads from the live <video> element — once stopScreenCapture runs, the
+    // element is gone and the saved call log ends up with no thumbnail. If the
+    // user already stopped sharing via browser UI, the stream is already dead
+    // and this returns null, which is fine.
+    const finalThumbnail = captureThumbnail();
 
     // Stop screen capture
     stopScreenCapture();
@@ -236,42 +311,54 @@ export async function closeWatchParty({ skipSummary = false } = {}) {
 
     _stopTimer();
 
-    // ── Save session log ──
-    if (_fullTranscript.length > 0) {
+    // ── Save session log — snapshot fields BEFORE any await, since the user
+    // may re-open during summary generation and clobber module state. ──
+    const transcriptSnapshot = [..._fullTranscript];
+    const callIdSnapshot = _callId;
+    const startTimeSnapshot = _startTime;
+    const sessionConfigSnapshot = { ..._sessionConfig };
+    const frameDescriptionsSnapshot = [..._frameDescriptions];
+    const sessionSummarySnapshot = _sessionSummary;
+
+    if (transcriptSnapshot.length > 0) {
         const endTime = new Date().toISOString();
-        const duration = _startTime ? Math.floor((Date.now() - _startTime) / 1000) : 0;
+        const duration = startTimeSnapshot ? Math.floor((Date.now() - startTimeSnapshot) / 1000) : 0;
 
         let summary = '';
-        if (!skipSummary && _fullTranscript.length >= 2) {
+        if (!skipSummary && transcriptSnapshot.length >= 2) {
             _addSystemSubtitle('正在生成观影回忆...');
             try {
-                summary = await generateWatchPartySummary(_fullTranscript, _sessionConfig);
+                summary = await generateWatchPartySummary(transcriptSnapshot, sessionConfigSnapshot);
             } catch (e) {
                 console.warn(`${LOG_PREFIX} Summary generation failed:`, e);
             }
         }
 
-        // Capture a final thumbnail for the call log
-        const thumbnail = captureThumbnail();
-
         const callLog = {
-            id: _callId,
+            id: callIdSnapshot,
             type: 'watch-party',
-            startTime: new Date(_startTime).toISOString(),
+            startTime: new Date(startTimeSnapshot).toISOString(),
             endTime,
             duration,
             summary,
-            messages: [..._fullTranscript],
-            contentType: _sessionConfig.contentType || 'other',
-            contentTitle: _sessionConfig.contentTitle || '',
-            thumbnails: thumbnail ? [thumbnail] : [],
-            frameDescriptions: [..._frameDescriptions],
-            sessionSummary: _sessionSummary,
-            ..._sessionConfig.resumedFromId ? { resumedFrom: _sessionConfig.resumedFromId } : {},
+            messages: transcriptSnapshot,
+            contentType: sessionConfigSnapshot.contentType || 'other',
+            contentTitle: sessionConfigSnapshot.contentTitle || '',
+            contentDescription: sessionConfigSnapshot.contentDescription || '',
+            thumbnails: finalThumbnail ? [finalThumbnail] : [],
+            frameDescriptions: frameDescriptionsSnapshot,
+            sessionSummary: sessionSummarySnapshot,
+            ...sessionConfigSnapshot.resumedFromId ? { resumedFrom: sessionConfigSnapshot.resumedFromId } : {},
         };
 
         saveCallLog(callLog);
-        console.log(`${LOG_PREFIX} Watch party log saved: ${_fullTranscript.length} messages, ${duration}s`);
+        console.log(`${LOG_PREFIX} Watch party log saved: ${transcriptSnapshot.length} messages, ${duration}s`);
+    }
+
+    // If a new session started during summary generation, leave its state alone.
+    if (_sessionAbortCtrl !== closingCtrl) {
+        console.log(`${LOG_PREFIX} A new watch party started during summary generation — leaving fresh state alone.`);
+        return;
     }
 
     // ── Reset state ──
@@ -287,6 +374,8 @@ export async function closeWatchParty({ skipSummary = false } = {}) {
     _sessionSummary = '';
     _isCompressing = false;
     _systemPromptTokens = 0;
+    _pendingUserCall = null;
+    _lastUserSpokenAt = 0;
 
     _unmountOverlay();
 }
@@ -402,8 +491,8 @@ function _showHangupConfirmation() {
         closeWatchParty({ skipSummary: true });
     };
 
-    // Auto-revert after 3s
-    setTimeout(() => _hideHangupConfirmation(), 3000);
+    // Auto-revert after 3s — tracked so closeWatchParty cancels it cleanly
+    _scheduleTimeout(() => _hideHangupConfirmation(), 3000);
 }
 
 function _hideHangupConfirmation() {
@@ -533,25 +622,30 @@ function _onSttTranscript(text) {
         _lastFrameDataUrl = frame;
     }
 
-    // Send to LLM with spoken text + current frame
-    _sendToLLM({ frameDataUrl: frame || _lastFrameDataUrl, spokenText: text });
+    // Send to LLM with spoken text + current frame.
+    // userTriggered=true → throttle uses a shorter floor than the auto-frame loop
+    // so the user's words don't get silently dropped when minLlmIntervalMs is large
+    // (e.g. talkFrequency='quiet'), but consecutive bursts still get rate-limited.
+    _sendToLLM({ frameDataUrl: frame || _lastFrameDataUrl, spokenText: text, userTriggered: true });
 }
 
 function _onSttStateChange(state) {
+    // micBtn is absent while the hangup-confirm dialog has temporarily replaced
+    // the controls (~3s window). Don't early-return — the auto-restart STT block
+    // below still needs to run during that window or STT silently dies.
     const micBtn = document.getElementById('watch_party_mic_btn');
-    if (!micBtn) return;
 
-    if (state === 'processing') {
-        micBtn.style.opacity = '0.5';
-    } else {
-        micBtn.style.opacity = '1';
+    if (micBtn) {
+        micBtn.style.opacity = state === 'processing' ? '0.5' : '1';
     }
 
-    // Auto-restart STT when idle
+    // Auto-restart STT when idle. Treat absent micBtn as "not muted" since the
+    // mute toggle only ever applies while the controls are mounted normally.
     if (state === 'idle' && _overlayMounted && _sttEngine) {
-        const isMuted = micBtn.classList.contains('muted');
-        if (!isMuted && !_isTtsPlaying) {
-            setTimeout(() => {
+        const isMuted = micBtn?.classList.contains('muted') ?? false;
+        if (!isMuted && !_isTtsPlaying && !_isClosing) {
+            _scheduleTimeout(() => {
+                if (_isClosing) return;
                 if (_overlayMounted && _sttEngine?.state === 'idle' && !_isTtsPlaying) {
                     _sttEngine.startListening({ continuous: true }).catch(e => {
                         console.warn(`${LOG_PREFIX} STT auto-restart failed:`, e);
@@ -563,13 +657,14 @@ function _onSttStateChange(state) {
 }
 
 function _restartSttAfterTts() {
-    if (!_overlayMounted || !_sttEngine) return;
+    if (!_overlayMounted || !_sttEngine || _isClosing) return;
     const micBtn = document.getElementById('watch_party_mic_btn');
     const isMuted = micBtn?.classList.contains('muted');
     if (isMuted || _isTtsPlaying) return;
     if (_sttEngine.state !== 'idle') return;
 
-    setTimeout(() => {
+    _scheduleTimeout(() => {
+        if (_isClosing) return;
         if (_overlayMounted && _sttEngine?.state === 'idle' && !_isTtsPlaying) {
             _sttEngine.startListening({ continuous: true }).catch(e => {
                 console.warn(`${LOG_PREFIX} STT restart after TTS failed:`, e);
@@ -604,15 +699,59 @@ function _addSystemSubtitle(text) {
  * @param {object} params
  * @param {string} params.frameDataUrl - Base64 data URL of the screen capture frame
  * @param {string} [params.spokenText] - User's spoken text (from STT)
+ * @param {boolean} [params.userTriggered] - True when initiated by STT transcript;
+ *        applies a shorter throttle floor so user speech isn't silently dropped
+ *        under large auto-frame intervals, while still preventing bursts.
  */
-async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
-    if (_isProcessingLLM) {
-        console.log(`${LOG_PREFIX} LLM already processing, skipping.`);
+async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false, fromQueue = false }) {
+    if (_isClosing) {
+        console.log(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
         return;
+    }
+
+    // 用户触发：500ms 短窗 dedup —— 仅用于防 STT 同一句话被识别为多次 transcript，
+    // 不构成业务节流。autoframe 的 minLlmMs 节流单独处理，不影响用户语音。
+    // fromQueue=true 时跳过：队列重放的是已经过 dedup 的原始 STT 信号，
+    // 重新做 dedup 会把刚 dequeue 后紧接着发生的真实新语音给误吃掉。
+    if (userTriggered && !fromQueue) {
+        const sinceLastSpoken = Date.now() - _lastUserSpokenAt;
+        if (_lastUserSpokenAt > 0 && sinceLastSpoken < 500) {
+            console.log(`${LOG_PREFIX} User-trigger dedup (${sinceLastSpoken}ms < 500ms).`);
+            return;
+        }
+        _lastUserSpokenAt = Date.now();
+    }
+
+    // LLM 通道占用中：用户触发就排队（autoframe 跑完后 finally 会 dequeue），
+    // autoframe 触发就直接丢这一 tick（下一帧循环还会再来）。
+    // 槽只保留最新一次：连说两句时取较新那次的截图与意图。
+    if (_isProcessingLLM) {
+        if (userTriggered) {
+            _pendingUserCall = { frameDataUrl, spokenText };
+            console.log(`${LOG_PREFIX} 🎤 User speech queued — will run after current LLM call.`);
+        } else {
+            console.log(`${LOG_PREFIX} Auto-frame LLM busy, dropping this tick.`);
+        }
+        return;
+    }
+
+    // autoframe 走 minLlmMs 节流（保留 talkFrequency 语义）；用户触发不受此节流约束。
+    if (!userTriggered) {
+        const minLlmMs = _sessionConfig.minLlmIntervalMs || DEFAULT_MIN_LLM_INTERVAL_MS;
+        const elapsedSinceLast = Date.now() - _lastLLMCallTime;
+        if (_lastLLMCallTime > 0 && elapsedSinceLast < minLlmMs) {
+            console.log(`${LOG_PREFIX} Auto-frame throttled (${elapsedSinceLast}ms < ${minLlmMs}ms).`);
+            return;
+        }
     }
 
     _isProcessingLLM = true;
     _lastLLMCallTime = Date.now();
+
+    // Snapshot session id so post-await continuations can detect that the
+    // session ended (or was replaced) and bail before mutating shared state.
+    const snapshotCallId = _callId;
+    const signal = _sessionAbortCtrl?.signal;
 
     const subs = document.getElementById('watch_party_subtitles');
     let charBubble = null;
@@ -629,7 +768,12 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
             _scrollToBottom();
         }
 
-        // Build user prompt (now returns object with compression metadata)
+        // ── Multimodal LLM call with image ──
+        const images = frameDataUrl ? [frameDataUrl] : [];
+
+        // Build user prompt (returns object with compression metadata).
+        // imageCount feeds into estimateTokens so the budget check accounts for
+        // the multimodal frame, not just the text portion.
         const elapsedMinutes = Math.floor((Date.now() - _startTime) / 60000);
         const promptResult = buildWatchPartyUserPrompt({
             spokenText,
@@ -639,11 +783,16 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
             frameDescriptions: _frameDescriptions,
             sessionSummary: _sessionSummary,
             systemPromptTokens: _systemPromptTokens,
+            imageCount: images.length,
         });
-
-        // ── Multimodal LLM call with image ──
-        const images = frameDataUrl ? [frameDataUrl] : [];
         const response = await callPhoneLLM(_systemPromptCache, promptResult.prompt, { images });
+
+        // Session ended (or was replaced) while LLM was thinking — drop response silently.
+        if (_isClosing || _callId !== snapshotCallId) {
+            console.log(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
+            if (charBubble && !_isClosing) charBubble.remove();
+            return;
+        }
 
         if (!response || !response.trim()) {
             console.log(`${LOG_PREFIX} LLM returned empty response, treating as silence.`);
@@ -722,27 +871,28 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
             // Play TTS segments
             const audioBlobs = [];
             for (let i = 0; i < parsed.segments.length; i++) {
+                if (_isClosing || _callId !== snapshotCallId) break;
                 const seg = parsed.segments[i];
                 if (!seg.text || seg.text.trim().length === 0) continue;
 
                 const sentences = _splitIntoSentences(seg.text);
                 for (let j = 0; j < sentences.length; j++) {
+                    if (_isClosing || _callId !== snapshotCallId) break;
                     try {
-                        const ttsResult = await _ttsEngine.speakAndCapture(sentences[j], seg.tone);
-                        if (ttsResult) {
-                            if (ttsResult.audioBlob) audioBlobs.push(ttsResult.audioBlob);
-                            if (ttsResult.duration > 0) {
-                                await new Promise(r => setTimeout(r, ttsResult.duration * 1000));
-                            }
-                        }
+                        // speakAndCapture awaits real `onended` (or session abort),
+                        // so no extra setTimeout(duration*1000) wait is needed here.
+                        const ttsResult = await _ttsEngine.speakAndCapture(sentences[j], seg.tone, { signal });
+                        if (_isClosing || _callId !== snapshotCallId) break;
+                        if (ttsResult?.audioBlob) audioBlobs.push(ttsResult.audioBlob);
                     } catch (e) {
+                        if (e?.name === 'AbortError') break;
                         console.warn(`${LOG_PREFIX} TTS sentence failed:`, e);
                     }
                 }
             }
 
-            // Upload merged audio
-            if (audioBlobs.length > 0) {
+            // Upload merged audio (only if session is still alive)
+            if (audioBlobs.length > 0 && !_isClosing && _callId === snapshotCallId) {
                 try {
                     const mergedBlob = new Blob(audioBlobs, { type: 'audio/mpeg' });
                     const audioPath = await uploadAudioToST(mergedBlob, 'watch_party');
@@ -765,9 +915,15 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
 
         _scrollToBottom();
         _isTtsPlaying = false;
-        _restartSttAfterTts();
+        if (!_isClosing && _callId === snapshotCallId) _restartSttAfterTts();
 
     } catch (e) {
+        // Aborted via session controller — silent bail, no error subtitle.
+        if (e?.name === 'AbortError' || _isClosing || _callId !== snapshotCallId) {
+            console.log(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
+            if (charBubble && !_isClosing) charBubble.remove();
+            return;
+        }
         console.error(`${LOG_PREFIX} LLM call failed:`, e);
         if (charBubble) {
             charBubble.removeAttribute('id');
@@ -779,13 +935,34 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
         _isProcessingLLM = false;
         if (_isTtsPlaying) {
             _isTtsPlaying = false;
-            _restartSttAfterTts();
+            if (!_isClosing) _restartSttAfterTts();
+        }
+
+        // ── 排队的用户语音：autoframe 调用全部播完后立刻接上跑掉它 ──
+        // 这是华华的核心诉求：autoframe 不被打断（不浪费 token），但用户开口
+        // 不能被 silently 丢掉。两次回应自然依序 TTS（autoframe TTS 真的 await
+        // 完了，finally 才到这里）。dequeue 优先于压缩 —— 用户感知 > token 优化。
+        if (_pendingUserCall && !_isClosing && _callId === snapshotCallId) {
+            const pending = _pendingUserCall;
+            _pendingUserCall = null;
+            console.log(`${LOG_PREFIX} 🎤 Dequeuing user speech triggered during prior LLM call.`);
+            // 让出 microtask：避免在 finally 内递归 await，也让 _isProcessingLLM=false
+            // 的状态被同 tick 内别的代码（_restartSttAfterTts 等）观察到。
+            queueMicrotask(() => {
+                if (!_isClosing) {
+                    _sendToLLM({ ...pending, userTriggered: true, fromQueue: true });
+                }
+            });
+            return;
         }
 
         // ── Trigger async compression if needed (non-blocking) ──
-        // Re-check after LLM call since we may have added new frame descriptions
-        if (!_isCompressing) {
+        // Re-check after LLM call since we may have added new frame descriptions.
+        // Skip if session has ended.
+        if (!_isCompressing && !_isClosing && _callId === snapshotCallId) {
             const elapsedMinutes = Math.floor((Date.now() - _startTime) / 60000);
+            // imageCount=1 here: next frame call will include one screenshot, so
+            // the recheck reflects the budget under realistic conditions.
             const checkResult = buildWatchPartyUserPrompt({
                 spokenText: '',
                 watchHistory: _watchMessages,
@@ -794,6 +971,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
                 frameDescriptions: _frameDescriptions,
                 sessionSummary: _sessionSummary,
                 systemPromptTokens: _systemPromptTokens,
+                imageCount: 1,
             });
             if (checkResult.needsCompression && checkResult.compressionPayload) {
                 _compressSessionHistory(checkResult.compressionPayload);
@@ -812,9 +990,10 @@ async function _sendToLLM({ frameDataUrl, spokenText = '' }) {
  * @param {object} compressionPayload - From buildWatchPartyUserPrompt
  */
 async function _compressSessionHistory(compressionPayload) {
-    if (_isCompressing || !_overlayMounted) return;
+    if (_isCompressing || !_overlayMounted || _isClosing) return;
     _isCompressing = true;
 
+    const snapshotCallId = _callId;
     const { dialogCutoff, frameCutoff } = compressionPayload;
     console.log(`${LOG_PREFIX} 📝 Starting context compression (dialog: ${dialogCutoff} msgs, frames: ${frameCutoff} descs)...`);
 
@@ -822,6 +1001,13 @@ async function _compressSessionHistory(compressionPayload) {
         const systemPrompt = buildWatchPartySummarizePrompt();
         const userPrompt = buildCompressionUserPrompt(compressionPayload);
         const newSummary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 1500 });
+
+        // Drop the result if the session ended (or was replaced) mid-compression —
+        // otherwise we'd splice arrays that belong to a different watch party.
+        if (_isClosing || _callId !== snapshotCallId) {
+            console.log(`${LOG_PREFIX} Compression finished after session ended, dropping result.`);
+            return;
+        }
 
         if (newSummary?.trim()) {
             _sessionSummary = newSummary.trim();
@@ -835,6 +1021,10 @@ async function _compressSessionHistory(compressionPayload) {
             console.warn(`${LOG_PREFIX} ⚠️ Compression returned empty result, skipping`);
         }
     } catch (e) {
+        if (e?.name === 'AbortError' || _isClosing) {
+            console.log(`${LOG_PREFIX} Compression aborted (session ended).`);
+            return;
+        }
         console.error(`${LOG_PREFIX} ❌ Context compression failed:`, e);
     } finally {
         _isCompressing = false;

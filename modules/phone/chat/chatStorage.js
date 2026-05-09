@@ -19,7 +19,7 @@ const CHAT_LOG_PREFIX = '[聊天]';
 const MAX_HISTORY_MESSAGES = 500; // Raise cap — summarize handles compression
 
 // ─── Auto-summarize constants ───
-const SUMMARIZE_TOKEN_THRESHOLD = 40000; // Trigger when unsummarized tokens reach 10k
+const SUMMARIZE_TOKEN_THRESHOLD = 40000; // Trigger when unsummarized tokens reach 40k
 const KEEP_RECENT = 60;                  // Keep the most recent N messages unsummarized
 
 // ─── ST main-chat injection ───
@@ -33,6 +33,8 @@ const META_KEY_HISTORY = 'gf_phoneChatHistory';
 const META_KEY_SUMMARY = 'gf_phoneChatSummary';
 const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
 const META_KEY_ST_SYNC_MARKER = 'gf_phoneChatLastSTMarker'; // send_date of last ST msg absorbed into summary
+const META_KEY_HOME_MARKER = 'gf_phoneChatLastHomeMarker';  // ISO timestamp of last phone msg already 回家'd
+const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display nickname for the character (UI-only)
 
 // ═══════════════════════════════════════════════════════════════════════
 // Token Estimation (CJK-aware)
@@ -95,6 +97,53 @@ export function getUserName() {
 /** @see phoneContext.getPhoneUserPersona — 向后兼容包装 */
 export function getUserPersona() {
     return getPhoneUserPersona();
+}
+
+// ─── Character Nickname (UI-only, persisted in chat_metadata) ───
+
+/**
+ * Load the user-set nickname for the current character. UI-only — never
+ * appears in prompts/summaries sent to the LLM, so the model still sees the
+ * character by their canonical name.
+ * @returns {string} nickname, or '' if none set
+ */
+export function loadCharacterNickname() {
+    try {
+        return chat_metadata?.[META_KEY_NICKNAME] || '';
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Persist (or clear) the character nickname. Empty/whitespace clears it.
+ * @param {string} nickname
+ */
+export function saveCharacterNickname(nickname) {
+    try {
+        if (!chat_metadata) return;
+        const trimmed = (nickname || '').trim();
+        if (trimmed) {
+            chat_metadata[META_KEY_NICKNAME] = trimmed;
+        } else {
+            delete chat_metadata[META_KEY_NICKNAME];
+        }
+        saveMetadataDebounced();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} chat_metadata nickname save failed:`, e);
+    }
+}
+
+/**
+ * Get the name to show in the chat UI: nickname if set, otherwise the
+ * character's canonical name. Use this anywhere the user reads the name;
+ * use getCharacterInfo().name for prompts / cross-platform calls.
+ * @returns {string}
+ */
+export function getCharacterDisplayName() {
+    const nickname = loadCharacterNickname();
+    if (nickname) return nickname;
+    return getPhoneCharInfo()?.name || '角色';
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -226,12 +275,68 @@ export function clearSTSyncMarker() {
 }
 
 /**
+ * Load the 回家 marker — ISO timestamp of the last phone message that was
+ * already folded into a previous 回家 summary. Messages with timestamp <= marker
+ * have already been "sent home" and must not be re-sent on subsequent 回家.
+ * @returns {string} ISO timestamp string, or '' if not set
+ */
+export function loadHomeMarker() {
+    try {
+        return chat_metadata?.[META_KEY_HOME_MARKER] || '';
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Save the 回家 marker (ISO timestamp of the newest message included in the 回家 summary).
+ * @param {string} marker
+ */
+export function saveHomeMarker(marker) {
+    try {
+        if (!chat_metadata) return;
+        if (marker) {
+            chat_metadata[META_KEY_HOME_MARKER] = marker;
+        } else {
+            delete chat_metadata[META_KEY_HOME_MARKER];
+        }
+        saveMetadataDebounced();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} 回家 marker save failed:`, e);
+    }
+}
+
+/**
+ * Reset the 回家 marker — next 回家 will treat all phone history as new.
+ */
+export function clearHomeMarker() {
+    saveHomeMarker('');
+}
+
+/**
+ * Get phone messages that have NOT yet been included in a previous 回家 summary.
+ * Compares ISO timestamps lexicographically (safe because ISO strings sort chronologically).
+ * Messages without a timestamp can't be ordered against the marker, so once a
+ * marker exists we conservatively SKIP them — they would otherwise be re-sent
+ * on every 回家 forever.
+ * @param {Array} history - Full phone chat history
+ * @returns {Array} Slice of messages strictly newer than the home marker
+ */
+export function getMessagesSinceHome(history) {
+    if (!Array.isArray(history) || history.length === 0) return [];
+    const marker = loadHomeMarker();
+    if (!marker) return history.slice();
+    return history.filter(m => m.timestamp && m.timestamp > marker);
+}
+
+/**
  * Clear all chat history for the current character.
  */
 export function clearChatHistory() {
     saveChatHistory([]);
     saveChatSummary('');       // 同时清空滚动总结，避免残留旧上下文
     clearSTSyncMarker();       // 重置 ST 同步进度，下次注入会重新吸收主线
+    clearHomeMarker();         // 重置回家进度，下次回家从头开始
 }
 
 /**
