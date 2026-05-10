@@ -173,7 +173,7 @@ function initTables() {
             isCharacter INTEGER NOT NULL DEFAULT 0,
             userId      TEXT DEFAULT 'anonymous',
             date        TEXT,
-            createdAt   TEXT NOT NULL DEFAULT (datetime('now'))fog
+            createdAt   TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE INDEX IF NOT EXISTS idx_shop_reviews_itemId ON shop_reviews(itemId);
