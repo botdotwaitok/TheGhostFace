@@ -8,6 +8,7 @@ import * as utils from './utils.js';
 import * as summarizer from './summarizer.js';
 import { getMaxSummarizedFloorFromWorldBook, GHOST_TRACKING_COMMENT, saveToWorldBook } from './worldbook.js';
 import * as timeline from './timeline.js';
+import * as api from './api.js';
 
 // 从 utils 获取 logger 的便捷引用（避免依赖 window.logger）
 const { logger } = utils;
@@ -151,20 +152,19 @@ export function setupMessageListener() {
         window._ghostFaceFallbackInterval = setInterval(checkAutoTrigger, 15000);
     }
 
-    // 🆕 Hook chat_completion_prompt_ready for accurate token counting (like pig.js)
-    // This is registered OUTSIDE the if/else because eventSource is always available via import.
+    // Hook chat_completion_prompt_ready for token counting.
+    // Skip when callPhoneLLM is in flight: its generateRaw fallback fires this
+    // event with our own small prompt, which would corrupt the panel cache.
+    // We do NOT re-trigger checkAutoTrigger from here — MESSAGE_SENT / MESSAGE_RECEIVED
+    // already cover real user activity. Re-checking from this event also fired on
+    // non-send paths (e.g. ST model switching probes), causing spurious auto-summaries.
     eventSource.on('chat_completion_prompt_ready', (data) => {
+        if (api.phoneLLMInFlight > 0) return;
         try {
             const count = countTokensFromPromptData(data);
             lastKnownTokenCount = count;
-            //logger.info(`🎯 Token count updated from prompt event: ${count}`);
-            // Update the UI display
             if (typeof ui.updateMessageCount === 'function') {
                 ui.updateMessageCount();
-            }
-            // 🆕 Re-check auto trigger with the fresh token count
-            if (autoTriggerEnabled && !isAutoSummarizing) {
-                setTimeout(() => checkAutoTrigger().catch(() => { }), 1500);
             }
         } catch (e) {
             logger.error('🎯 Token count from prompt event failed:', e);

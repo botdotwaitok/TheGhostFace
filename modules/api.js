@@ -14,6 +14,12 @@ export let customApiConfig = {
 };
 export let useCustomApi = true; // 当前是否使用自定义API（默认启用外部API）
 export let useMomentCustomApi = true; // 朋友圈独立API
+
+// In-flight counter for callPhoneLLM. The generateRaw fallback path emits
+// `chat_completion_prompt_ready` with our own small prompt, which would
+// otherwise overwrite the panel's token cache. Listeners check this to skip
+// those self-induced events.
+export let phoneLLMInFlight = 0;
 export const STORAGE_KEY_CUSTOM_API = `${MODULE_NAME}_customApiConfig_v1`;
 export const STORAGE_KEY_USE_CUSTOM_API = `${MODULE_NAME}_useCustomApi_v1`;
 export const STORAGE_KEY_USE_MOMENT_CUSTOM_API = `${MODULE_NAME}_useMomentCustomApi_v1`;
@@ -666,69 +672,74 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
     const MAX_RETRIES = 3;
     const BASE_DELAY = 1000; // 1s → 2s → 4s
 
-    let lastError;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
-                // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
-                if (attempt === 1) console.log('📱 [Phone LLM] 使用自定义API');
-                return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images });
+    phoneLLMInFlight++;
+    try {
+        let lastError;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
+                    // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
+                    if (attempt === 1) console.log('📱 [Phone LLM] 使用自定义API');
+                    return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images });
+                }
+
+                // ─── ST Main LLM path ───
+                if (images && images.length > 0) {
+                    // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
+                    if (attempt === 1) console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
+                    return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens);
+                }
+
+                // 纯文本 → generateRaw（最可靠，适配所有 provider）
+                if (attempt === 1) console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
+                const context = getContext();
+                if (typeof context.generateRaw !== 'function') {
+                    throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
+                }
+
+                let combinedPrompt = '';
+                if (systemPrompt && systemPrompt.trim()) {
+                    combinedPrompt += systemPrompt.trim() + '\n\n';
+                }
+                combinedPrompt += userPrompt;
+
+                const result = await Promise.race([
+                    context.generateRaw(combinedPrompt, '', false, false, ''),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
+                ]);
+                return result?.trim() || '';
+
+            } catch (err) {
+                lastError = err;
+
+                // Empty content / length cutoff — retrying just burns quota, fail fast
+                if (err?.code === 'CONTENT_EMPTY_LENGTH') {
+                    console.error(`📱 [Phone LLM] 内容为空 / 被截断，不重试:`, err.message);
+                    throw err;
+                }
+
+                // Don't retry 4xx client errors (bad API key, malformed request, etc.)
+                // Trust err.status only — message regex matched random 3-digit substrings ("context limit 4000")
+                const status = err?.status;
+                if (status >= 400 && status < 500) {
+                    console.error(`📱 [Phone LLM] 4xx 客户端错误，不重试:`, err.message);
+                    throw err;
+                }
+
+                if (attempt >= MAX_RETRIES) {
+                    console.error(`📱 [Phone LLM] ❌ ${MAX_RETRIES}次重试全部失败`);
+                    throw err;
+                }
+
+                const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+                console.warn(`📱 [Phone LLM] ⚠️ 第${attempt}次调用失败 (${err.message})，${delay / 1000}秒后重试...`);
+                await new Promise(r => setTimeout(r, delay));
             }
-
-            // ─── ST Main LLM path ───
-            if (images && images.length > 0) {
-                // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
-                if (attempt === 1) console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
-                return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens);
-            }
-
-            // 纯文本 → generateRaw（最可靠，适配所有 provider）
-            if (attempt === 1) console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
-            const context = getContext();
-            if (typeof context.generateRaw !== 'function') {
-                throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
-            }
-
-            let combinedPrompt = '';
-            if (systemPrompt && systemPrompt.trim()) {
-                combinedPrompt += systemPrompt.trim() + '\n\n';
-            }
-            combinedPrompt += userPrompt;
-
-            const result = await Promise.race([
-                context.generateRaw(combinedPrompt, '', false, false, ''),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
-            ]);
-            return result?.trim() || '';
-
-        } catch (err) {
-            lastError = err;
-
-            // Empty content / length cutoff — retrying just burns quota, fail fast
-            if (err?.code === 'CONTENT_EMPTY_LENGTH') {
-                console.error(`📱 [Phone LLM] 内容为空 / 被截断，不重试:`, err.message);
-                throw err;
-            }
-
-            // Don't retry 4xx client errors (bad API key, malformed request, etc.)
-            // Trust err.status only — message regex matched random 3-digit substrings ("context limit 4000")
-            const status = err?.status;
-            if (status >= 400 && status < 500) {
-                console.error(`📱 [Phone LLM] 4xx 客户端错误，不重试:`, err.message);
-                throw err;
-            }
-
-            if (attempt >= MAX_RETRIES) {
-                console.error(`📱 [Phone LLM] ❌ ${MAX_RETRIES}次重试全部失败`);
-                throw err;
-            }
-
-            const delay = BASE_DELAY * Math.pow(2, attempt - 1);
-            console.warn(`📱 [Phone LLM] ⚠️ 第${attempt}次调用失败 (${err.message})，${delay / 1000}秒后重试...`);
-            await new Promise(r => setTimeout(r, delay));
         }
+        throw lastError;
+    } finally {
+        phoneLLMInFlight--;
     }
-    throw lastError;
 }
 
 /**
