@@ -252,3 +252,38 @@ export function estimateTokens(text) {
     }
     return Math.ceil(cjk * CHARS_PER_TOKEN_EST + ascii / 4);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// User Decision Helper
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Ask the user whether to retry after a failure, OR auto-skip silently when
+ * running in an auto-trigger context.
+ *
+ * Manual path: native confirm() — user actively decided to summarize, so a
+ * blocking dialog is acceptable.
+ * Auto path:   never block — surface a persistent toastr (timeOut: 0) so the
+ * user can notice without being interrupted mid-typing.
+ *
+ * @param {string} message - Prompt text (shown to user in manual mode, used as toastr body in auto mode)
+ * @param {boolean} isAutoTriggered - true => skip silently and toastr, false => confirm()
+ * @param {object} [opts]
+ * @param {string} [opts.toastTitle='自动总结失败'] - Title for the toastr in auto mode
+ * @returns {boolean} true = retry, false = skip
+ */
+export function askUserOrAutoSkip(message, isAutoTriggered, { toastTitle = '自动总结失败' } = {}) {
+    if (isAutoTriggered) {
+        try {
+            // timeOut: 0 + extendedTimeOut: 0 => sticky until user closes it,
+            // so the failure doesn't get missed mid-conversation.
+            toastr.error(message, toastTitle, {
+                timeOut: 0,
+                extendedTimeOut: 0,
+                closeButton: true,
+            });
+        } catch (_) { }
+        return false;
+    }
+    return confirm(message);
+}

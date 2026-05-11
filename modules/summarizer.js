@@ -16,8 +16,6 @@ import * as timeline from './timeline.js';
 // ═══════════════════════════════════════════════════════════════════════
 // Retry Config (兜底轮询)
 // ═══════════════════════════════════════════════════════════════════════
-const MAX_RETRIES = 3;              // 最大重试次数
-const RETRY_BASE_DELAY = 3000;      // 退避基数 3s → 6s → 12s（指数退避）
 const SUMMARY_TIMEOUT_MS = 80_000;      // 记忆碎片提取超时 80s
 const BIG_SUMMARY_TIMEOUT_MS = 180_000; // 大总结超时 180s
 const TOKEN_CHUNK_SIZE = 50_000;    // 智能切割：每个 chunk 目标 ~50k tokens（用户模型 ~80k 上下文）
@@ -115,21 +113,6 @@ const NO_RP_PROMPT = `<NO_RP>
 </NO_RP>`;
 
 
-// 生成稳定的消息 ID（用于追踪已总结的消息）
-function generateMessageId(msg, index) {
-    try {
-        const name = (msg?.name || '').trim();
-        const role = msg?.is_system ? 'sys' : (msg?.is_user ? 'user' : 'bot');
-        const text = (msg?.mes || msg?.text || '').toString().trim();
-        const sample = text.length > 128 ? text.slice(0, 128) : text;
-        const base = `${name}|${role}|${index}|${sample}`;
-        const hash = typeof getStringHash === 'function' ? getStringHash(base) : base.length;
-        return `msg_${index}_${Math.abs(hash)}`;
-    } catch (e) {
-        return `msg_${index}_${Date.now()}`;
-    }
-}
-
 // 智能去重验证函数
 export function isContentSimilar(newContent, existingContent) {
     if (!newContent || !existingContent) return false;
@@ -181,7 +164,8 @@ export function isContentSimilar(newContent, existingContent) {
 }
 
 // AI去重总结函数
-export async function generateSummary(messages) {
+// isAuto: when true, failures inside attemptCall auto-skip via toastr instead of confirm()
+export async function generateSummary(messages, isAuto = false) {
     //logger.info('[鬼面] === 开始总结 ===');
 
     if (!messages || messages.length === 0) {
@@ -290,8 +274,6 @@ ${existingWorldBookContext}
 6. Each fragment must be **self-contained** — it should make sense on its own, without needing the other fragments.
 7. **CRITICAL DEDUP RULE**: Check the "已有记忆碎片标题列表" above CAREFULLY. If a new piece of info is about the **same topic** as an existing fragment (same person + same thing, just with new developments/details), you MUST use ===UPDATE=== format instead of ===ENTRY===. This is the MOST IMPORTANT rule.
 
-- [互动] Unique interaction habits with {{char}}
-
 **LABELING INSTRUCTION:**
 The \`[Title]\` part (at the start of the line) should be a **short, descriptive title** (max 10 chars) that summarizes the specific content.
 - BAD: [喜好]
@@ -396,13 +378,18 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
         };
 
         // ── 出错即停，询问用户是否重试 ──
+        // auto path: toastr + auto-skip (avoid blocking the user mid-typing)
+        // manual path: confirm() — user is actively waiting for the result
         const attemptCall = async (chunkMsgs) => {
             while (true) {
                 try {
                     return await callApiForChunk(chunkMsgs);
                 } catch (err) {
                     logger.error(`[鬼面] 记忆碎片提取失败: ${err.message}`);
-                    const retry = confirm(`记忆碎片提取失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过此chunk`);
+                    const retry = utils.askUserOrAutoSkip(
+                        `记忆碎片提取失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过此chunk`,
+                        isAuto,
+                    );
                     if (!retry) throw err;
                     logger.info('[鬼面] 用户选择重试...');
                 }
@@ -701,10 +688,13 @@ export async function handleAutoChunkSummary() {
 
             } catch (error) {
                 logger.error(`分段处理失败: ${currentStart + 1}-${currentEnd + 1} 楼 — ${error.message || error}`);
-                const cont = confirm(`高楼层总结分段 ${currentStart + 1}-${currentEnd + 1} 楼失败\n\n错误: ${error.message || error}\n\n点击「确定」继续剩余分段，「取消」中止整个流程`);
-                if (!cont) {
-                    throw new Error('用户中止高楼层总结');
-                }
+                // handleAutoChunkSummary is itself a batched/automated flow — never block.
+                // On any chunk failure surface a sticky toastr and continue with remaining chunks.
+                utils.askUserOrAutoSkip(
+                    `高楼层总结分段 ${currentStart + 1}-${currentEnd + 1} 楼失败\n\n错误: ${error.message || error}\n\n已自动跳过该段，继续处理后续`,
+                    true,
+                    { toastTitle: '高楼层总结分段失败' },
+                );
             }
 
             currentStart = currentEnd + 1;
@@ -716,7 +706,7 @@ export async function handleAutoChunkSummary() {
 
 
             try {
-                const mergedTimeline = await timeline.mergeTimelineSegments(timelineSegments);
+                const mergedTimeline = await timeline.mergeTimelineSegments(timelineSegments, { isAuto: true });
                 if (mergedTimeline) {
                     // 如果已有时间线，拼接到末尾再压缩
                     const existing = await timeline.readTimelineFromWorldbook();
@@ -727,7 +717,7 @@ export async function handleAutoChunkSummary() {
                         finalTimeline = mergedTimeline;
                     }
                     // 压缩（如超过阈值）
-                    finalTimeline = await timeline.compressTimeline(finalTimeline);
+                    finalTimeline = await timeline.compressTimeline(finalTimeline, { isAuto: true });
                     await timeline.writeTimelineToWorldbook(finalTimeline);
                     logger.success('✅ 时间线已合并并写入世界书');
 
@@ -1151,20 +1141,6 @@ export function hasMultilingualSemanticSimilarity(text1, text2) {
 
     // 如果关键词重叠度超过60%，认为语义相似
     return keywordSimilarity > 0.6;
-}
-
-//标记函数
-export function markMessagesSummarized(messages) {
-    messages.forEach((msg, index) => {
-        if (!msg.extra) msg.extra = {};
-        msg.extra.ghost_summarized = true;
-
-
-        const messageId = generateMessageId(msg, index);
-        msg.extra.ghost_message_id = messageId;
-    });
-
-    logger.debug(`已标记 ${messages.length} 条消息为已总结`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1796,6 +1772,12 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     - Instead of "Fuck": Use **"我劁"** (I castrate)
     - General insults: **"又犯什么屌病"**, **"贱屌子"**, **"欠阉的玩意"**.
     </REALM_CORE>
+
+    **SOURCE MESSAGES:**
+    ${'```\n'}${corpus}${'\n```'}
+
+    ---
+
     <ghostface_summary_format>
     请不要输出任何闲聊，而是直接生成一份**结构化报告**，结构如下，严格遵守：
 
@@ -1806,7 +1788,6 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     ---
 
     ### 🔥 情节发展
-    ${'```\n'}${corpus}${'\n```'}
     [以理智精准的语言梳理本阶段剧情，至少两千字，必须包含：
     - 核心行为／转折事件
     - 情绪波动轨迹（如“怀疑→理解”，“排斥→接纳”）
@@ -1973,7 +1954,13 @@ export async function handleLargeSummary({ startIndex = null, endIndex = null } 
                         return result;
                     } catch (err) {
                         logger.error(`[大总结] chunk ${chunkIdx + 1}/${totalChunks} 失败: ${err.message}`);
-                        const retry = confirm(`大总结 chunk ${chunkIdx + 1}/${totalChunks} 失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过此chunk`);
+                        // handleLargeSummary is only invoked from executeAutoSummarization (auto path),
+                        // so failures here should never block — surface sticky toastr and skip chunk.
+                        const retry = utils.askUserOrAutoSkip(
+                            `大总结 chunk ${chunkIdx + 1}/${totalChunks} 失败\n\n错误: ${err.message}\n\n已自动跳过此chunk`,
+                            true,
+                            { toastTitle: '大总结分段失败' },
+                        );
                         if (!retry) throw err;
                         logger.info(`[大总结] 用户选择重试 chunk ${chunkIdx + 1}...`);
                     }
@@ -2061,9 +2048,14 @@ ${partialSummaries.map((s, i) => `=== 分段 ${i + 1}/${partialSummaries.length}
                         break;
                     } catch (err) {
                         logger.error(`[大总结] 合并失败: ${err.message}`);
-                        const retry = confirm(`大总结分段合并失败\n\n错误: ${err.message}\n\n点击「确定」重试合并，「取消」直接拼接（结果可能不够连贯）`);
+                        // Auto path: skip merge silently and fall back to simple join.
+                        const retry = utils.askUserOrAutoSkip(
+                            `大总结分段合并失败\n\n错误: ${err.message}\n\n已自动跳过合并步骤，回退为直接拼接（结果可能不够连贯）`,
+                            true,
+                            { toastTitle: '大总结合并失败' },
+                        );
                         if (!retry) {
-                            logger.warn('[大总结] 用户选择跳过合并，直接拼接');
+                            logger.warn('[大总结] 跳过合并，直接拼接');
                             mergeResult = partialSummaries.join('\n\n---\n\n');
                             break;
                         }

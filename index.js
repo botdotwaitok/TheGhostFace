@@ -116,13 +116,11 @@ function setupGlobalExports() {
         window.isSemanticMatch = summarizer.isSemanticMatch;
         window.calculateStringSimilarity = summarizer.calculateStringSimilarity;
         window.hasMultilingualSemanticSimilarity = summarizer.hasMultilingualSemanticSimilarity;
-        window.markMessagesSummarized = summarizer.markMessagesSummarized;
         window.parseModelOutput = summarizer.parseModelOutput;
 
         // 世界书相关函数
         window.getExistingWorldBookContext = worldbook.getExistingWorldBookContext;
         window.PREDEFINED_CATEGORIES = worldbook.PREDEFINED_CATEGORIES;
-        window.createOrUpdateGhostSummaryEntry = worldbook.createOrUpdateGhostSummaryEntry;
         window.manageGhostSummaryEntries = worldbook.manageGhostSummaryEntries;
         window.saveToWorldBook = worldbook.saveToWorldBook;
         window.getMaxSummarizedFloorFromWorldBook = worldbook.getMaxSummarizedFloorFromWorldBook;

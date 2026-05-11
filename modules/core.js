@@ -206,7 +206,7 @@ async function executeAutoSummarization(triggerReason) {
                 // 📅 时间线处理（从合并调用结果中提取，不再单独调用 API）
                 if (smallResult.timelineSegments && smallResult.timelineSegments.length > 0) {
                     try {
-                        const mergedTimeline = await timeline.mergeTimelineSegments(smallResult.timelineSegments);
+                        const mergedTimeline = await timeline.mergeTimelineSegments(smallResult.timelineSegments, { isAuto: true });
                         if (mergedTimeline) {
                             const existing = await timeline.readTimelineFromWorldbook();
                             let finalTimeline;
@@ -215,7 +215,7 @@ async function executeAutoSummarization(triggerReason) {
                             } else {
                                 finalTimeline = mergedTimeline;
                             }
-                            finalTimeline = await timeline.compressTimeline(finalTimeline);
+                            finalTimeline = await timeline.compressTimeline(finalTimeline, { isAuto: true });
                             await timeline.writeTimelineToWorldbook(finalTimeline);
                             logger.info('📅 自动时间线更新完成（从合并结果提取）');
                         }
@@ -418,7 +418,7 @@ export async function stealthSummarize(isInitial = false, isAutoTriggered = fals
 
         updateProgress(30, `第2步: 记录中 (${messages.length}条消息)...`);
 
-        const summaryResult = await summarizer.generateSummary(messages);
+        const summaryResult = await summarizer.generateSummary(messages, isAutoTriggered);
         const summaryContent = summaryResult?.entries;
         const timelineSegments = summaryResult?.timelineSegments || [];
 
@@ -1050,12 +1050,12 @@ export async function getCurrentChatIdentifier() {
             return cleanChatName(savedChatName);
         }
 
-        // 默认值
-        return `unknown_chat_${Date.now()}`;
+        // Stable fallback — caches/scoping keyed off this would break with Date.now()
+        return 'unknown_chat';
 
     } catch (error) {
         logger.error('获取聊天标识符失败:', error);
-        return `fallback_chat_${Date.now()}`;
+        return 'unknown_chat';
     }
 }
 

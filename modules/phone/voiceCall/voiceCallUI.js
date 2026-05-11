@@ -1318,6 +1318,11 @@ async function _sendToLLM(text, options = {}) {
         }
     } finally {
         _isProcessingLLM = false;
+        // Safety net: ambient is started at the top of this function and only
+        // stopped on the happy path (right before TTS). LLM errors / aborts /
+        // early returns would otherwise leave it looping forever, bleeding
+        // through the mic on the next STT cycle and breaking auto-end detection.
+        stopAmbient();
         // Safety net: ensure TTS flag is always cleared
         if (_isTtsPlaying) {
             _isTtsPlaying = false;

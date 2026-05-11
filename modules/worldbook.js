@@ -134,45 +134,6 @@ export const PREDEFINED_CATEGORIES = {
     }
 };
 
-// 创建或更新鬼面总结条目
-export async function createOrUpdateGhostSummaryEntry(worldBookData, chatIdentifier, startIndex, endIndex, content) {
-    try {
-        const entryComment = `${GHOST_SUMMARY_PREFIX}${chatIdentifier}-${startIndex + 1}-${endIndex + 1}`;
-
-        let existingEntry = null;
-        Object.values(worldBookData.entries).forEach(entry => {
-            if (entry.comment === entryComment) {
-                existingEntry = entry;
-            }
-        });
-
-        const entryContent = `楼层范围: ${startIndex + 1}-${endIndex + 1}\n聊天: ${chatIdentifier}\n时间: ${new Date().toLocaleString()}\n\n${content}`;
-
-        if (existingEntry) {
-            existingEntry.content = entryContent;
-            logger.info(`👻 更新鬼面总结条目: ${entryComment}`);
-        } else {
-            const newEntry = createWorldInfoEntry(null, worldBookData);
-            Object.assign(newEntry, {
-                comment: entryComment,
-                content: entryContent,
-                key: [`总结${startIndex + 1}${endIndex + 1}`, chatIdentifier, '鬼面'],
-                constant: true,
-                selective: false,
-                disable: false,
-                order: 999, // 按楼层排序
-                position: 1,
-                excludeRecursion: true,
-                preventRecursion: true
-            });
-            logger.info(`鬼面在创建总结条目: ${entryComment}`);
-        }
-
-    } catch (error) {
-        logger.error('👻 创建/更新鬼面总结条目失败:', error);
-    }
-}
-
 // 管理鬼面总结条目激活状态
 export async function manageGhostSummaryEntries(worldBookName, currentChatIdentifier) {
 
@@ -295,25 +256,31 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
         }
         logger.info(`[鬼面] 扫描完成: 找到 ${existingFragments.length} 个现有条目用于去重`);
 
-        // 🆕 标题相似度计算（用于模糊标题匹配）
+        // Label similarity via Jaccard character-set overlap.
+        // Position-insensitive so labels like "喜好-猫" vs "猫-喜好" can match,
+        // and strict enough that "热可可" vs "冷可可" stay separate.
+        // Examples (after stripPrefix + lowercase):
+        //   "热可可" vs "冷可可"          {热,可}      vs {冷,可}        -> 1/3 ~ 0.33  not similar
+        //   "热可可" vs "热可可饮品"      {热,可}      vs {热,可,饮,品}  -> 2/4 = 0.50  not similar
+        //   "猫"     vs "小黑猫"          {猫}         vs {小,黑,猫}     -> 1/3 ~ 0.33  not similar
+        //   "热可可" vs "可可热"          {热,可}      vs {可,热}        -> 2/2 = 1.00  similar
         const isLabelSimilar = (label1, label2) => {
             if (!label1 || !label2) return false;
-            // 去除标签前缀（如 "喜好-", "事件-" 等）
+            // Strip semantic prefix like "喜好-", "事件-", "好感-".
             const stripPrefix = (l) => l.replace(/^[^\-]+[\-－]/, '').trim();
             const l1 = stripPrefix(label1).toLowerCase();
             const l2 = stripPrefix(label2).toLowerCase();
+            if (!l1 || !l2) return false;
             if (l1 === l2) return true;
-            // 包含关系
-            if (l1.length > 1 && l2.length > 1 && (l1.includes(l2) || l2.includes(l1))) return true;
-            // 字符级相似度 > 60%
-            const maxLen = Math.max(l1.length, l2.length);
-            if (maxLen === 0) return false;
-            let matches = 0;
-            const minLen = Math.min(l1.length, l2.length);
-            for (let c = 0; c < minLen; c++) {
-                if (l1[c] === l2[c]) matches++;
+            const set1 = new Set(l1);
+            const set2 = new Set(l2);
+            let intersection = 0;
+            for (const ch of set1) {
+                if (set2.has(ch)) intersection++;
             }
-            return (matches / maxLen) > 0.6;
+            const union = set1.size + set2.size - intersection;
+            if (union === 0) return false;
+            return (intersection / union) > 0.75;
         };
 
         // 🧠 为每个记忆碎片创建或更新 WI 条目

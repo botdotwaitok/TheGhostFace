@@ -16,13 +16,14 @@ const LOG_PREFIX = '[VAD]';
  * @property {number} [energy_threshold_ratio_pos] - 正向阈值比 (默认 2)
  * @property {number} [energy_threshold_ratio_neg] - 负向阈值比 (默认 0.5)
  * @property {number} [energy_integration] - 能量积分系数 (默认 1)
- * @property {number} [min_speech_ms] - 段最短时长 (默认 300)，短于此的段不上报，过滤咳嗽 / 清嗓
  * @property {number} [max_speech_ms] - 段最长时长 (默认 30000)，超过则强制截段
  */
 
-// _energyOffset 钳制范围：太小会被极小数值噪声触发误报，
-// 太大会让阈值漂到正常人声之上，永远 trip 不到 voice_start。
-const ENERGY_OFFSET_MIN = 1e-6;
+// Upper clamp prevents a sudden loud burst from pinning the offset above any
+// realistic voice energy (would silently kill all subsequent voice_start trips).
+// We intentionally do NOT clamp the lower bound: a higher floor like 1e-6 sits
+// above typical mic voice energy on quieter setups, so trend never reaches +5
+// and voice_start / voice_stop never fire — that's the regression we're fixing.
 const ENERGY_OFFSET_MAX = 1;
 
 export class VoiceActivityDetector {
@@ -42,7 +43,6 @@ export class VoiceActivityDetector {
             energy_threshold_ratio_pos: 2,
             energy_threshold_ratio_neg: 0.5,
             energy_integration: 1,
-            min_speech_ms: 300,
             max_speech_ms: 30000,
             voice_start: () => {},
             voice_stop: () => {},
@@ -68,12 +68,9 @@ export class VoiceActivityDetector {
         this._vadState = false;
         this._destroyed = false;
 
-        // 段时长跟踪：vadState 翻 true 时记录起点；
-        // _voiceStartFired 用于"短段静默丢弃"——内部已进入 active，
-        // 但段时长还没满足 min_speech_ms 就不对外 fire voice_start，
-        // 这样咳嗽 / 清嗓不会触发上层录音 / 调付费 API。
+        // Tracks when vadState flipped true so max_speech_ms can force-cut a
+        // runaway segment that never sees a natural trend-decay end.
         this._speechStartTime = 0;
-        this._voiceStartFired = false;
 
         // 趋势边界
         this._TREND_MAX = 10;
@@ -190,13 +187,9 @@ export class VoiceActivityDetector {
         } else {
             this._energyOffset += integration * 10;
         }
-        // 钳制 offset 上下限：旧实现只保 >= 0，长时间静音 / 极静环境会让 offset
-        // 漂到无穷小，导致一点点底噪都触发；反过来突发巨响也能把 offset 顶到
-        // 高位再也回不来。
-        this._energyOffset = Math.min(
-            ENERGY_OFFSET_MAX,
-            Math.max(ENERGY_OFFSET_MIN, this._energyOffset),
-        );
+        // Floor at 0 (offset must be non-negative); cap at ENERGY_OFFSET_MAX so a
+        // sudden loud burst can't pin the threshold permanently above voice level.
+        this._energyOffset = Math.min(ENERGY_OFFSET_MAX, Math.max(0, this._energyOffset));
         this._energyThresholdPos = this._energyOffset * this._opts.energy_threshold_ratio_pos;
         this._energyThresholdNeg = this._energyOffset * this._opts.energy_threshold_ratio_neg;
 
@@ -208,38 +201,21 @@ export class VoiceActivityDetector {
         if (isStart && !this._vadState) {
             this._vadState = true;
             this._speechStartTime = now;
-            this._voiceStartFired = false;
-        }
-
-        // 内部已 active，但要等持续时间满足 min_speech_ms 才对外 fire voice_start。
-        // 短促噪声（咳嗽 / 清嗓 / 关门）不会经过这个门槛，自然被丢弃，
-        // 上层不会启动录音 / 调付费 STT API。
-        if (this._vadState && !this._voiceStartFired
-            && (now - this._speechStartTime) >= this._opts.min_speech_ms) {
-            this._voiceStartFired = true;
             this._opts.voice_start();
         }
 
-        // 强制截段：单段超过 max_speech_ms 时，不等 trend 衰减，
-        // 直接收尾并重置 trend。防一直说话导致 STT 一次推超长 audio。
-        if (this._vadState && this._voiceStartFired
-            && (now - this._speechStartTime) >= this._opts.max_speech_ms) {
+        // Force-cut runaway segments so STT doesn't get an unbounded blob.
+        // Reset trend so the next iteration can pick up a fresh start cleanly.
+        if (this._vadState && (now - this._speechStartTime) >= this._opts.max_speech_ms) {
             this._vadState = false;
-            this._voiceStartFired = false;
             this._voiceTrend = 0;
             this._opts.voice_stop();
             return;
         }
 
         if (isEnd && this._vadState) {
-            const startWasFired = this._voiceStartFired;
             this._vadState = false;
-            this._voiceStartFired = false;
-            // 段时长不到 min_speech_ms 时 voice_start 没有发出过，
-            // 静默丢弃，对应的 voice_stop 也不发，保持上下游成对。
-            if (startWasFired) {
-                this._opts.voice_stop();
-            }
+            this._opts.voice_stop();
         }
     }
 }

@@ -46,11 +46,26 @@ export class BrowserSttProvider {
         }
 
         const recognition = new SpeechRecognition();
-        recognition.continuous = true;
+        // continuous=false: the engine commits ONE final result after a natural
+        // pause, then fires onend on its own. Avoids the continuous=true trap
+        // where the recognition stays alive forever and we have to hand-roll a
+        // silence detector (which gets fooled by ambient music / TTS bleed-through
+        // keeping interim events flowing). Multi-sentence input still works fine:
+        // voiceCallUI auto-restarts STT after each transcript via onSttStateChange.
+        recognition.continuous = false;
         recognition.interimResults = true;
         recognition.lang = language || 'zh-CN';
 
         let finalTranscript = '';
+        // Safety net: if the engine never fires onend for any reason (some mobile
+        // browsers under heavy background noise will hang in continuous=false too),
+        // force-abort after this long so the call doesn't get stuck.
+        const MAX_RECOGNITION_MS = 20000;
+        let maxTimer = setTimeout(() => {
+            maxTimer = null;
+            try { recognition.abort(); } catch { /* ignore */ }
+        }, MAX_RECOGNITION_MS);
+
         // onEnd / onerror 都可能 fire，且部分浏览器在 'aborted' 错误后
         // 不会再 fire onend。用 onEndFired 做一次性闸门，保证上层只收到一次
         // 结束事件，避免被卡在 LISTENING。
@@ -58,6 +73,10 @@ export class BrowserSttProvider {
         const fireOnEnd = () => {
             if (onEndFired) return;
             onEndFired = true;
+            if (maxTimer) {
+                clearTimeout(maxTimer);
+                maxTimer = null;
+            }
             this._listening = false;
             this._recognition = null;
             if (finalTranscript.trim()) {
@@ -79,9 +98,8 @@ export class BrowserSttProvider {
                         if (!/[.?!。？！]$/.test(processed)) processed += '。';
                         finalTranscript += processed;
                     }
-                    // 不在第一句 final 上 abort —— continuous 模式本意就是
-                    // 让用户连说多句一起累计上来，旧版在这里 abort 会把第二句
-                    // 直接吞掉。停止改由上层 stopRecognition 显式触发。
+                    // continuous=false makes the engine auto-end after this fires;
+                    // no manual abort needed here.
                 } else {
                     interimTranscript += transcript;
                 }
@@ -122,15 +140,24 @@ export class BrowserSttProvider {
 
     /**
      * 停止语音识别
+     * stop() 优先（保留 in-progress 的最后一句），但部分浏览器在 continuous=false
+     * + 背景噪声场景下不会及时 fire onend；600ms 后兜底走 abort() 保证上层一定能
+     * 从 LISTENING 解套。
      */
     stopRecognition() {
-        if (this._recognition && this._listening) {
-            this._recognition.stop();
-            this._listening = false;
-            // 引用立即清掉，防 onend 还没回到主线程时上层又拨新会话
-            // 拿到旧 recognition 状态。真正的 final transcript 投递走 onend → fireOnEnd。
-            this._recognition = null;
-        }
+        if (!this._recognition || !this._listening) return;
+        const rec = this._recognition;
+        try { rec.stop(); } catch { /* ignore */ }
+        this._listening = false;
+        // 引用立即清掉，防 onend 还没回到主线程时上层又拨新会话
+        // 拿到旧 recognition 状态。真正的 final transcript 投递走 onend → fireOnEnd。
+        this._recognition = null;
+        // Fallback: if stop() didn't trigger onend, force abort to guarantee the
+        // upper layer transitions out of LISTENING. fireOnEnd's once-only guard
+        // makes this safe even when stop() did fire onend already.
+        setTimeout(() => {
+            try { rec.abort(); } catch { /* ignore */ }
+        }, 600);
     }
 
     /**

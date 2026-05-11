@@ -625,7 +625,9 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API请求失败: ${response.status} ${response.statusText}\n${errorText}`);
+        const error = new Error(`API请求失败: ${response.status} ${response.statusText}\n${errorText}`);
+        error.status = response.status;
+        throw error;
     }
 
     const data = await response.json();
@@ -702,8 +704,15 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
         } catch (err) {
             lastError = err;
 
+            // Empty content / length cutoff — retrying just burns quota, fail fast
+            if (err?.code === 'CONTENT_EMPTY_LENGTH') {
+                console.error(`📱 [Phone LLM] 内容为空 / 被截断，不重试:`, err.message);
+                throw err;
+            }
+
             // Don't retry 4xx client errors (bad API key, malformed request, etc.)
-            const status = err?.status || (err?.message?.match(/(\d{3})/)?.[1] && parseInt(err.message.match(/(\d{3})/)[1]));
+            // Trust err.status only — message regex matched random 3-digit substrings ("context limit 4000")
+            const status = err?.status;
             if (status >= 400 && status < 500) {
                 console.error(`📱 [Phone LLM] 4xx 客户端错误，不重试:`, err.message);
                 throw err;

@@ -228,9 +228,11 @@ ${recentPart}
  * 调用 LLM（自动选择自定义 API 或 ST 内置）
  * @param {string} prompt 完整 prompt
  * @param {number} [maxTokens=2048] 最大生成 token 数
+ * @param {object} [opts]
+ * @param {boolean} [opts.isAuto=false] 是否处于自动触发上下文（决定失败时弹 confirm 还是 toastr 自动跳过）
  * @returns {Promise<string>} LLM 返回的文本
  */
-async function callLLM(prompt, maxTokens = 2048) {
+async function callLLM(prompt, maxTokens = 2048, { isAuto = false } = {}) {
     while (true) {
         try {
             const timeout = new Promise((_, reject) =>
@@ -264,7 +266,11 @@ async function callLLM(prompt, maxTokens = 2048) {
             }
 
             logger.error(`[时间线] ❌ LLM 调用失败: ${err.message}`);
-            const retry = confirm(`❌ 时间线生成失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过`);
+            const retry = utils.askUserOrAutoSkip(
+                `❌ 时间线生成失败\n\n错误: ${err.message}\n\n${isAuto ? '已自动跳过' : '点击「确定」重试，「取消」跳过'}`,
+                isAuto,
+                { toastTitle: '时间线生成失败' },
+            );
             if (!retry) throw err;
             logger.info('[时间线] 🔄 用户选择重试...');
         }
@@ -280,7 +286,7 @@ async function callLLM(prompt, maxTokens = 2048) {
  * @param {Array} messages 解析后的消息数组（带 parsedContent）
  * @returns {Promise<string>} 时间线片段文本
  */
-export async function generateTimelineSegment(messages) {
+export async function generateTimelineSegment(messages, { isAuto = false } = {}) {
     if (!messages || messages.length === 0) {
         logger.warn('[时间线] generateTimelineSegment: 没有消息');
         return '';
@@ -317,7 +323,7 @@ export async function generateTimelineSegment(messages) {
         }
 
         const prompt = buildTimelinePrompt(messagesText);
-        return await callLLM(prompt);
+        return await callLLM(prompt, 2048, { isAuto });
     };
 
     // 第一次尝试：用全部消息
@@ -359,7 +365,7 @@ export async function generateTimelineSegment(messages) {
  * @param {string[]} segments 时间线片段数组
  * @returns {Promise<string>} 合并后的时间线文本
  */
-export async function mergeTimelineSegments(segments) {
+export async function mergeTimelineSegments(segments, { isAuto = false } = {}) {
     // 过滤空片段
     const valid = segments.filter(s => s && s.trim());
 
@@ -378,7 +384,7 @@ export async function mergeTimelineSegments(segments) {
 
     logger.info(`[时间线] 🔄 调用 LLM 合并 ${valid.length} 个时间线片段...`);
     const prompt = buildMergePrompt(valid);
-    const merged = await callLLM(prompt, 4096);
+    const merged = await callLLM(prompt, 4096, { isAuto });
 
     if (!merged || !merged.trim()) {
         // 合并失败回退到简单拼接
@@ -395,7 +401,7 @@ export async function mergeTimelineSegments(segments) {
  * @param {string} timeline 当前时间线文本
  * @returns {Promise<string>} 压缩后的时间线
  */
-export async function compressTimeline(timeline) {
+export async function compressTimeline(timeline, { isAuto = false } = {}) {
     if (!timeline || !timeline.trim()) return timeline;
 
     const tokens = estimateTokens(timeline);
@@ -413,7 +419,7 @@ export async function compressTimeline(timeline) {
     const recentPart = lines.slice(midpoint).join('\n');
 
     const prompt = buildCompressionPrompt(oldPart, recentPart);
-    const compressed = await callLLM(prompt, 1024);
+    const compressed = await callLLM(prompt, 1024, { isAuto });
 
     if (!compressed || !compressed.trim()) {
         logger.warn('[时间线] 压缩失败，保留原始时间线');
@@ -428,7 +434,7 @@ export async function compressTimeline(timeline) {
     // 递归检查是否还需要压缩
     if (newTokens > TIMELINE_MAX_TOKENS) {
         logger.info('[时间线] ⚠️ 仍超过阈值，递归压缩...');
-        return compressTimeline(result);
+        return compressTimeline(result, { isAuto });
     }
 
     return result;
