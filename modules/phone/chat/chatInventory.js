@@ -293,7 +293,7 @@ export async function handleReturnHome() {
 
         } else {
             // ── AI compressed summary mode (default) ──
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-robot"></i> 正在生成AI压缩总结…';
+            if (statusEl) statusEl.innerHTML = '<i class="ph ph-robot"></i> 正在生成总结…';
             console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${newMessages.length} new msgs)...`);
 
             const transcript = newMessages.map(msg => {
@@ -333,7 +333,7 @@ export async function handleReturnHome() {
             if (latestHistory[i].timestamp) { newMarker = latestHistory[i].timestamp; break; }
         }
         if (newMarker) {
-            saveHomeMarker(newMarker);
+            await saveHomeMarker(newMarker);
             console.log(`${CHAT_LOG_PREFIX} 回家 marker → ${newMarker}`);
         }
 
@@ -432,7 +432,7 @@ export async function handleManualSummarize() {
         }
 
         // Save summary
-        saveChatSummary(newSummary.trim());
+        await saveChatSummary(newSummary.trim());
 
         // Mark messages as summarized
         const freshHistory = loadChatHistory();
@@ -447,7 +447,7 @@ export async function handleManualSummarize() {
         }
         // Use direct save to persist
         const { saveChatHistory } = await import('./chatStorage.js');
-        saveChatHistory(freshHistory);
+        await saveChatHistory(freshHistory);
 
         console.log(`${CHAT_LOG_PREFIX} ✅ 手动总结完成: ${newSummary.trim().length} 字, 标记 ${markedCount} 条`);
         if (statusEl) statusEl.innerHTML = `<i class="ph ph-check-circle"></i> 总结完成！压缩了 ${markedCount} 条消息 (${newSummary.trim().length} 字)`;

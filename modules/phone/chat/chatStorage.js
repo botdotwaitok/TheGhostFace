@@ -2,7 +2,7 @@
 // Storage: chat_metadata (persisted inside .jsonl chat file, cross-device)
 
 import { getContext, saveMetadataDebounced } from '../../../../../../extensions.js';
-import { chat_metadata } from '../../../../../../../script.js';
+import { chat_metadata, saveChatConditional } from '../../../../../../../script.js';
 import { getRegexedString, regex_placement } from '../../../../../regex/engine.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { buildRollingSummarizePrompt } from './chatPromptBuilder.js';
@@ -177,15 +177,25 @@ export function loadChatHistory() {
 /**
  * Save chat history to chat_metadata (persisted in .jsonl chat file).
  * Trims to MAX_HISTORY_MESSAGES to prevent storage bloat.
+ *
+ * NOTE: This is async and uses saveChatConditional (immediate, mutex-protected)
+ * rather than saveMetadataDebounced (1s debounce). The debounce variant could
+ * be silently canceled mid-flight by subsequent calls, leaving the .jsonl on
+ * disk stale across page reloads — and in the worst case allowing ST's
+ * getChat()/getChatResult fallback to overwrite the file with a first_message.
+ * Callers in async contexts should `await` to guarantee the write reaches disk
+ * before kicking off any long-running operation (e.g. LLM generation) that
+ * could be interrupted by a refresh.
+ *
  * @param {Array} messages
+ * @returns {Promise<void>}
  */
-export function saveChatHistory(messages) {
+export async function saveChatHistory(messages) {
     const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
     try {
-        if (chat_metadata) {
-            chat_metadata[META_KEY_HISTORY] = trimmed;
-            saveMetadataDebounced();
-        }
+        if (!chat_metadata) return;
+        chat_metadata[META_KEY_HISTORY] = trimmed;
+        await saveChatConditional();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata 保存失败:`, e);
     }
@@ -197,14 +207,16 @@ export function saveChatHistory(messages) {
 
 /**
  * Persist a pending LLM result to chat_metadata so it survives page refresh.
+ * Async + immediate save: the whole point of this helper is "survive refresh",
+ * so we cannot tolerate a debounce that might be canceled before flush.
  * @param {{ rawResponse: string, messagesToSend: string[] } | null} result
+ * @returns {Promise<void>}
  */
-export function persistPendingResult(result) {
+export async function persistPendingResult(result) {
     try {
-        if (chat_metadata) {
-            chat_metadata[META_KEY_PENDING_RESULT] = result || null;
-            saveMetadataDebounced();
-        }
+        if (!chat_metadata) return;
+        chat_metadata[META_KEY_PENDING_RESULT] = result || null;
+        await saveChatConditional();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} Pending result persistence failed:`, e);
     }
@@ -224,12 +236,16 @@ export function loadPersistedPendingResult() {
 
 /**
  * Clear the persisted pending result from chat_metadata.
+ * Fire-and-forget: a missed clear is harmless — the stale entry on disk will
+ * just be re-consumed on next load. Keeping this sync so the synchronous
+ * consumePendingResult() caller doesn't need to thread async through.
  */
 export function clearPersistedPendingResult() {
     try {
         if (chat_metadata?.[META_KEY_PENDING_RESULT]) {
             delete chat_metadata[META_KEY_PENDING_RESULT];
-            saveMetadataDebounced();
+            saveChatConditional().catch(e =>
+                console.warn(`${CHAT_LOG_PREFIX} Pending result clear flush failed:`, e));
         }
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} Pending result clear failed:`, e);
@@ -251,9 +267,12 @@ export function loadSTSyncMarker() {
 
 /**
  * Save the ST sync marker.
+ * Immediate save: a dropped marker would cause auto-summarize to re-absorb
+ * already-summarized ST history on the next round, ballooning the prompt.
  * @param {string} marker - send_date string of the last absorbed ST message
+ * @returns {Promise<void>}
  */
-export function saveSTSyncMarker(marker) {
+export async function saveSTSyncMarker(marker) {
     try {
         if (!chat_metadata) return;
         if (marker) {
@@ -261,7 +280,7 @@ export function saveSTSyncMarker(marker) {
         } else {
             delete chat_metadata[META_KEY_ST_SYNC_MARKER];
         }
-        saveMetadataDebounced();
+        await saveChatConditional();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} ST sync marker save failed:`, e);
     }
@@ -269,9 +288,10 @@ export function saveSTSyncMarker(marker) {
 
 /**
  * Reset the ST sync marker — next getSTChatHistory call will see all ST history again.
+ * @returns {Promise<void>}
  */
-export function clearSTSyncMarker() {
-    saveSTSyncMarker('');
+export async function clearSTSyncMarker() {
+    await saveSTSyncMarker('');
 }
 
 /**
@@ -290,9 +310,12 @@ export function loadHomeMarker() {
 
 /**
  * Save the 回家 marker (ISO timestamp of the newest message included in the 回家 summary).
+ * Immediate save: a dropped marker would resend the entire phone transcript
+ * on the next 回家, which is very visible to the user.
  * @param {string} marker
+ * @returns {Promise<void>}
  */
-export function saveHomeMarker(marker) {
+export async function saveHomeMarker(marker) {
     try {
         if (!chat_metadata) return;
         if (marker) {
@@ -300,7 +323,7 @@ export function saveHomeMarker(marker) {
         } else {
             delete chat_metadata[META_KEY_HOME_MARKER];
         }
-        saveMetadataDebounced();
+        await saveChatConditional();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} 回家 marker save failed:`, e);
     }
@@ -308,9 +331,10 @@ export function saveHomeMarker(marker) {
 
 /**
  * Reset the 回家 marker — next 回家 will treat all phone history as new.
+ * @returns {Promise<void>}
  */
-export function clearHomeMarker() {
-    saveHomeMarker('');
+export async function clearHomeMarker() {
+    await saveHomeMarker('');
 }
 
 /**
@@ -331,33 +355,34 @@ export function getMessagesSinceHome(history) {
 
 /**
  * Clear all chat history for the current character.
+ * @returns {Promise<void>}
  */
-export function clearChatHistory() {
-    saveChatHistory([]);
-    saveChatSummary('');       // 同时清空滚动总结，避免残留旧上下文
-    clearSTSyncMarker();       // 重置 ST 同步进度，下次注入会重新吸收主线
-    clearHomeMarker();         // 重置回家进度，下次回家从头开始
+export async function clearChatHistory() {
+    await saveChatHistory([]);
+    await saveChatSummary('');       // also clear rolling summary so no stale context lingers
+    await clearSTSyncMarker();       // reset ST sync progress; next injection re-absorbs main chat
+    await clearHomeMarker();         // reset home progress; next 回家 starts fresh
 }
 
 /**
  * Delete a single message by its index in the history array.
  * @param {number} index - 0-based index into the full history array
- * @returns {boolean} true if deleted successfully
+ * @returns {Promise<boolean>} true if deleted successfully
  */
-export function deleteMessageByIndex(index) {
+export async function deleteMessageByIndex(index) {
     const history = loadChatHistory();
     if (index < 0 || index >= history.length) return false;
     history.splice(index, 1);
-    saveChatHistory(history);
+    await saveChatHistory(history);
     return true;
 }
 
 /**
  * Delete multiple messages by their indices in one pass.
  * @param {number[]} indices - Array of 0-based indices to delete
- * @returns {number} Number of messages actually deleted
+ * @returns {Promise<number>} Number of messages actually deleted
  */
-export function deleteMessagesByIndices(indices) {
+export async function deleteMessagesByIndices(indices) {
     if (!indices || indices.length === 0) return 0;
     const history = loadChatHistory();
     // Sort descending so we splice from the end first (avoids index shifting)
@@ -369,7 +394,7 @@ export function deleteMessagesByIndices(indices) {
             deleted++;
         }
     }
-    if (deleted > 0) saveChatHistory(history);
+    if (deleted > 0) await saveChatHistory(history);
     return deleted;
 }
 
@@ -377,13 +402,13 @@ export function deleteMessagesByIndices(indices) {
  * Update the content of a single message by its index.
  * @param {number} index - 0-based index into the full history array
  * @param {string} newContent - New message text to set
- * @returns {boolean} true if updated successfully
+ * @returns {Promise<boolean>} true if updated successfully
  */
-export function updateMessageByIndex(index, newContent) {
+export async function updateMessageByIndex(index, newContent) {
     const history = loadChatHistory();
     if (index < 0 || index >= history.length) return false;
     history[index].content = newContent;
-    saveChatHistory(history);
+    await saveChatHistory(history);
     return true;
 }
 
@@ -486,11 +511,11 @@ function buildSyncMessage(summary) {
     const userName = getUserName();
 
     return `<恶灵QR>[手机聊天记录同步]
-${userName}刚才在外出期间通过手机短信和${charName}进行了一段聊天。以下是这段手机聊天的总结：
+在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天记录原文：
 
 ${summary}
 
-${userName}现在已经回到了${charName}身边。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
+${userName}现在已经和${charName}结束了异地。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
 }
 
 /**
@@ -608,14 +633,16 @@ export function loadChatSummary() {
 
 /**
  * Save rolling summary text to chat_metadata.
+ * Immediate save: the rolling summary represents 40k+ tokens of folded
+ * history; losing it forces re-summarization on the next round.
  * @param {string} summaryText
+ * @returns {Promise<void>}
  */
-export function saveChatSummary(summaryText) {
+export async function saveChatSummary(summaryText) {
     try {
-        if (chat_metadata) {
-            chat_metadata[META_KEY_SUMMARY] = summaryText;
-            saveMetadataDebounced();
-        }
+        if (!chat_metadata) return;
+        chat_metadata[META_KEY_SUMMARY] = summaryText;
+        await saveChatConditional();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary save failed:`, e);
     }
@@ -748,7 +775,7 @@ export async function maybeAutoSummarize() {
             const newSummary = await callPhoneLLM(summarySystemPrompt, summaryUserPrompt, { maxTokens: 2000 });
 
             if (newSummary && newSummary.trim()) {
-                saveChatSummary(newSummary.trim());
+                await saveChatSummary(newSummary.trim());
 
                 // Advance marker only after a successful summary. Walk from end
                 // to grab the newest non-empty send_date — defensively skips
@@ -757,7 +784,7 @@ export async function maybeAutoSummarize() {
                 for (let i = stIncrement.length - 1; i >= 0; i--) {
                     if (stIncrement[i].send_date) { newMarker = stIncrement[i].send_date; break; }
                 }
-                if (newMarker) saveSTSyncMarker(newMarker);
+                if (newMarker) await saveSTSyncMarker(newMarker);
 
                 console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummary.trim().length} 字), ST marker → ${newMarker || '(unchanged)'}`);
             }
@@ -778,7 +805,7 @@ export async function maybeAutoSummarize() {
                 markedCount++;
             }
         }
-        saveChatHistory(freshHistory);
+        await saveChatHistory(freshHistory);
         console.log(`${CHAT_LOG_PREFIX} ✅ 已标记 ${markedCount} 条消息为已总结`);
         _showSummarizeToast('聊天记录已压缩');
 

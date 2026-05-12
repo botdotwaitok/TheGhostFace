@@ -11,6 +11,7 @@ import {
 import {
     consumePendingResult, consumeError,
     isBackgroundGenerating, hasPendingResult, hasError,
+    cancelGeneration,
 } from './backgroundGen.js';
 import { hasAutoMessagePending, consumeAutoMessages } from './autoMessage.js';
 import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
@@ -136,9 +137,10 @@ export function openChatApp() {
             updateAppBadge('chat', 0);
         }
 
-        // ── If background generation is still running, show typing indicator ──
+        // ── If background generation is still running, show typing indicator + stop button ──
         if (isBackgroundGenerating()) {
             showTypingIndicator(true);
+            updateButtonStates();
         }
     }, actionsHtml);
 }
@@ -398,10 +400,12 @@ function bindChatEvents() {
         kiwiBtn.addEventListener('click', () => addPendingMessage());
     }
 
-    // ─── Send button (context-aware: send mode vs mic mode) ───
+    // ─── Send button (context-aware: send / mic / stop mode) ───
     if (sendBtn) {
         sendBtn.addEventListener('click', () => {
-            if (sendBtn.classList.contains('mic-mode')) {
+            if (sendBtn.classList.contains('stop-mode')) {
+                cancelGeneration();
+            } else if (sendBtn.classList.contains('mic-mode')) {
                 beginRecording();
             } else {
                 sendAllMessages();
@@ -555,9 +559,9 @@ function bindChatEvents() {
         });
     }
     if (clearHistoryBtn) {
-        clearHistoryBtn.addEventListener('click', () => {
+        clearHistoryBtn.addEventListener('click', async () => {
             if (confirm('确定要清空所有聊天记录吗？\n此操作无法撤销。')) {
-                clearChatHistory();
+                await clearChatHistory();
                 pendingMessages = [];
                 openChatApp(); // Re-render
             }
@@ -761,7 +765,7 @@ export function scrollToBottom(smooth = true) {
 }
 
 // ── Cached state for updateButtonStates() to avoid redundant DOM writes ──
-let _lastBtnMode = null; // 'mic' | 'send' | null
+let _lastBtnMode = null; // 'mic' | 'send' | 'stop' | null
 let _lastBtnDisabled = null;
 let _lastKiwiOpacity = null;
 
@@ -773,10 +777,26 @@ export function updateButtonStates() {
     const hasDrafts = pendingMessages.length > 0;
     const hasImage = !!_pendingImageData;
 
+    const generating = isGenerating || isBackgroundGenerating();
+
     if (sendBtn) {
-        if (!hasText && !hasDrafts && !hasImage) {
+        if (generating) {
+            // Stop mode — clicking aborts the in-flight LLM call
+            if (_lastBtnMode !== 'stop') {
+                sendBtn.classList.remove('mic-mode');
+                sendBtn.classList.add('stop-mode');
+                sendBtn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+                sendBtn.title = '停止生成';
+                _lastBtnMode = 'stop';
+            }
+            if (_lastBtnDisabled !== false) {
+                sendBtn.disabled = false;
+                _lastBtnDisabled = false;
+            }
+        } else if (!hasText && !hasDrafts && !hasImage) {
             // Mic mode — only rewrite innerHTML if mode actually changed
             if (_lastBtnMode !== 'mic') {
+                sendBtn.classList.remove('stop-mode');
                 sendBtn.classList.add('mic-mode');
                 sendBtn.innerHTML = `<svg width="20" height="16" viewBox="0 0 20 16" fill="currentColor">
                     <rect x="0" y="5" width="2.5" height="6" rx="1"/>
@@ -785,6 +805,7 @@ export function updateButtonStates() {
                     <rect x="12" y="1" width="2.5" height="14" rx="1"/>
                     <rect x="16" y="3" width="2.5" height="10" rx="1"/>
                 </svg>`;
+                sendBtn.title = '语音输入';
                 _lastBtnMode = 'mic';
             }
             if (_lastBtnDisabled !== false) {
@@ -795,13 +816,14 @@ export function updateButtonStates() {
             // Send mode — only rewrite innerHTML if mode actually changed
             if (_lastBtnMode !== 'send') {
                 sendBtn.classList.remove('mic-mode');
+                sendBtn.classList.remove('stop-mode');
                 sendBtn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+                sendBtn.title = '发送';
                 _lastBtnMode = 'send';
             }
-            const shouldDisable = isGenerating;
-            if (_lastBtnDisabled !== shouldDisable) {
-                sendBtn.disabled = shouldDisable;
-                _lastBtnDisabled = shouldDisable;
+            if (_lastBtnDisabled !== false) {
+                sendBtn.disabled = false;
+                _lastBtnDisabled = false;
             }
         }
     }

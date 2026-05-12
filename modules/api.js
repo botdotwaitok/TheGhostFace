@@ -1,6 +1,6 @@
 // api.js
 import { getContext, extension_settings } from '../../../../extensions.js';
-import { saveSettingsDebounced, generateRaw, getRequestHeaders } from '../../../../../script.js';
+import { saveSettingsDebounced, generateRaw, getRequestHeaders, stopGeneration } from '../../../../../script.js';
 import { getChatCompletionModel } from '../../../../openai.js';
 
 
@@ -549,7 +549,7 @@ export async function loadApiModels() {
 // 自定义API调用函数：
 // maxTokens 参数允许调用方指定更大的上限（大总结需要 8000+）
 // images 参数接受 base64 data URL 数组，用于多模态请求（图片发给模型看）
-export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = null, images = null } = {}) {
+export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = null, images = null, signal = null } = {}) {
     if (!customApiConfig.url || !customApiConfig.model) {
         throw new Error('自定义API配置不完整');
     }
@@ -611,7 +611,13 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s timeout（大 prompt 需要更多时间）
+    const timeoutId = setTimeout(() => controller.abort('timeout'), 120_000); // 120s timeout（大 prompt 需要更多时间）
+    // Forward an external cancellation signal (stop button) to the fetch controller
+    const onExternalAbort = () => controller.abort('external');
+    if (signal) {
+        if (signal.aborted) controller.abort('external');
+        else signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
     let response;
     try {
         response = await fetch(apiUrl, {
@@ -622,12 +628,19 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         });
     } catch (err) {
         clearTimeout(timeoutId);
+        if (signal) signal.removeEventListener('abort', onExternalAbort);
         if (err.name === 'AbortError') {
+            if (signal?.aborted) {
+                const cancelErr = new Error('已取消生成');
+                cancelErr.code = 'USER_CANCELLED';
+                throw cancelErr;
+            }
             throw new Error('API请求超时 (120秒)');
         }
         throw err;
     }
     clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
 
     if (!response.ok) {
         const errorText = await response.text();
@@ -668,26 +681,34 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
  * @param {{ maxTokens?: number, images?: string[] }} options
  * @returns {Promise<string>} LLM response text
  */
-export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null, images = null } = {}) {
+export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null, images = null, signal = null } = {}) {
     const MAX_RETRIES = 3;
     const BASE_DELAY = 1000; // 1s → 2s → 4s
+
+    const isCancelled = () => !!signal?.aborted;
+    const makeCancelError = () => {
+        const e = new Error('已取消生成');
+        e.code = 'USER_CANCELLED';
+        return e;
+    };
 
     phoneLLMInFlight++;
     try {
         let lastError;
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            if (isCancelled()) throw makeCancelError();
             try {
                 if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
                     // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
                     if (attempt === 1) console.log('📱 [Phone LLM] 使用自定义API');
-                    return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images });
+                    return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images, signal });
                 }
 
                 // ─── ST Main LLM path ───
                 if (images && images.length > 0) {
                     // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
                     if (attempt === 1) console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
-                    return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens);
+                    return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens, signal);
                 }
 
                 // 纯文本 → generateRaw（最可靠，适配所有 provider）
@@ -703,14 +724,41 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
                 }
                 combinedPrompt += userPrompt;
 
-                const result = await Promise.race([
-                    context.generateRaw(combinedPrompt, '', false, false, ''),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
-                ]);
+                // generateRaw doesn't accept an AbortSignal directly; race against the
+                // external signal and call ST's stopGeneration() to abort the in-flight
+                // request when the user cancels.
+                let cancelListener;
+                const cancelPromise = new Promise((_, reject) => {
+                    if (signal) {
+                        cancelListener = () => {
+                            try { stopGeneration(); } catch (e) { /* ignore */ }
+                            reject(makeCancelError());
+                        };
+                        signal.addEventListener('abort', cancelListener, { once: true });
+                    }
+                });
+
+                let result;
+                try {
+                    result = await Promise.race([
+                        context.generateRaw(combinedPrompt, '', false, false, ''),
+                        cancelPromise,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
+                    ]);
+                } finally {
+                    if (signal && cancelListener) {
+                        signal.removeEventListener('abort', cancelListener);
+                    }
+                }
                 return result?.trim() || '';
 
             } catch (err) {
                 lastError = err;
+
+                // User cancellation — don't retry, propagate immediately
+                if (err?.code === 'USER_CANCELLED' || isCancelled()) {
+                    throw makeCancelError();
+                }
 
                 // Empty content / length cutoff — retrying just burns quota, fail fast
                 if (err?.code === 'CONTENT_EMPTY_LENGTH') {
@@ -753,7 +801,7 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
  * @param {number|null} maxTokens
  * @returns {Promise<string>}
  */
-async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens) {
+async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens, signal = null) {
     const context = getContext();
     const oai = context.chatCompletionSettings;
     if (!oai) {
@@ -811,11 +859,22 @@ async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTok
     }
 
     // ── 发送到 ST 后端代理 ──
-    const response = await fetch('/api/backends/chat-completions/generate', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(generateData),
-    });
+    let response;
+    try {
+        response = await fetch('/api/backends/chat-completions/generate', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify(generateData),
+            signal,
+        });
+    } catch (err) {
+        if (err.name === 'AbortError' && signal?.aborted) {
+            const cancelErr = new Error('已取消生成');
+            cancelErr.code = 'USER_CANCELLED';
+            throw cancelErr;
+        }
+        throw err;
+    }
 
     if (!response.ok) {
         const errorText = await response.text();

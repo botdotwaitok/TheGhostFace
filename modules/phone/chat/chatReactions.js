@@ -59,7 +59,11 @@ export function toggleReaction(msgIndex, emoji) {
         msg.reactions[emoji] = 1;
     }
 
-    saveChatHistory(history);
+    // Fire-and-forget: UI re-renders from the in-memory mutation immediately;
+    // a missed flush at worst loses one emoji toggle on a refresh, which the
+    // user can redo. Not worth threading async through every reaction click.
+    saveChatHistory(history).catch(e =>
+        console.warn('[聊天] reaction flush failed:', e));
 
     // Re-render just the reaction badge for this message
     const row = document.querySelector(`.chat-bubble-row[data-msg-index="${msgIndex}"]`);

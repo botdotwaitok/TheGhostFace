@@ -55,8 +55,10 @@ import {
  * Handle the 'phone-call-declined' event.
  * Injects a system event into chat history and triggers background generation
  * so the character reacts to the missed call (e.g. sends a follow-up message).
+ * Async so the missed-call entry is durably on disk before we kick off the
+ * long-running LLM call — otherwise a mid-generation refresh would lose it.
  */
-export function handleCallDeclined() {
+export async function handleCallDeclined() {
     if (getIsGenerating()) {
         console.log(`${CHAT_LOG_PREFIX} Skipping declined-call follow-up: already generating.`);
         return;
@@ -76,7 +78,7 @@ export function handleCallDeclined() {
         timestamp: now,
     };
     history.push(missedCallEntry);
-    saveChatHistory(history);
+    await saveChatHistory(history);
 
     // Show the missed call card in chat UI if user is viewing
     const messagesArea = document.getElementById('chat_messages_area');
@@ -280,7 +282,7 @@ export async function sendAllMessages() {
 
         history.push(entry);
     }
-    saveChatHistory(history);
+    await saveChatHistory(history);
 
     // Render user messages immediately
     const messagesArea = document.getElementById('chat_messages_area');
@@ -355,8 +357,11 @@ export function handleResponseReady(e) {
             showTypingIndicator(false);
             const messagesArea = document.getElementById('chat_messages_area');
             if (messagesArea && errMsg) {
+                const isCancelled = errMsg === '已取消生成' || errMsg === '已取消重试';
+                const icon = isCancelled ? 'ph-prohibit' : 'ph-warning';
+                const label = isCancelled ? escHtml(errMsg) : `发送失败: ${escHtml(errMsg)}`;
                 messagesArea.insertAdjacentHTML('beforeend',
-                    `<div class="chat-retract"><i class="ph ph-warning"></i> 发送失败: ${escHtml(errMsg)}</div>`);
+                    `<div class="chat-retract"><i class="ph ${icon}"></i> ${label}</div>`);
             }
             scrollToBottom(true);
         }
@@ -650,7 +655,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
             }
         } catch (e) { console.warn('[聊天] AI reactions error:', e); }
 
-        saveChatHistory(updatedHistory);
+        await saveChatHistory(updatedHistory);
 
         // ─── Auto-TTS: if last message was deferred → await TTS then render ───
         if (shouldDeferLast && deferredHistoryEntry) {
@@ -665,7 +670,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                     deferredHistoryEntry.special = 'voice';
                     deferredHistoryEntry.audioDuration = Math.round(ttsResult.duration);
                     deferredHistoryEntry.audioPath = audioPath;
-                    saveChatHistory(updatedHistory);
+                    await saveChatHistory(updatedHistory);
                     console.log(`${CHAT_LOG_PREFIX} Auto-TTS complete: ${ttsResult.duration.toFixed(1)}s`);
                 }
             } catch (e) {

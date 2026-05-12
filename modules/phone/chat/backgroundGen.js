@@ -21,8 +21,10 @@ const RETRY_DELAYS = [5, 15, 30];   // Seconds before each retry (escalating)
 let _pendingResult = null;   // { rawResponse, messagesToSend } | null
 let _isGenerating = false;
 let _error = null;           // Error string if generation failed (all retries exhausted)
-let _cancelled = false;      // True if user cancelled the retry
+let _cancelled = false;      // True if user cancelled the retry / stop button
 let _retryTimer = null;      // setTimeout ID for current retry countdown (for cancellation)
+/** @type {AbortController | null} */
+let _abortController = null; // AbortController for the in-flight LLM call
 
 const LOG_PREFIX = '[后台生成]';
 
@@ -46,6 +48,7 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
     _error = null;
     _pendingResult = null;
     _cancelled = false;
+    _abortController = new AbortController();
 
     // Build prompts once (no need to rebuild on retry)
     let systemPrompt, userPrompt;
@@ -74,7 +77,11 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
         try {
             console.log(`${LOG_PREFIX} Attempt ${attempt + 1}/${MAX_RETRIES + 1}: sending ${messagesToSend.length} messages${imageBase64 ? ' + image' : ''}...`);
 
-            const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 4000, images });
+            const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, {
+                maxTokens: 4000,
+                images,
+                signal: _abortController?.signal,
+            });
 
             // ── Route moments commands (fire-and-forget, doesn't affect retry) ──
             try {
@@ -85,13 +92,22 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
 
             // ── Success! Store result and exit loop ──
             _pendingResult = { rawResponse, messagesToSend };
-            persistPendingResult(_pendingResult);  // Persist so it survives page refresh
+            // Await: the whole point is "survive refresh", so the disk write
+            // must complete before we return / hand off to the consumer.
+            await persistPendingResult(_pendingResult);
             _error = null;
             console.log(`${LOG_PREFIX} Generation succeeded on attempt ${attempt + 1}.`);
             break;
 
-        } catch (error) {
+        } catch (/** @type {any} */ error) {
             console.error(`${LOG_PREFIX} Attempt ${attempt + 1} failed:`, error);
+
+            // User-initiated stop — no retry, propagate immediately.
+            if (error?.code === 'USER_CANCELLED' || _cancelled) {
+                _cancelled = true;
+                _error = '已取消生成';
+                break;
+            }
 
             if (attempt < MAX_RETRIES && !_cancelled) {
                 // ── Notify UI about retry countdown ──
@@ -135,6 +151,26 @@ export function cancelRetry() {
         clearTimeout(_retryTimer);
         _retryTimer = null;
     }
+}
+
+/**
+ * Stop the in-flight LLM generation (called by the chat stop button).
+ * Aborts the underlying fetch / generateRaw call and skips any remaining retries.
+ * Safe to call when nothing is generating — a no-op in that case.
+ */
+export function cancelGeneration() {
+    if (!_isGenerating) return false;
+    _cancelled = true;
+    // Cancel any pending retry countdown
+    if (_retryTimer) {
+        clearTimeout(_retryTimer);
+        _retryTimer = null;
+    }
+    // Abort the in-flight request (fetch + generateRaw via stopGeneration)
+    if (_abortController && !_abortController.signal.aborted) {
+        try { _abortController.abort('user-stop'); } catch (e) { /* ignore */ }
+    }
+    return true;
 }
 
 /**

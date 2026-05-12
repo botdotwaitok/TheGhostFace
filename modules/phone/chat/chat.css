@@ -2238,6 +2238,21 @@ textarea#chat_edit_textarea {
     color: #c7c7cc;
 }
 
+/* ─── Stop button (replaces send while LLM is generating) ─── */
+.chat-btn-send.stop-mode {
+    background: #1c1c1e;
+    color: #fff;
+    font-size: 16px;
+}
+
+.chat-btn-send.stop-mode:hover {
+    background: #2c2c2e;
+}
+
+.chat-btn-send.stop-mode:active {
+    transform: scale(0.92);
+}
+
 /* Voice draft in pending area */
 .chat-draft-voice {
     display: flex;
@@ -2379,6 +2394,15 @@ textarea#chat_edit_textarea {
 
 .phone-dark-mode .chat-btn-send.mic-mode:disabled {
     color: #48484a;
+}
+
+.phone-dark-mode .chat-btn-send.stop-mode {
+    background: #f2f2f7;
+    color: #1c1c1e;
+}
+
+.phone-dark-mode .chat-btn-send.stop-mode:hover {
+    background: #e5e5ea;
 }
 
 /* ─── Toast Notification (above input bar) ─── */

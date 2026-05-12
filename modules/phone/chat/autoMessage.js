@@ -233,7 +233,7 @@ async function _generateAutoMessage(idleMs) {
             timestamp: now,
         });
     }
-    saveChatHistory(history);
+    await saveChatHistory(history);
 
     console.log(`${LOG_PREFIX} ✅ Auto message generated: ${charMessages.length} bubble(s)`);
 

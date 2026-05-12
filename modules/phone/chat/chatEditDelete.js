@@ -85,7 +85,7 @@ export function updateDeleteToolbar() {
 /**
  * Batch delete all selected messages and re-render.
  */
-export function handleBatchDelete() {
+export async function handleBatchDelete() {
     const selected = getSelectedForDeletion();
     const count = selected.size;
     if (count === 0) return;
@@ -93,7 +93,7 @@ export function handleBatchDelete() {
     if (!confirm(`确定删除 ${count} 条消息吗？`)) return;
 
     const indices = [...selected];
-    const deleted = deleteMessagesByIndices(indices);
+    const deleted = await deleteMessagesByIndices(indices);
     console.log(`${CHAT_LOG_PREFIX} 批量删除了 ${deleted} 条消息`);
 
     selected.clear();
@@ -188,14 +188,14 @@ export function openEditOverlay(msgIndex) {
 /**
  * Save the edited content to history and re-render.
  */
-export function handleEditSave() {
+export async function handleEditSave() {
     if (getSelectedEditIndex() < 0) return;
 
     const textarea = document.getElementById('chat_edit_textarea');
     const newContent = textarea?.value?.trim();
     if (!newContent) return;
 
-    const updated = updateMessageByIndex(getSelectedEditIndex(), newContent);
+    const updated = await updateMessageByIndex(getSelectedEditIndex(), newContent);
     if (!updated) return;
 
     console.log(`${CHAT_LOG_PREFIX} 编辑了消息 [${getSelectedEditIndex()}]`);
@@ -256,7 +256,7 @@ export async function rerollLastMessage() {
     }
 
     // Save the trimmed history (without the removed AI messages)
-    saveChatHistory(history);
+    await saveChatHistory(history);
 
     // Re-render without the removed AI messages
     rerenderMessagesArea();
