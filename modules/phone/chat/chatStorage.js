@@ -162,12 +162,25 @@ export function getCharacterDisplayName() {
 
 /**
  * Load chat history from chat_metadata (persisted in .jsonl chat file).
- * @returns {Array} messages
+ *
+ * Returns a SHALLOW COPY of the underlying array. Callers may freely push,
+ * splice, or replace items without immediately mutating chat_metadata —
+ * they must call saveChatHistory() to persist. Returning the live reference
+ * caused a race where a multi-bubble LLM response would leak partial state
+ * to chat_metadata mid-loop, and any ST autosave firing during the inter-
+ * bubble delays would snapshot only the first 1–2 messages to disk. A
+ * subsequent refresh would then resurrect only that partial state.
+ *
+ * Note: message objects themselves are still shared references; in-place
+ * mutations (msg.content = ..., msg.reactions = ...) still leak. All such
+ * paths already call saveChatHistory() right after, so this is acceptable.
+ *
+ * @returns {Array} messages (caller-owned copy)
  */
 export function loadChatHistory() {
     try {
         const data = chat_metadata?.[META_KEY_HISTORY];
-        if (Array.isArray(data) && data.length > 0) return data;
+        if (Array.isArray(data) && data.length > 0) return data.slice();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata 读取失败:`, e);
     }
@@ -351,6 +364,44 @@ export function getMessagesSinceHome(history) {
     const marker = loadHomeMarker();
     if (!marker) return history.slice();
     return history.filter(m => m.timestamp && m.timestamp > marker);
+}
+
+/**
+ * Mark every message with timestamp <= marker as summarized, in place.
+ *
+ * Done by direct chat_metadata mutation (no loadChatHistory + saveChatHistory
+ * roundtrip) so that any messages appended concurrently — e.g. an autoMessage
+ * that fires while the caller is in an await — are preserved. saveChatHistory
+ * would slice() and overwrite the array, dropping those late arrivals.
+ *
+ * UI rendering doesn't read .summarized, so the user still sees the bubbles;
+ * only the chat prompt's <chat_history> block filters them out, preventing
+ * the same content from being re-sent to the LLM after it's already been
+ * folded into ST main chat via 回家.
+ *
+ * @param {string} marker - ISO timestamp; messages at or before this are marked
+ * @returns {Promise<number>} count of newly-marked messages
+ */
+export async function markMessagesSummarizedUntil(marker) {
+    if (!marker) return 0;
+    try {
+        if (!chat_metadata) return 0;
+        const live = chat_metadata[META_KEY_HISTORY];
+        if (!Array.isArray(live) || live.length === 0) return 0;
+        let count = 0;
+        for (const msg of live) {
+            if (msg.summarized) continue;
+            if (msg.timestamp && msg.timestamp <= marker) {
+                msg.summarized = true;
+                count++;
+            }
+        }
+        if (count > 0) await saveChatConditional();
+        return count;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} markMessagesSummarizedUntil failed:`, e);
+        return 0;
+    }
 }
 
 /**

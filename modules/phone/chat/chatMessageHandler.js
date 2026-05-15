@@ -282,9 +282,12 @@ export async function sendAllMessages() {
 
         history.push(entry);
     }
-    await saveChatHistory(history);
 
-    // Render user messages immediately
+    // Render user messages FIRST (synchronous DOM ops, instant) so the user
+    // sees their bubble immediately. The save below awaits ST's mutex-protected
+    // saveChatConditional which can block for several seconds if any other ST
+    // IO is in flight — doing it before render makes the UI appear frozen
+    // until the LLM finally replies.
     const messagesArea = document.getElementById('chat_messages_area');
     if (messagesArea) {
         // Remove empty state if present
@@ -321,6 +324,11 @@ export async function sendAllMessages() {
 
     // Show typing indicator
     showTypingIndicator(true);
+
+    // Persist BEFORE kicking off generation so a refresh mid-LLM still keeps
+    // the user's message on disk (the saved entry is the only record once
+    // pendingMessages got cleared above).
+    await saveChatHistory(history);
 
     // ── Fire off background generation (does NOT block the UI) ──
     // The result will be handled by _handleResponseReady() via event

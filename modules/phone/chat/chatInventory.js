@@ -9,6 +9,7 @@ import {
     sendSummaryAsUserMessage, sendRawTranscriptAsUserMessage,
     loadChatSummary, saveChatSummary,
     getMessagesSinceHome, saveHomeMarker,
+    markMessagesSummarizedUntil,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
@@ -335,6 +336,16 @@ export async function handleReturnHome() {
         if (newMarker) {
             await saveHomeMarker(newMarker);
             console.log(`${CHAT_LOG_PREFIX} 回家 marker → ${newMarker}`);
+
+            // Hide already-synced messages from future chat prompts. The
+            // content was just folded into ST main chat (summary or raw),
+            // so re-sending it through <chat_history> would waste tokens
+            // and tempt the LLM to repeat itself. UI still shows the
+            // bubbles — only the prompt-side filter skips them.
+            const markedCount = await markMessagesSummarizedUntil(newMarker);
+            if (markedCount > 0) {
+                console.log(`${CHAT_LOG_PREFIX} ✅ 已将 ${markedCount} 条回家前的消息标记为已总结，下次进入聊天不再回灌 LLM`);
+            }
         }
 
         console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);

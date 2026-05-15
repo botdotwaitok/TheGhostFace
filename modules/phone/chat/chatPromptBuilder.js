@@ -778,11 +778,14 @@ ${stLines.join('\n')}
             // Strip moments commands from chat history to save tokens
             const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
             const ts = formatTs(msg.timestamp);
-            return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}`;
+            // Replay past inner monologue for char messages so she stays
+            // emotionally consistent with what she was actually thinking then.
+            const thoughtSuffix = (msg.role === 'char' && msg.thought) ? ` (内心: ${msg.thought})` : '';
+            return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}${thoughtSuffix}`;
         });
 
         if (historyLines.length > 0) {
-            parts.push(`<chat_history>\n每行开头的 [MM-DD HH:MM] 表示该条短信的发送时间。\n${historyLines.join('\n')}\n</chat_history>`);
+            parts.push(`<chat_history>\n每行开头的 [MM-DD HH:MM] 表示该条短信的发送时间。\n角色消息后括号里的"内心"是${charName}当时未说出口的真实想法，仅作为上下文供回忆参考，不要复述。\n${historyLines.join('\n')}\n</chat_history>`);
         }
     }
 
@@ -907,9 +910,10 @@ export async function buildAutoMessageSystemPrompt() {
     if (recentMsgs.length > 0) {
         const lines = recentMsgs.map(m => {
             const role = m.role === 'user' ? userName : charName;
-            return `${role}: ${m.content}`;
+            const thoughtSuffix = (m.role === 'char' && m.thought) ? ` (内心: ${m.thought})` : '';
+            return `${role}: ${m.content}${thoughtSuffix}`;
         });
-        recentChatBlock = `<recent_messages>\n最近的几条手机聊天记录：\n${lines.join('\n')}\n</recent_messages>`;
+        recentChatBlock = `<recent_messages>\n最近的几条手机聊天记录（括号里的"内心"是${charName}当时的真实想法）：\n${lines.join('\n')}\n</recent_messages>`;
     }
 
     // Core foundation
