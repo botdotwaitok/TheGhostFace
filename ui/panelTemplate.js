@@ -519,8 +519,13 @@ export const ghostFacePanelTemplate = String.raw`
                 <button id="gf_tab_worldbook_manager" class="ghost-button ghost-panel-toggle">
                     世界书管理
                 </button>
+
+                <!-- 手动备份按钮 -->
+                <button id="the_ghost_face_manual_backup_btn" class="ghost-button ghost-panel-toggle">
+                    手动备份
+                </button>
             </div>
-            
+
             <!-- 世界书管理面板 -->
             <div id="ghostface_worldbook_manager_panel" style="display: none; margin-bottom: 20px;">
                 <div class="ghost-settings-card" id="ghostface_worldbook_manager_content">

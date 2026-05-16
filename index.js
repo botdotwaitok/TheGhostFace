@@ -166,6 +166,14 @@ async function initializeGhostFace() {
         console.warn('[鬼面] HandBook bridge init skipped:', e);
     }
 
+    // WorldBook editor BroadcastChannel bridge (must init before editor window opens)
+    try {
+        const { initWorldbookBridge } = await import('./modules/worldbook/worldbookBridge.js');
+        initWorldbookBridge();
+    } catch (e) {
+        console.warn('[鬼面] WorldBook bridge init skipped:', e);
+    }
+
     try {
         // 第1步：设置全局导出
         const exportSuccess = setupGlobalExports();

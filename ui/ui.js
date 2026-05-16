@@ -15,7 +15,6 @@ import * as backup from '../modules/backup.js';
 import { ghostFacePanelTemplate } from './panelTemplate.js';
 import { openMomentsPanel, initMomentsUI } from '../modules/phone/moments/momentsUI.js';
 import { openPhone, initPhone } from '../modules/phone/phoneController.js';
-import { setupWorldbookManagerEvents, renderWorldbookManagerPanel } from './worldbookManagerUI.js';
 
 export { initMomentsUI };
 
@@ -551,25 +550,41 @@ export function setupPanelEvents() {
         _watchPhoneOverlay();
     }
 
-    // 世界书管理按钮
+    // 世界书管理按钮 — opens the standalone editor popup (Phase 0 scaffold).
+    // The old inline panel will be removed in Phase 4.
     const wbTabBtn = document.getElementById('gf_tab_worldbook_manager');
     const wbPanel = document.getElementById('ghostface_worldbook_manager_panel');
-    if (wbTabBtn && wbPanel) {
-        wbTabBtn.addEventListener('click', () => {
-            const isExpanded = wbTabBtn.classList.contains('active');
-            if (isExpanded) {
-                wbPanel.style.display = 'none';
-                wbTabBtn.classList.remove('active');
-            } else {
-                wbPanel.style.display = 'block';
-                wbTabBtn.classList.add('active');
-                renderWorldbookManagerPanel();
+    if (wbTabBtn) {
+        if (wbPanel) wbPanel.style.display = 'none';
+        wbTabBtn.addEventListener('click', async () => {
+            try {
+                const { openWorldbookEditor } = await import('../modules/worldbook/worldbookApp.js');
+                openWorldbookEditor();
+            } catch (e) {
+                console.error('[鬼面] Failed to open worldbook editor:', e);
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('世界书编辑器启动失败：' + (e?.message || e));
+                }
             }
         });
     }
 
-    // Binding logic related to the new worldbook UI component (refresh buttons etc.)
-    setupWorldbookManagerEvents();
+    // 手动备份按钮
+    const manualBackupBtn = document.getElementById('the_ghost_face_manual_backup_btn');
+    if (manualBackupBtn) {
+        manualBackupBtn.addEventListener('click', async () => {
+            if (manualBackupBtn.disabled) return;
+            const originalText = manualBackupBtn.textContent;
+            manualBackupBtn.disabled = true;
+            manualBackupBtn.textContent = '备份中...';
+            try {
+                await backup.runManualBackup();
+            } finally {
+                manualBackupBtn.disabled = false;
+                manualBackupBtn.textContent = originalText;
+            }
+        });
+    }
 
 
     // 使用说明按钮

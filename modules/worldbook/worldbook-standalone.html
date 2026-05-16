@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light only">
+    <title>世界书编辑器</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="worldbook.css">
+
+    <style>
+        body { opacity: 0; transition: opacity 0.25s ease; }
+        body.loaded { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div id="wb-app" class="wb-app"></div>
+
+    <script type="module">
+        import { boot } from './worldbookEditor.js';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('loaded');
+            try {
+                boot();
+            } catch (err) {
+                console.error('[WorldBook] Boot failed:', err);
+                const app = document.getElementById('wb-app');
+                if (app) {
+                    app.innerHTML = `
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;">
+                            <div style="font-size:42px;color:#e53935;margin-bottom:14px;"><i class="ph ph-warning-circle"></i></div>
+                            <div style="font-size:18px;font-weight:600;margin-bottom:6px;">启动失败</div>
+                            <div style="font-size:13px;color:#6b6b6b;">${err && err.message ? err.message : err}</div>
+                        </div>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

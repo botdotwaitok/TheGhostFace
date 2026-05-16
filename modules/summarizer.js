@@ -387,8 +387,9 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
                 } catch (err) {
                     logger.error(`[鬼面] 记忆碎片提取失败: ${err.message}`);
                     const retry = utils.askUserOrAutoSkip(
-                        `记忆碎片提取失败\n\n错误: ${err.message}\n\n点击「确定」重试，「取消」跳过此chunk`,
+                        `记忆碎片提取失败\n\n错误: ${err.message}\n\n已自动跳过此chunk`,
                         isAuto,
+                        { toastTitle: '记忆碎片提取失败' },
                     );
                     if (!retry) throw err;
                     logger.info('[鬼面] 用户选择重试...');
@@ -1779,7 +1780,7 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     ---
 
     <ghostface_summary_format>
-    请不要输出任何闲聊，而是直接生成一份**结构化报告**，结构如下，严格遵守：
+    请不要输出任何闲聊，而是直接生成一份**结构化报告**，用简洁的档案式语言，不使用比喻和修辞。记录事实，不进行文学加工。结构如下，严格遵守：
 
     - 📅 时间锚点：[例如：2025年7月22日 · 傍晚]
     - 🌍 所处世界：[现实 / 颠倒世界-副本名]
@@ -1788,7 +1789,7 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     ---
 
     ### 🔥 情节发展
-    [以理智精准的语言梳理本阶段剧情，至少两千字，必须包含：
+    [以理智精准的语言梳理本阶段剧情，800-1500字，必须包含：
     - 核心行为／转折事件
     - 情绪波动轨迹（如“怀疑→理解”，“排斥→接纳”）
     - 人物关系的摩擦、靠近或信任深化

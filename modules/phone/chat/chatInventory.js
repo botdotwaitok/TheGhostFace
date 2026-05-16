@@ -264,7 +264,7 @@ export async function handleReturnHome() {
                     name: msg.role === 'user' ? userName : charName,
                 }));
 
-                const fragments = await generateSummary(summarizerMessages);
+                const fragments = await generateSummary(summarizerMessages, true);
                 if (fragments && Array.isArray(fragments) && fragments.length > 0) {
                     await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);

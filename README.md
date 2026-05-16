@@ -1,4 +1,4 @@
-# 👻 鬼面 (TheGhostFace) V4.2.5
+# 👻 鬼面 (TheGhostFace) V4.2.6
 
 > **"给她一切她曾被拒绝的东西"** — The Entity 的承诺
 
@@ -8,7 +8,7 @@
 
 ---
 
-## :sparkles:V4.2.5 更新亮点
+## :sparkles:V4.2.6 更新亮点
 
 ### 想不起来都改了啥了
 

@@ -457,6 +457,45 @@ export async function handlePostSummaryBackup() {
     }
 }
 
+/**
+ * Manually triggered backup. Ignores backupConfig.enabled (user explicit action).
+ * Respects downloadLocal / sendEmail flags; if both are off, defaults to local download
+ * so the click is never a no-op.
+ */
+export async function runManualBackup() {
+    if (this_chid === undefined || this_chid === null) {
+        toastr.warning('请先选中一个角色再手动备份');
+        return;
+    }
+
+    const useDownload = backupConfig.downloadLocal || !backupConfig.sendEmail;
+    const useEmail = backupConfig.sendEmail
+        && backupConfig.smtp.host
+        && backupConfig.smtp.user
+        && backupConfig.smtp.pass
+        && backupConfig.smtp.to;
+
+    logger.info('📦 手动备份开始...', {
+        useDownload,
+        useEmail,
+        backupFormat: backupConfig.backupFormat,
+    });
+    toastr.info('📦 鬼面正在手动备份角色卡和聊天记录...', null, { timeOut: 3000 });
+
+    try {
+        if (useDownload) {
+            await downloadBackupLocal();
+        }
+        if (useEmail) {
+            await sendBackupEmail();
+        }
+        toastr.success('📦 手动备份完成！');
+    } catch (error) {
+        logger.error('📦 手动备份出错:', error);
+        toastr.error('📦 手动备份失败: ' + error.message);
+    }
+}
+
 // ── UI 配置更新 ─────────────────────────────────────────────────────
 
 export function updateBackupConfigUI() {

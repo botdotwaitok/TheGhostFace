@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/AAApersonal/文档/ST/SillyTavern/public/scripts/**)"
+    ]
+  }
+}
