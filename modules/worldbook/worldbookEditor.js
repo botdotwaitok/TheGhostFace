@@ -503,6 +503,11 @@ async function _selectBook(name) {
 }
 
 function _renderEntries(bookName, book) {
+    // Preserve detail-pane scroll position across in-place re-renders
+    // (filter chip click, batch ops, toggle select, post-save reloads).
+    const pane = document.querySelector('.wb-detail-pane');
+    const savedScroll = pane instanceof HTMLElement ? pane.scrollTop : 0;
+
     const entries = Object.values(book.entries);
     entries.sort((a, b) => {
         const ap = a.position ?? 1;
@@ -634,6 +639,10 @@ function _renderEntries(bookName, book) {
         ` : ''}
         <div class="wb-entry-list">${listHtml}</div>
     `;
+
+    // Restore scroll position the user was at before this re-render.
+    // scrollTop is auto-clamped to the new max if content shrank (e.g. filter).
+    if (pane instanceof HTMLElement) pane.scrollTop = savedScroll;
 
     document.getElementById('wb-new-entry-btn')?.addEventListener('click', () => _openDrawerForCreate(bookName));
     document.getElementById('wb-select-toggle')?.addEventListener('click', _toggleSelectMode);
@@ -1292,7 +1301,14 @@ function _openDrawerForEdit(bookName, uid) {
         console.warn(`${LOG} Cannot open drawer — entry uid=${uid} not in cache`);
         return;
     }
-    state.editing = { bookName, uid, isNew: false, entry, context: state.view };
+    state.editing = {
+        bookName,
+        uid,
+        isNew: false,
+        entry,
+        context: state.view,
+        scrollTop: _captureDetailScroll(),
+    };
     _renderDrawer();
 }
 
@@ -1303,8 +1319,14 @@ function _openDrawerForCreate(bookName) {
         isNew: true,
         entry: { ...NEW_ENTRY_DEFAULTS, key: [], uid: null },
         context: state.view,
+        scrollTop: _captureDetailScroll(),
     };
     _renderDrawer();
+}
+
+function _captureDetailScroll() {
+    const pane = document.querySelector('.wb-detail-pane');
+    return pane instanceof HTMLElement ? pane.scrollTop : 0;
 }
 
 function _closeDrawer() {
@@ -1324,6 +1346,12 @@ function _restoreEditorContext(prev) {
             const book = state.bookCache.get(prev.bookName);
             if (book && book.entries) {
                 _renderEntries(prev.bookName, book);
+                // _renderEntries captured the drawer's scrollTop (~0); override
+                // with the position the pane had before the drawer opened.
+                if (typeof prev.scrollTop === 'number') {
+                    const pane = document.querySelector('.wb-detail-pane');
+                    if (pane instanceof HTMLElement) pane.scrollTop = prev.scrollTop;
+                }
                 return;
             }
             _selectBook(prev.bookName);

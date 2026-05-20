@@ -346,6 +346,14 @@ export async function handleReturnHome() {
             if (markedCount > 0) {
                 console.log(`${CHAT_LOG_PREFIX} ✅ 已将 ${markedCount} 条回家前的消息标记为已总结，下次进入聊天不再回灌 LLM`);
             }
+
+            // Drop the rolling chat summary. 回家 is the canonical handoff
+            // to ST main chat — any compressed snapshot of pre-回家 content
+            // is now stale (the main story may advance past it) and would
+            // double-cover the same range that markMessagesSummarizedUntil
+            // already excludes from <chat_history>.
+            await saveChatSummary('');
+            console.log(`${CHAT_LOG_PREFIX} ✅ 已清空回家前的滚动总结，避免与 ST 主线重复`);
         }
 
         console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);

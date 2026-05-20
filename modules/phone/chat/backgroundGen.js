@@ -92,8 +92,16 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
 
             // ── Success! Store result and exit loop ──
             _pendingResult = { rawResponse, messagesToSend };
-            // Await: the whole point is "survive refresh", so the disk write
-            // must complete before we return / hand off to the consumer.
+            // Flip the generating flag BEFORE awaiting the disk write. The
+            // persist below can take hundreds of ms (ST's saveChatConditional
+            // mutex + network on remote); any caller that re-mounts the chat
+            // during that window (e.g. switching to Console app and back)
+            // would otherwise read hasPendingResult=true AND
+            // isBackgroundGenerating=true at the same time, and re-show the
+            // typing indicator / stop button on top of an already-rendered
+            // response.
+            _isGenerating = false;
+            // Persist to disk so the result survives a page refresh.
             await persistPendingResult(_pendingResult);
             _error = null;
             console.log(`${LOG_PREFIX} Generation succeeded on attempt ${attempt + 1}.`);

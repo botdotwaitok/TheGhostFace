@@ -108,6 +108,15 @@ export function openChatApp() {
 
     openAppInViewport(titleHtml, html, () => {
         resetButtonStateCache();
+
+        // Re-sync the chatApp-local `isGenerating` flag with the background
+        // module before bindChatEvents() runs updateButtonStates(). Without
+        // this, leaving mid-generation (e.g. switching to Console app and
+        // returning after the LLM finished) leaves the local flag stuck at
+        // true, and the stop button flashes on re-entry until the
+        // response-ready handler fires.
+        setIsGenerating(isBackgroundGenerating());
+
         bindChatEvents();
 
         // ── Consume pending background result if available ──
