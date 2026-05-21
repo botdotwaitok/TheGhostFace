@@ -12,6 +12,7 @@ import * as worldbook from './worldbook.js';
 import * as api from './api.js';
 import { handlePostSummaryBackup } from './backup.js';
 import * as timeline from './timeline.js';
+import { stampCreated } from './worldbook/timestampHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Retry Config (兜底轮询)
@@ -1884,6 +1885,7 @@ async function writeLargeSummaryToWorldbook({ id, content }) {
         excludeRecursion: true,
         preventRecursion: true
     });
+    stampCreated(entry);
 
     // D. 保存（saveWorldInfo 内部会用这个新副本替换缓存）
     await saveWorldInfo(worldBookName, wb, true);

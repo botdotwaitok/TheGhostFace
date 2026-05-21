@@ -66,6 +66,8 @@ const state = {
     batchRunning: false,
     /** @type {'all' | 'active' | 'constant' | 'keyword' | 'disabled'} */
     entryFilter: 'all',
+    /** @type {'default' | 'newest' | 'activity'} */
+    entrySort: 'default',
 };
 
 const FILTER_OPTIONS = [
@@ -75,6 +77,43 @@ const FILTER_OPTIONS = [
     { key: 'keyword',  label: '关键词' },
     { key: 'disabled', label: '已停用' },
 ];
+
+const SORT_OPTIONS = [
+    { key: 'default',  label: '默认' },
+    { key: 'newest',   label: '最新优先' },
+    { key: 'activity', label: '最近活动' },
+];
+
+const SORT_TOOLTIP = '时间戳由本插件自动维护。历史条目和通过 ST 原生编辑器修改的条目不显示时间，排在底部。';
+
+// Sort keys for time-based modes. -Infinity = entry has no plugin-managed
+// timestamp (历史 / ST 原生编辑路径), goes to bottom of list.
+function _entrySortKey(entry, mode) {
+    const ext = entry?.extensions;
+    const c = Number.isFinite(ext?.gf_createdAt) ? ext.gf_createdAt : null;
+    const u = Number.isFinite(ext?.gf_updatedAt) ? ext.gf_updatedAt : null;
+    if (mode === 'newest') return c ?? -Infinity;
+    if (mode === 'activity') {
+        if (c == null && u == null) return -Infinity;
+        return Math.max(c ?? -Infinity, u ?? -Infinity);
+    }
+    return 0;
+}
+
+function _entryHasTimestamp(entry) {
+    const ext = entry?.extensions;
+    return Number.isFinite(ext?.gf_createdAt) || Number.isFinite(ext?.gf_updatedAt);
+}
+
+// Default sort: position then order. Matches the previous hard-coded behavior.
+function _defaultEntryCompare(a, b) {
+    const ap = a.position ?? 1;
+    const bp = b.position ?? 1;
+    if (ap !== bp) return ap - bp;
+    const ao = a.order ?? 100;
+    const bo = b.order ?? 100;
+    return ao - bo;
+}
 
 function _entryMatchesFilter(entry, filter) {
     switch (filter) {
@@ -509,14 +548,7 @@ function _renderEntries(bookName, book) {
     const savedScroll = pane instanceof HTMLElement ? pane.scrollTop : 0;
 
     const entries = Object.values(book.entries);
-    entries.sort((a, b) => {
-        const ap = a.position ?? 1;
-        const bp = b.position ?? 1;
-        if (ap !== bp) return ap - bp;
-        const ao = a.order ?? 100;
-        const bo = b.order ?? 100;
-        return ao - bo;
-    });
+    entries.sort(_defaultEntryCompare);
 
     const tags = _classifyBook(bookName);
     const tagsHtml = tags.map(t => `<span class="wb-tag wb-tag-${t.key}">${t.label}</span>`).join('');
@@ -546,11 +578,40 @@ function _renderEntries(bookName, book) {
         </button>
     `).join('');
 
+    const sortChipsHtml = SORT_OPTIONS.map(opt => `
+        <button type="button"
+                class="wb-filter-chip wb-sort-chip ${state.entrySort === opt.key ? 'is-active' : ''}"
+                data-sort="${opt.key}">
+            ${opt.label}
+        </button>
+    `).join('');
+
+    // For time-based sort modes, split the visible list into [tracked, untracked]
+    // and render them in two sections so users understand why historical entries
+    // sink to the bottom (see plan D7).
+    const isTimeSort = state.entrySort === 'newest' || state.entrySort === 'activity';
     let listHtml;
     if (entries.length === 0) {
         listHtml = '<div class="wb-detail-empty">这本世界书是空的</div>';
     } else if (visibleEntries.length === 0) {
         listHtml = '<div class="wb-detail-empty">当前筛选下没有匹配的条目</div>';
+    } else if (isTimeSort) {
+        const tracked = visibleEntries.filter(_entryHasTimestamp).slice();
+        const untracked = visibleEntries.filter(e => !_entryHasTimestamp(e)).slice();
+        tracked.sort((a, b) => _entrySortKey(b, state.entrySort) - _entrySortKey(a, state.entrySort));
+        untracked.sort(_defaultEntryCompare);
+        const cardOf = (e) => _renderEntryCard(e, isSelectMode, state.selectedUids.has(Number(e.uid)));
+        let html = '';
+        if (tracked.length > 0) {
+            html += tracked.map(cardOf).join('');
+        } else {
+            html += '<div class="wb-detail-empty">该筛选下没有带时间戳的条目</div>';
+        }
+        if (untracked.length > 0) {
+            html += `<div class="wb-section-divider">未追踪时间的条目 · ${untracked.length}</div>`;
+            html += untracked.map(cardOf).join('');
+        }
+        listHtml = html;
     } else {
         listHtml = visibleEntries.map(e => _renderEntryCard(e, isSelectMode, state.selectedUids.has(Number(e.uid)))).join('');
     }
@@ -573,7 +634,15 @@ function _renderEntries(bookName, book) {
                 <span>${entries.length} 条目</span>
                 ${tagsHtml}
             </div>
-            <div class="wb-filter-chips">${chipsHtml}</div>
+            <div class="wb-filter-chips">
+                ${chipsHtml}
+                <span class="wb-chips-divider" aria-hidden="true"></span>
+                <span class="wb-sort-label">
+                    排序
+                    <i class="ph ph-info wb-sort-info" title="${escapeAttr(SORT_TOOLTIP)}"></i>
+                </span>
+                ${sortChipsHtml}
+            </div>
         </div>
         ${isSelectMode ? `
         <div class="wb-batch-bar" data-visible="${selCount > 0}">
@@ -649,6 +718,14 @@ function _renderEntries(bookName, book) {
 
     detail.querySelectorAll('.wb-filter-chip').forEach(el => {
         el.addEventListener('click', () => {
+            const sortKey = el.getAttribute('data-sort');
+            if (sortKey) {
+                if (sortKey !== state.entrySort) {
+                    state.entrySort = /** @type {any} */ (sortKey);
+                    _refreshEntriesView();
+                }
+                return;
+            }
             const key = el.getAttribute('data-filter');
             if (key && key !== state.entryFilter) {
                 state.entryFilter = /** @type {any} */ (key);
@@ -724,6 +801,9 @@ function _renderEntryCard(entry, selectMode = false, isSelected = false) {
     const contentPreview = content.length > 240 ? content.slice(0, 240) + '...' : content;
 
     const title = entry.comment?.trim() || keys[0] || `UID ${entry.uid ?? '?'}`;
+    const recentBadgeHtml = _isRecentEntry(entry)
+        ? '<i class="ph ph-sparkle wb-entry-recent-badge" title="24 小时内新增或更新"></i>'
+        : '';
 
     const cardClasses = [
         'wb-entry-card',
@@ -740,7 +820,7 @@ function _renderEntryCard(entry, selectMode = false, isSelected = false) {
         <article class="${cardClasses}" data-uid="${entry.uid ?? ''}">
             ${checkboxHtml}
             <header class="wb-entry-header">
-                <div class="wb-entry-title">${escapeHtml(title)}</div>
+                <div class="wb-entry-title">${recentBadgeHtml}${escapeHtml(title)}</div>
                 <div class="wb-entry-badges">
                     <span class="wb-badge">${posLabel}</span>
                     ${depth !== null ? `<span class="wb-badge">深度 ${depth}</span>` : ''}
@@ -750,6 +830,7 @@ function _renderEntryCard(entry, selectMode = false, isSelected = false) {
             </header>
             <div class="wb-entry-keys">${keysHtml}</div>
             <pre class="wb-entry-content">${escapeHtml(contentPreview) || '<span class="wb-key-empty">(空内容)</span>'}</pre>
+            ${_renderEntryTimeMeta(entry)}
         </article>
     `;
 }
@@ -1705,6 +1786,70 @@ function escapeHtml(s) {
 
 function escapeAttr(s) {
     return escapeHtml(s);
+}
+
+// 1 minute grace window: if updatedAt is within 1min of createdAt, the entry
+// was effectively "just created" and we still label it as 新增.
+const UPDATE_GRACE_MS = 60_000;
+
+// Recent-entry badge window: createdAt or updatedAt within this span gets
+// a sparkle icon on the card so post-summary new fragments stand out.
+const RECENT_BADGE_MS = 24 * 60 * 60 * 1000;
+
+function _isRecentEntry(entry) {
+    const ext = entry?.extensions;
+    if (!ext) return false;
+    const c = Number.isFinite(ext.gf_createdAt) ? ext.gf_createdAt : null;
+    const u = Number.isFinite(ext.gf_updatedAt) ? ext.gf_updatedAt : null;
+    const latest = Math.max(c ?? -Infinity, u ?? -Infinity);
+    if (!Number.isFinite(latest)) return false;
+    return Date.now() - latest < RECENT_BADGE_MS;
+}
+
+function formatRelativeTime(ts) {
+    if (!Number.isFinite(ts)) return '';
+    const diff = Date.now() - ts;
+    if (diff < 0) return '刚刚';
+    const minute = 60_000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (diff < minute) return '刚刚';
+    if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`;
+    if (diff < day) return `${Math.floor(diff / hour)} 小时前`;
+    if (diff < 7 * day) return `${Math.floor(diff / day)} 天前`;
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+}
+
+// Pick which timestamp + label to display on a card. Returns null when the
+// entry has no plugin-managed timestamps (历史条目 / ST 原生编辑路径).
+function pickEntryTimeMeta(entry) {
+    const ext = entry?.extensions;
+    if (!ext || typeof ext !== 'object') return null;
+    const createdAt = Number.isFinite(ext.gf_createdAt) ? ext.gf_createdAt : null;
+    const updatedAt = Number.isFinite(ext.gf_updatedAt) ? ext.gf_updatedAt : null;
+    if (updatedAt && (!createdAt || updatedAt > createdAt + UPDATE_GRACE_MS)) {
+        return { ts: updatedAt, label: '已更新' };
+    }
+    if (createdAt) return { ts: createdAt, label: '新增' };
+    if (updatedAt) return { ts: updatedAt, label: '已更新' };
+    return null;
+}
+
+function _renderEntryTimeMeta(entry) {
+    const meta = pickEntryTimeMeta(entry);
+    if (!meta) return '';
+    const rel = formatRelativeTime(meta.ts);
+    if (!rel) return '';
+    const abs = new Date(meta.ts).toLocaleString();
+    return `
+        <div class="wb-entry-time" title="${escapeAttr(abs)}">
+            <i class="ph ph-clock"></i> ${escapeHtml(rel)} · ${escapeHtml(meta.label)}
+        </div>
+    `;
 }
 
 async function _handlePingClick() {

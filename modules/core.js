@@ -3,6 +3,7 @@ import { getContext, extension_settings, cancelDebouncedMetadataSave } from '../
 import { saveChatConditional, cancelDebouncedChatSave, chat, characters, eventSource, event_types } from '../../../../../script.js';
 import { createWorldInfoEntry } from '../../../../world-info.js';
 
+import { stampCreated, stampUpdated } from './worldbook/timestampHelpers.js';
 import * as ui from '../ui/ui.js';
 import * as utils from './utils.js';
 import * as summarizer from './summarizer.js';
@@ -1086,6 +1087,7 @@ export async function updateFloorTrackingEntry(worldBookData, maxFloor, currentC
 
         if (trackingEntry) {
             trackingEntry.content = trackingContent;
+            stampUpdated(trackingEntry);
             logger.info(`👻 更新楼层追踪: 聊天${currentChatIdentifier}已总结到第${maxFloor + 1}楼`);
         } else {
             const newTrackingEntry = createWorldInfoEntry(null, worldBookData);
@@ -1100,6 +1102,7 @@ export async function updateFloorTrackingEntry(worldBookData, maxFloor, currentC
                 excludeRecursion: true,
                 preventRecursion: true
             });
+            stampCreated(newTrackingEntry);
             logger.info(`🆕 创建楼层追踪条目: 聊天${currentChatIdentifier}已总结到第${maxFloor + 1}楼`);
         }
 

@@ -3,6 +3,7 @@ import { loadWorldInfo, saveWorldInfo, world_info, createWorldInfoEntry } from '
 import { getCharaFilename } from '../../../../utils.js';
 
 import * as utils from './utils.js';
+import { stampCreated, stampUpdated } from './worldbook/timestampHelpers.js';
 
 /**
  * Gets all active world book names.
@@ -314,6 +315,7 @@ export async function updateEntryProperties(worldBookName, uid, updates) {
         // Clone and update
         const worldBookData = structuredClone(wbOriginal);
         Object.assign(worldBookData.entries[uid], updates);
+        stampUpdated(worldBookData.entries[uid]);
 
         // Save
         await saveWorldInfo(worldBookName, worldBookData, true);
@@ -350,6 +352,7 @@ export async function createEntryInBook(worldBookName, partial = {}) {
     if (partial && typeof partial === 'object') {
         Object.assign(worldBookData.entries[newEntry.uid], partial);
     }
+    stampCreated(worldBookData.entries[newEntry.uid]);
 
     await saveWorldInfo(worldBookName, worldBookData, true);
     utils.logger.info(`Created entry uid=${newEntry.uid} in ${worldBookName}`);

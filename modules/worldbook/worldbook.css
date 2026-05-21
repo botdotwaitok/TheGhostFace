@@ -635,6 +635,46 @@ mark.wb-hl {
     color: var(--wb-accent);
 }
 
+.wb-chips-divider {
+    display: inline-block;
+    width: 1px;
+    align-self: stretch;
+    margin: 2px 4px;
+    background: var(--wb-border);
+}
+
+.wb-sort-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--wb-text-muted);
+}
+
+.wb-sort-info {
+    font-size: 14px;
+    color: var(--wb-text-muted);
+    cursor: help;
+    opacity: 0.75;
+    transition: opacity 0.12s, color 0.12s;
+}
+
+.wb-sort-info:hover {
+    opacity: 1;
+    color: var(--wb-accent);
+}
+
+.wb-section-divider {
+    margin: 14px 0 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--wb-text-muted);
+    background: var(--wb-surface-2);
+    border: 1px dashed var(--wb-border);
+    border-radius: 4px;
+    text-align: center;
+}
+
 /* ===== Detail header actions + batch toolbar ===== */
 
 .wb-detail-header-actions {
@@ -1029,6 +1069,34 @@ mark.wb-hl {
     color: var(--wb-text);
     max-height: 180px;
     overflow-y: auto;
+}
+
+.wb-entry-time {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--wb-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.8;
+}
+
+.wb-entry-time i.ph {
+    font-size: 12px;
+}
+
+.wb-entry-recent-badge {
+    display: inline-block;
+    margin-right: 5px;
+    color: var(--wb-accent);
+    font-size: 15px;
+    vertical-align: -1px;
+    animation: wb-recent-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes wb-recent-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.12); }
 }
 
 /* ===== Footer (debug ping bar) ===== */

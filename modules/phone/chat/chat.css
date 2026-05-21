@@ -15,6 +15,38 @@
     overflow: hidden;
 }
 
+/* Custom chat background: image is set via --chat-app-bg CSS var on the phone
+   viewport (set in chatBackground.js) so it cascades to both header and body —
+   the viewport itself paints the image, and the chat-page goes transparent so
+   there's no double-paint / seam at the header boundary. */
+.phone-app-viewport:has(.chat-page.has-chat-bg) {
+    background-image: var(--chat-app-bg);
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+.chat-page.has-chat-bg {
+    background: transparent;
+}
+
+/* When a chat background is present, make the surrounding chrome translucent so
+   the image actually shows through, and restyle the time divider iMessage-style
+   (white text with a soft gray drop shadow) to stay legible on any image. */
+.phone-app-viewport:has(.chat-page.has-chat-bg) .phone-app-viewport-header {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.chat-page.has-chat-bg .chat-input-bar {
+    background: rgba(242, 242, 247, 0.55);
+}
+
+.chat-page.has-chat-bg .chat-time-divider {
+    color: #ffffff;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(60, 60, 67, 0.65);
+}
+
 /* ─── Top Navigation Bar (Moved to viewport header) ─── */
 .chat-nav-avatar {
     width: 32px;
@@ -1513,7 +1545,11 @@ textarea#chat_edit_textarea {
    Plus Action Panel (Bottom Sheet)
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* .chat-plus-overlay 全部沿用 .chat-overlay-base 默认值，无差异属性 */
+/* .chat-plus-overlay 沿用 .chat-overlay-base 定位，但因为里面要塞 6 个动作图标，
+   单独把内层 sheet 加宽，避免和窄的 menu / inventory sheet 共享 320px 上限。 */
+.chat-plus-overlay .chat-menu-sheet {
+    max-width: 420px;
+}
 
 .chat-plus-row {
     display: flex;
@@ -1578,6 +1614,33 @@ textarea#chat_edit_textarea {
 /* Page background */
 .phone-dark-mode .chat-page {
     background: #000;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.chat-page.has-chat-bg) {
+    background-image: var(--chat-app-bg);
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+.phone-dark-mode .chat-page.has-chat-bg {
+    background: transparent;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.chat-page.has-chat-bg) .phone-app-viewport-header {
+    background: rgba(28, 28, 30, 0.55);
+}
+
+.phone-dark-mode .chat-page.has-chat-bg .chat-input-bar {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+/* Time divider keeps the same white-with-shadow treatment in dark mode —
+   it works on both light and dark backgrounds because the shadow does the
+   heavy lifting for contrast. */
+.phone-dark-mode .chat-page.has-chat-bg .chat-time-divider {
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
 /* Nav bar */

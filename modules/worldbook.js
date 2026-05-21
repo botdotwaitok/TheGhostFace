@@ -6,6 +6,7 @@ import { getContext } from '../../../../extensions.js';
 import * as core from './core.js';
 import * as utils from './utils.js';
 import { logger } from './utils.js';
+import { stampCreated, stampUpdated } from './worldbook/timestampHelpers.js';
 
 export const GHOST_SUMMARY_PREFIX = "鬼面总结-";
 export const GHOST_TRACKING_COMMENT = "鬼面楼层追踪记录";
@@ -331,6 +332,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                         matchEntry.entryRef.key = mergedKeys;
                         // 更新内部缓存
                         matchEntry.content = matchEntry.entryRef.content;
+                        stampUpdated(matchEntry.entryRef);
 
                         updatedCount++;
                         logger.info(`[鬼面] 合并更新: [${targetTitle}] (Keywords: ${mergedKeys.join(', ')})`);
@@ -356,6 +358,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                             const mergedKeys = [...new Set([...newKeywords, ...oldKeys])];
                             existing.entryRef.key = mergedKeys;
                             existing.content = existing.entryRef.content;
+                            stampUpdated(existing.entryRef);
 
                             updatedCount++;
                             mergedWithExisting = true;
@@ -413,6 +416,7 @@ export async function saveToWorldBook(summaryEntries, startIndex = null, endInde
                     probability: 100,
                     useProbability: false
                 });
+                stampCreated(newEntry);
 
                 // Add to existing fragments list for dedup of later entries in the same batch
                 existingFragments.push({

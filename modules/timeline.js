@@ -5,6 +5,7 @@ import { createWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../../
 import * as utils from './utils.js';
 import { logger, estimateTokens } from './utils.js';
 import * as api from './api.js';
+import { stampCreated, stampUpdated } from './worldbook/timestampHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
@@ -82,6 +83,7 @@ export async function writeTimelineToWorldbook(content) {
         if (comment === TIMELINE_COMMENT) {
             entry.content = `<current_timeline>\n${content}\n</current_timeline>`;
             entry.disable = false;
+            stampUpdated(entry);
             found = true;
             logger.info('[时间线] ✏️ 已更新现有时间线条目');
             break;
@@ -103,6 +105,7 @@ export async function writeTimelineToWorldbook(content) {
             excludeRecursion: true,
             preventRecursion: true,
         });
+        stampCreated(newEntry);
         logger.info('[时间线] 🆕 已创建新时间线条目');
     }
 

@@ -37,6 +37,9 @@ import { renderBuffBar, renderChatInventory, handleReturnHome, handleManualSumma
 import { beginRecording } from './chatVoice.js';
 import { handleImageSelection, showImageLightbox } from './chatImage.js';
 import { handleVoicePlayback } from './chatVoice.js';
+import {
+    applyChatBackground, uploadChatBackground, clearChatBackground, hasChatBackground,
+} from './chatBackground.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Shared State
@@ -116,6 +119,8 @@ export function openChatApp() {
         // true, and the stop button flashes on re-entry until the
         // response-ready handler fires.
         setIsGenerating(isBackgroundGenerating());
+
+        applyChatBackground();
 
         bindChatEvents();
 
@@ -475,6 +480,81 @@ function bindChatEvents() {
                 handleImageSelection(e.target.files[0]);
             }
             imageInput.value = '';
+        });
+    }
+
+    // ─── Plus panel: chat background ───
+    const plusBgBtn = document.getElementById('chat_plus_bg_btn');
+    const bgInput = document.getElementById('chat_bg_input');
+    const bgOverlay = document.getElementById('chat_bg_overlay');
+    const bgChangeBtn = document.getElementById('chat_bg_change_btn');
+    const bgClearBtn = document.getElementById('chat_bg_clear_btn');
+    const bgCancel = document.getElementById('chat_bg_cancel');
+
+    const showBgToast = (msg) => {
+        const toast = document.createElement('div');
+        toast.className = 'chat-toast';
+        toast.textContent = msg;
+        document.getElementById('chat_page_root')?.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    };
+
+    if (plusBgBtn && bgInput) {
+        plusBgBtn.addEventListener('click', () => {
+            plusOverlay?.classList.remove('active');
+            if (hasChatBackground() && bgOverlay) {
+                _overlayOpenedAt = Date.now();
+                bgOverlay.classList.add('active');
+            } else {
+                bgInput.click();
+            }
+        });
+
+        bgInput.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            bgInput.value = '';
+            if (!file) return;
+            try {
+                await uploadChatBackground(file);
+                showBgToast('背景已更新');
+            } catch (err) {
+                console.error(`${CHAT_LOG_PREFIX} 背景上传失败:`, err);
+                showBgToast('背景上传失败');
+            }
+        });
+    }
+
+    if (bgChangeBtn && bgInput) {
+        bgChangeBtn.addEventListener('click', () => {
+            bgOverlay?.classList.remove('active');
+            bgInput.click();
+        });
+    }
+
+    if (bgClearBtn) {
+        bgClearBtn.addEventListener('click', async () => {
+            bgOverlay?.classList.remove('active');
+            try {
+                await clearChatBackground();
+                showBgToast('背景已清除');
+            } catch (err) {
+                console.error(`${CHAT_LOG_PREFIX} 背景清除失败:`, err);
+                showBgToast('背景清除失败');
+            }
+        });
+    }
+
+    if (bgCancel) {
+        bgCancel.addEventListener('click', () => {
+            bgOverlay?.classList.remove('active');
+        });
+    }
+
+    if (bgOverlay) {
+        bgOverlay.addEventListener('click', (e) => {
+            if (e.target === bgOverlay && Date.now() - _overlayOpenedAt > 200) {
+                bgOverlay.classList.remove('active');
+            }
         });
     }
 

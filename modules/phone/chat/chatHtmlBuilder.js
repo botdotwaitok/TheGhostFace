@@ -99,10 +99,26 @@ export function buildChatPage(history) {
                         <i class="ph ph-note"></i>
                         <span>总结</span>
                     </div>
+                    <div class="chat-plus-action" id="chat_plus_bg_btn">
+                        <i class="ph ph-image-square"></i>
+                        <span>背景</span>
+                    </div>
                 </div>
                 <div class="chat-menu-cancel" id="chat_plus_cancel">取消</div>
             </div>
         </div>
+
+        <!-- Background action sheet (shown when a background already exists) -->
+        <div class="chat-overlay-base chat-bg-overlay" id="chat_bg_overlay">
+            <div class="chat-menu-sheet">
+                <div class="chat-menu-item" id="chat_bg_change_btn">更换背景</div>
+                <div class="chat-menu-item danger" id="chat_bg_clear_btn">清除背景</div>
+                <div class="chat-menu-cancel" id="chat_bg_cancel">取消</div>
+            </div>
+        </div>
+
+        <!-- Hidden file input for chat background selection -->
+        <input type="file" accept="image/*" id="chat_bg_input" style="display:none" />
 
         <!-- Inventory (道具背包) overlay -->
         <div class="chat-overlay-base chat-inventory-overlay" id="chat_inventory_overlay">
