@@ -98,7 +98,6 @@ export function openChatApp() {
         <div class="chat-nav-avatar">${avatarHtml}</div>
         <div class="chat-nav-info">
             <div class="chat-nav-name" id="chat_nav_name" title="点击设置昵称（清空恢复 ${escHtml(realName)}）">${escHtml(displayName)}</div>
-            <div class="chat-nav-status">iMessage</div>
         </div>`;
 
     const actionsHtml = `
