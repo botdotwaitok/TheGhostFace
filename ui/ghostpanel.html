@@ -22,6 +22,22 @@
         <!-- 可滚动的主体内容 -->
         <div class="ghost-panel-body">
 
+            <!-- Update notice banner (rendered on demand by modules/updateChecker.js) -->
+            <div id="ghostface_update_banner" class="ghost-update-banner" style="display: none;" role="status">
+                <i class="ph ph-arrow-circle-up ghost-update-banner-icon"></i>
+                <span class="ghost-update-banner-text">
+                    <span class="ghost-update-banner-label">鬼面有更新啦</span>
+                    <span class="ghost-update-banner-versions">
+                        <span data-slot="current-version" class="ghost-update-banner-version-old">—</span>
+                        <i class="ph ph-arrow-right ghost-update-banner-arrow"></i>
+                        <span data-slot="latest-version" class="ghost-update-banner-version-new">—</span>
+                    </span>
+                </span>
+                <button class="ghost-update-banner-dismiss" data-action="dismiss" type="button" aria-label="今天先不看">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+
             <div class="ghost-main-actions-vertical">
                 <!-- 自动开关按钮 -->
                 <button id="the_ghost_face_control_panel_toggle_auto" class="ghost-button ghost-auto-toggle"

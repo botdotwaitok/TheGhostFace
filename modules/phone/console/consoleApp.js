@@ -3,6 +3,7 @@
 // Inspired by Chrome DevTools — with left sidebar tabs, object tree, search, auto-refresh.
 
 import { openAppInViewport } from '../phoneController.js';
+import { openDiagnosticDialog } from './diagnosticDialog.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -64,6 +65,17 @@ setTimeout(() => installConsolePatch(), 0);
 /** Push an error/warn log entry (called by the monkey-patch) */
 export function pushErrorLog(message, level = 'error') {
     _pushLog(_errorLogs, { time: new Date(), level, args: [message] });
+}
+
+/** Expose ring buffers for the diagnostic exporter (read-only snapshot, not a live reference). */
+export function getLogBuffers() {
+    return {
+        allLogs: _allLogs.slice(),
+        errorLogs: _errorLogs.slice(),
+        moduleLogs: _moduleLogs.slice(),
+        networkLogs: _networkLogs.slice(),
+        promptLogs: _promptLogs.slice(),
+    };
 }
 
 /** Push a prompt log entry (called after building prompts) */
@@ -339,13 +351,16 @@ function buildConsolePageHtml() {
             <!-- Toolbar -->
             <div class="console-toolbar">
                 <input type="text" class="console-filter-input" id="console_filter"
-                    placeholder="过滤..." value="${escHtml(_filterText)}">
+                    placeholder="搜索" value="${escHtml(_filterText)}">
                 <button class="console-tool-btn ${_autoRefresh ? 'active' : ''}" id="console_auto_btn"
-                    title="${_autoRefresh ? '自动刷新中' : '手动模式'}">
+                    title="${_autoRefresh ? '自动刷新' : '手动刷新'}">
                     ${_autoRefresh ? '<i class="ph ph-pause"></i>' : '<i class="ph ph-play"></i>'}
                 </button>
                 <button class="console-tool-btn" id="console_clear_btn" title="清除"><i class="ph ph-trash"></i></button>
                 <span class="console-log-count" id="console_log_count">${getActiveLogCount()} 条</span>
+                <button class="console-diag-btn" id="console_diag_btn" title="一键打包诊断信息">
+                    <span>打包诊断信息</span>
+                </button>
             </div>
 
             <!-- Tab content -->
@@ -844,6 +859,12 @@ function bindConsoleEvents() {
                 stopAutoRefresh();
             }
         });
+    }
+
+    // Diagnostic export button
+    const diagBtn = document.getElementById('console_diag_btn');
+    if (diagBtn) {
+        diagBtn.addEventListener('click', () => openDiagnosticDialog());
     }
 
     // Prompt expand/collapse

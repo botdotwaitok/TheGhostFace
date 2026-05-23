@@ -1785,3 +1785,93 @@ input[type="number"].ghost-input {
     color: var(--SmartThemeEmColor);
     border-top: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Update Notice Banner (rendered by modules/updateChecker.js)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ghost-update-banner {
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px 0;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--ghost-warning, #ff9800) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ghost-warning, #ff9800) 60%, transparent);
+    border-radius: var(--ghost-border-radius-small, 8px);
+    font-size: 13px;
+    color: var(--SmartThemeBodyColor);
+    animation: ghostFadeIn 0.3s ease-out;
+}
+
+.ghost-update-banner-icon {
+    color: var(--ghost-warning, #ff9800);
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.ghost-update-banner-text {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ghost-update-banner-label {
+    font-weight: 600;
+}
+
+.ghost-update-banner-versions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--monoFontFamily, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+    font-size: 12px;
+}
+
+.ghost-update-banner-version-old {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.75;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, var(--SmartThemeBodyColor) 35%, transparent);
+}
+
+.ghost-update-banner-version-new {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--ghost-warning, #ff9800) 22%, transparent);
+    color: var(--ghost-warning, #ff9800);
+    font-weight: 600;
+}
+
+.ghost-update-banner-arrow {
+    color: var(--ghost-warning, #ff9800);
+    font-size: 13px;
+    opacity: 0.7;
+}
+
+.ghost-update-banner-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.55;
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.ghost-update-banner-dismiss:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}

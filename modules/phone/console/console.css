@@ -22,6 +22,7 @@
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 15px;
     overflow: hidden;
+    position: relative; /* anchor for in-console pages (diagnostic page etc.) */
 }
 
 /* ═══ Left Sidebar ═══ */
@@ -586,4 +587,239 @@
     font-style: normal;
     letter-spacing: 0;
     text-transform: none;
+}
+
+/* ═══ Diagnostic Export Button (toolbar) ═══ */
+.console-diag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    margin-left: 8px;
+    border: 1px solid #ffb900;
+    border-radius: 0;
+    background: #1a1400;
+    color: #ffb900;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.console-diag-btn:hover {
+    background: #ffb900;
+    color: #000000;
+}
+.console-diag-btn:active {
+    transform: scale(0.97);
+}
+.console-diag-btn i {
+    font-size: 15px;
+}
+
+/* ═══ Diagnostic Page (in-console overlay, NOT a modal) ═══ */
+.console-diag-page {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    color: #eeeeee;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    animation: diagPageSlideIn 0.18s ease-out;
+}
+@keyframes diagPageSlideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.console-diag-page-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.console-diag-page-body::-webkit-scrollbar {
+    width: 6px;
+}
+.console-diag-page-body::-webkit-scrollbar-thumb {
+    background: #333;
+}
+
+.diag-section {
+    padding: 12px 14px;
+    background: #0f0f0f;
+    border: 1px solid #1f1f1f;
+}
+.diag-section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #dddddd;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+.diag-section-title i {
+    font-size: 15px;
+}
+.diag-section-text {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #bbbbbb;
+}
+.diag-section-text code {
+    padding: 1px 5px;
+    background: #050505;
+    border: 1px solid #2a2a2a;
+    color: #ffb900;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+}
+.diag-section-text strong {
+    color: #ffffff;
+}
+
+.diag-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.diag-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #bbbbbb;
+    line-height: 1.4;
+}
+.diag-list li i {
+    color: #4ade80;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.diag-section-ok {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.35);
+}
+.diag-section-ok .diag-section-title {
+    color: #4ade80;
+}
+.diag-section-ok .diag-section-title i {
+    color: #4ade80;
+}
+
+.diag-section-warn {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.45);
+}
+.diag-section-warn .diag-section-title {
+    color: #fbbf24;
+}
+.diag-section-warn .diag-section-title i {
+    color: #fbbf24;
+}
+
+/* ST core forces textarea background/color via !important — match its weight
+   so our dark theme survives inside the phone shell. */
+.console-diag-page .diag-input,
+textarea.diag-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    background: #000000 !important;
+    border: 1px solid #333 !important;
+    color: #eeeeee !important;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+    box-shadow: none !important;
+}
+.console-diag-page .diag-input:focus,
+textarea.diag-input:focus {
+    border-color: #ffb900 !important;
+}
+.console-diag-page .diag-input::placeholder,
+textarea.diag-input::placeholder {
+    color: #666 !important;
+    opacity: 1;
+}
+
+.console-diag-page-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #050505;
+    border-top: 1px solid #1a1a1a;
+    flex-shrink: 0;
+}
+
+.diag-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: #cccccc;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    min-width: 80px;
+}
+.diag-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.diag-btn i {
+    font-size: 15px;
+}
+
+.diag-btn-cancel {
+    border-color: #333;
+    color: #aaaaaa;
+}
+.diag-btn-cancel:hover:not(:disabled) {
+    border-color: #555;
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+.diag-btn-primary {
+    background: #ffb900;
+    border-color: #ffb900;
+    color: #000000;
+    font-weight: 600;
+}
+.diag-btn-primary:hover:not(:disabled) {
+    background: #ffc733;
+    border-color: #ffc733;
+}
+
+.ph-spin {
+    display: inline-block;
+    animation: diagSpin 0.9s linear infinite;
+}
+@keyframes diagSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }

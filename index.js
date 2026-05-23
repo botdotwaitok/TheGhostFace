@@ -287,6 +287,14 @@ async function initializeGhostFace() {
             toastr.success('👻 鬼面已就位！');
         }
 
+        // Plugin update check — throttled to once per day via localStorage.
+        try {
+            const { initUpdateCheck } = await import('./modules/updateChecker.js');
+            setTimeout(() => { initUpdateCheck(); }, 2000);
+        } catch (e) {
+            console.warn('[鬼面] 更新检查模块加载失败:', e);
+        }
+
     } catch (error) {
         console.error('❌ [鬼面] 初始化失败:', error);
         window.ghostFaceInitialized = false;
