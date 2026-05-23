@@ -377,7 +377,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.9);
+    /* Pill bg derives from text color so it always matches the app's header palette */
+    background: color-mix(in srgb, currentColor 10%, transparent);
     border: none;
     color: #007aff;
     /* iOS Blue */
@@ -389,7 +390,7 @@
 }
 
 .phone-app-back-btn:hover {
-    background: rgba(255, 255, 255, 1);
+    background: color-mix(in srgb, currentColor 18%, transparent);
 }
 
 .phone-app-back-btn i {
@@ -1545,12 +1546,7 @@
 }
 
 .phone-dark-mode .phone-app-back-btn {
-    background: rgba(255, 255, 255, 0.08);
     color: #0a84ff;
-}
-
-.phone-dark-mode .phone-app-back-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
 }
 
 .phone-dark-mode .phone-settings-section {
