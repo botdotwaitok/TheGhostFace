@@ -145,6 +145,18 @@
     background: rgba(255, 255, 255, 1);
 }
 
+/* Match the back pill in this app's header to the chat-nav-btn palette
+   (chat is the only app whose header sits on top of a custom wallpaper, so
+   the shared iOS-blue pill loses contrast against dark backgrounds). */
+.phone-app-viewport:has(.chat-page) .phone-app-back-btn {
+    background: rgba(255, 255, 255, 0.9);
+    color: #418ef6;
+}
+
+.phone-app-viewport:has(.chat-page) .phone-app-back-btn:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
 /* ─── Messages Area ─── */
 .chat-messages {
     flex: 1;
@@ -2066,55 +2078,50 @@ textarea#chat_edit_textarea {
    Plus Action Panel (Bottom Sheet)
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* .chat-plus-overlay 沿用 .chat-overlay-base 定位，但因为里面要塞 6 个动作图标，
-   单独把内层 sheet 加宽，避免和窄的 menu / inventory sheet 共享 320px 上限。 */
-.chat-plus-overlay .chat-menu-sheet {
-    max-width: 480px;
-}
-
+/* Vertical list layout — each row is an iOS-style settings-cell with icon on
+   the left and label on the right. Designed to grow as new actions get added. */
 .chat-plus-row {
     display: flex;
-    flex-direction: row;
-    justify-content: space-around;
-    align-items: flex-start;
-    padding: 24px 10px 18px;
+    flex-direction: column;
+    padding: 6px 0;
     border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
 }
 
 .chat-plus-action {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 8px;
+    gap: 14px;
+    padding: 11px 20px;
     cursor: pointer;
-    transition: transform 0.15s, opacity 0.15s;
+    transition: background 0.15s;
     color: #1c1c1e;
-    flex: 1;
 }
 
 .chat-plus-action:hover {
-    opacity: 0.8;
+    background: rgba(0, 0, 0, 0.04);
 }
 
 .chat-plus-action:active {
-    transform: scale(0.95);
+    background: rgba(0, 0, 0, 0.08);
 }
 
 .chat-plus-action i {
-    font-size: 20px;
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
+    font-size: 18px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     background: #f2f2f7;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #0a84ff;
+    flex-shrink: 0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .chat-plus-action span {
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 500;
 }
 
@@ -2190,6 +2197,15 @@ textarea#chat_edit_textarea {
 }
 
 .phone-dark-mode .chat-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.phone-dark-mode .phone-app-viewport:has(.chat-page) .phone-app-back-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #0a84ff;
+}
+
+.phone-dark-mode .phone-app-viewport:has(.chat-page) .phone-app-back-btn:hover {
     background: rgba(255, 255, 255, 0.14);
 }
 
@@ -2474,6 +2490,14 @@ textarea#chat_edit_textarea {
 
 .phone-dark-mode .chat-plus-action {
     color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-plus-action:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-plus-action:active {
+    background: rgba(255, 255, 255, 0.12);
 }
 
 .phone-dark-mode .chat-plus-action i {

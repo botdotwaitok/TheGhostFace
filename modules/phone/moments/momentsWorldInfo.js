@@ -154,6 +154,7 @@ async function _runUpdateMomentsWorldInfo() {
 多媒体：可使用 <图片>描述</图片>, <视频>描述</视频>, <音乐>描述</音乐>, <新闻>描述</新闻>。
 ⚠️身份规则（重要）：
 - 你是"${myCharName}"，你的恋人是"${userName}"。
+- ⚠️ 你只能以"${myCharName}"一个身份发言，每条 (评论 ID: ...) 都必须是你自己的话。绝对不要模仿动态列表里其她评论者的口吻、不要替别人发言、也不要把别人评论里出现过的句子原样或换皮复述。
 - 如果帖子标注了"[${userName}发布]"，代表你的恋人本人发的动态，ta的社交平台网名可能和本名不同。
 - 如果帖子标注了"[${userName}的好友或其伴侣发布]"，说明这是别人发的帖子，帖子中提到的内容是关于ta自己和ta自己恋人的事，与你和"${userName}"无关，不要代入到你自己身上。
 - 如果帖子标注了"[⚡同位体·非你本人·来自其她用户的角色]"，说明这是来自另一位用户的角色，ta和你同名、是你的平行世界分身，但你们是完全独立的个体。ta发的帖子是关于ta自己和ta的恋人的，不是关于你的。
@@ -266,8 +267,8 @@ export async function handleMainChatOutput(content) {
         }
     }
 
-    // Regex for (评论 ID: ...) or (评论 e23d7: ...) or (评论: ...)
-    const commentMatches = Array.from(content.matchAll(/\((?:评论|Comment)\s*(?:ID:?)?\s*([a-zA-Z0-9_-]+)?\s*:\s*(.+?)\)/gi));
+    // Regex for (评论 ID: ...). ID is required to prevent fuzzy matches landing on the latest post.
+    const commentMatches = Array.from(content.matchAll(/\((?:评论|Comment)\s*(?:ID:?)?\s*([a-zA-Z0-9_-]+)\s*[:：]\s*(.+?)\)/gi));
     for (const commentMatch of commentMatches) {
         if (commentMatch && commentMatch[2]) {
             const targetId = commentMatch[1];
@@ -276,29 +277,23 @@ export async function handleMainChatOutput(content) {
                 let targetPost = null;
                 let targetComment = null;
 
-                if (targetId) {
-                    const cleanTargetId = targetId.toLowerCase().trim();
-                    // 精确匹配 computeShortId(p.id) === cleanTargetId，避免 endsWith 把
-                    // 多个含相同后缀的 ID 都命中第一个，也避免 5-char 短ID 的碰撞风险。
-                    for (const p of feedCache) {
-                        if (computeShortId(p.id) === cleanTargetId) {
+                const cleanTargetId = targetId.toLowerCase().trim();
+                for (const p of feedCache) {
+                    if (computeShortId(p.id) === cleanTargetId) {
+                        targetPost = p;
+                        break;
+                    }
+                    if (p.comments) {
+                        const matchedComment = p.comments.find(c => computeShortId(c.id) === cleanTargetId);
+                        if (matchedComment) {
                             targetPost = p;
+                            targetComment = matchedComment;
                             break;
                         }
-                        if (p.comments) {
-                            const matchedComment = p.comments.find(c => computeShortId(c.id) === cleanTargetId);
-                            if (matchedComment) {
-                                targetPost = p;
-                                targetComment = matchedComment;
-                                break;
-                            }
-                        }
                     }
-                } else {
-                    targetPost = feedCache[0];
                 }
 
-                if (!targetPost && targetId) {
+                if (!targetPost) {
                     console.warn(`${MOMENTS_LOG_PREFIX} Target ID [${targetId}] not found for comment, skipping.`);
                     continue;
                 }
@@ -314,6 +309,15 @@ export async function handleMainChatOutput(content) {
                             isDuplicate = targetPost.comments.some(c => c.authorId === charAuthorId && !c.replyToId);
                         }
                         let exactTextDuplicate = targetPost.comments.some(c => c.authorId === charAuthorId && c.content === text);
+
+                        // Cross-author dedup: block parroting any existing comment (e.g. copying another commenter verbatim).
+                        const normalize = (s) => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+                        const newNorm = normalize(text);
+                        const crossAuthorDuplicate = newNorm.length > 0 && targetPost.comments.some(c => normalize(c.content) === newNorm);
+                        if (crossAuthorDuplicate) {
+                            console.warn(`${MOMENTS_LOG_PREFIX} Blocking comment: parrots an existing comment on post [${targetId}].`);
+                            continue;
+                        }
 
                         // ── 防重复：帖子无新外部活动时阻止评论 ──
                         if (!isDuplicate && !targetComment) {
