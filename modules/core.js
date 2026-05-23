@@ -155,7 +155,7 @@ export function setupMessageListener() {
     }
 
     // Hook chat_completion_prompt_ready for token counting.
-    // Skip when callPhoneLLM is in flight: its generateRaw fallback fires this
+    // Skip when callPhoneLLM is in flight: the ST backend-proxy path fires this
     // event with our own small prompt, which would corrupt the panel cache.
     // We do NOT re-trigger checkAutoTrigger from here — MESSAGE_SENT / MESSAGE_RECEIVED
     // already cover real user activity. Re-checking from this event also fired on

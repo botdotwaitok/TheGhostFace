@@ -1,6 +1,6 @@
 // api.js
 import { getContext, extension_settings } from '../../../../extensions.js';
-import { saveSettingsDebounced, generateRaw, getRequestHeaders, stopGeneration } from '../../../../../script.js';
+import { saveSettingsDebounced, getRequestHeaders } from '../../../../../script.js';
 import { getChatCompletionModel } from '../../../../openai.js';
 import { dlog } from './utils.js';
 
@@ -16,7 +16,7 @@ export let customApiConfig = {
 export let useCustomApi = true; // 当前是否使用自定义API（默认启用外部API）
 export let useMomentCustomApi = true; // 朋友圈独立API
 
-// In-flight counter for callPhoneLLM. The generateRaw fallback path emits
+// In-flight counter for callPhoneLLM. The ST backend-proxy path emits
 // `chat_completion_prompt_ready` with our own small prompt, which would
 // otherwise overwrite the panel's token cache. Listeners check this to skip
 // those self-induced events.
@@ -599,6 +599,8 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         model: customApiConfig.model,
         messages,
         temperature: 0.7,
+        top_p: 1,
+        top_k: 63,
         stream: false
     };
     if (maxTokens) {
@@ -705,53 +707,12 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
                     return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images, signal });
                 }
 
-                // ─── ST Main LLM path ───
-                if (images && images.length > 0) {
-                    // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
-                    if (attempt === 1) dlog('📱 [Phone LLM] 使用ST后端代理 (多模态)');
-                    return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens, signal);
-                }
-
-                // 纯文本 → generateRaw（最可靠，适配所有 provider）
-                if (attempt === 1) dlog('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
-                const context = getContext();
-                if (typeof context.generateRaw !== 'function') {
-                    throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
-                }
-
-                let combinedPrompt = '';
-                if (systemPrompt && systemPrompt.trim()) {
-                    combinedPrompt += systemPrompt.trim() + '\n\n';
-                }
-                combinedPrompt += userPrompt;
-
-                // generateRaw doesn't accept an AbortSignal directly; race against the
-                // external signal and call ST's stopGeneration() to abort the in-flight
-                // request when the user cancels.
-                let cancelListener;
-                const cancelPromise = new Promise((_, reject) => {
-                    if (signal) {
-                        cancelListener = () => {
-                            try { stopGeneration(); } catch (e) { /* ignore */ }
-                            reject(makeCancelError());
-                        };
-                        signal.addEventListener('abort', cancelListener, { once: true });
-                    }
-                });
-
-                let result;
-                try {
-                    result = await Promise.race([
-                        context.generateRaw(combinedPrompt, '', false, false, ''),
-                        cancelPromise,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('generateRaw 超时 (90秒)')), 90_000)),
-                    ]);
-                } finally {
-                    if (signal && cancelListener) {
-                        signal.removeEventListener('abort', cancelListener);
-                    }
-                }
-                return result?.trim() || '';
+                // ─── ST Main LLM path — chat-completion via ST backend proxy ───
+                // Bypasses ST's frontend cleanUpMessage → getRegexedString cleanup,
+                // so user-configured AI_OUTPUT regex scripts cannot strip our
+                // structured-JSON replies.
+                if (attempt === 1) dlog('📱 [Phone LLM] 使用ST后端代理');
+                return await _callSTBackendChat(systemPrompt, userPrompt, { images, maxTokens, signal });
 
             } catch (err) {
                 lastError = err;
@@ -792,17 +753,20 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
 }
 
 /**
- * Send a multimodal request via ST's backend proxy.
- * This route lets the ST Node.js server handle API key injection and
- * provider-specific routing (Gemini, OpenAI, Claude, etc.).
+ * Send a chat-completion request via ST's backend proxy. Replaces the old
+ * generateRaw path: same API-key injection and provider routing (Gemini,
+ * OpenAI, Claude, etc.), but skips ST's frontend cleanUpMessage pass — so
+ * user-configured AI_OUTPUT regex scripts cannot strip the LLM reply (which
+ * was deleting the structured-JSON reply when the user had aggressive regex
+ * rules like <think>…</think> removers). Images is optional; pass an array
+ * of base64 data URLs to enable the multimodal payload shape.
  *
  * @param {string} systemPrompt
  * @param {string} userPrompt
- * @param {string[]} images - Array of base64 data URLs
- * @param {number|null} maxTokens
+ * @param {{ images?: string[]|null, maxTokens?: number|null, signal?: AbortSignal|null }} [options]
  * @returns {Promise<string>}
  */
-async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens, signal = null) {
+async function _callSTBackendChat(systemPrompt, userPrompt, { images = null, maxTokens = null, signal = null } = {}) {
     const context = getContext();
     const oai = context.chatCompletionSettings;
     if (!oai) {
@@ -815,26 +779,43 @@ async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTok
         throw new Error('无法确定当前ST模型，请确保已在SillyTavern中选择了模型');
     }
 
-    dlog('📱 [Phone LLM] ST后端代理配置:', { source: chatCompletionSource, model });
+    const hasImages = Array.isArray(images) && images.length > 0;
+    dlog('📱 [Phone LLM] ST后端代理配置:', { source: chatCompletionSource, model, multimodal: hasImages });
 
-    // ── 构建 messages 数组（OpenAI 多模态格式） ──
+    // Resolve ST extended macros ({{datetime}}, {{random}}, {{getvar::x}}, …)
+    // before sending. The phone prompt builder already replaces {{user}} /
+    // {{char}}, but character-card text pulled into the prompt may still
+    // contain other macros that only ST knows how to expand.
+    const subst = (t) => {
+        if (!t || typeof context.substituteParams !== 'function') return t;
+        try { return context.substituteParams(t); } catch { return t; }
+    };
+    const resolvedSystem = subst(systemPrompt);
+    const resolvedUser = subst(userPrompt);
+
+    // ── 构建 messages 数组 ──
     const messages = [];
-    if (systemPrompt && systemPrompt.trim()) {
-        messages.push({ role: 'system', content: systemPrompt });
+    if (resolvedSystem && resolvedSystem.trim()) {
+        messages.push({ role: 'system', content: resolvedSystem });
     }
 
-    // User message with text + image_url parts
-    const contentParts = [];
-    if (userPrompt && userPrompt.trim()) {
-        contentParts.push({ type: 'text', text: userPrompt });
+    if (hasImages) {
+        // Multimodal: user message is an array of text+image parts.
+        const contentParts = [];
+        if (resolvedUser && resolvedUser.trim()) {
+            contentParts.push({ type: 'text', text: resolvedUser });
+        }
+        for (const imgDataUrl of images) {
+            contentParts.push({
+                type: 'image_url',
+                image_url: { url: imgDataUrl },
+            });
+        }
+        messages.push({ role: 'user', content: contentParts });
+    } else {
+        // Pure text: keep the standard string-content shape.
+        messages.push({ role: 'user', content: resolvedUser ?? '' });
     }
-    for (const imgDataUrl of images) {
-        contentParts.push({
-            type: 'image_url',
-            image_url: { url: imgDataUrl },
-        });
-    }
-    messages.push({ role: 'user', content: contentParts });
 
     // ── 构建请求体（模仿 ST 的 sendOpenAIRequest） ──
     const generateData = {
@@ -842,10 +823,18 @@ async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTok
         messages,
         model,
         temperature: Number(oai.temp_openai) || 0.7,
+        top_p: Number(oai.top_p_openai ?? 1.0),
         max_tokens: maxTokens || oai.openai_max_tokens || 4000,
         stream: false,
         chat_completion_source: chatCompletionSource,
     };
+
+    // top_k only when user explicitly set > 0 — ST default 0 means "disabled"
+    // and OpenAI rejects the param entirely.
+    const topK = Number(oai.top_k_openai);
+    if (Number.isFinite(topK) && topK > 0) {
+        generateData.top_k = topK;
+    }
 
     // 添加 provider 特定字段
     if (oai.reverse_proxy) {

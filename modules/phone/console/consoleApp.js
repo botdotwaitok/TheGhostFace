@@ -302,6 +302,24 @@ function _pushLog(buffer, entry) {
 function _safeClone(val) {
     if (val === null || val === undefined) return val;
     if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return val;
+
+    // Error instances have non-enumerable message/stack/name, so neither
+    // JSON.stringify nor Object.keys can see them — left alone they render
+    // as "{}" and the actual failure message is lost. Normalize to a plain
+    // tagged object that the tree renderer recognizes.
+    if (val instanceof Error) {
+        const out = {
+            __errorTag: true,
+            name: val.name || 'Error',
+            message: val.message || String(val),
+            stack: val.stack || '',
+        };
+        if (val.cause !== undefined) {
+            try { out.cause = _safeClone(val.cause); } catch { /* ignore */ }
+        }
+        return out;
+    }
+
     try {
         // structuredClone handles most cases
         return structuredClone(val);
@@ -658,6 +676,20 @@ function renderValue(val, depth) {
 
     // Object or Array
     if (typeof val === 'object') {
+        // Error objects — either a tagged plain object from _safeClone, or
+        // a raw Error instance (can occur when an Error sits inside another
+        // object that structuredClone copied as-is).
+        if (val.__errorTag === true) {
+            return _renderError(val);
+        }
+        if (val instanceof Error) {
+            return _renderError({
+                name: val.name || 'Error',
+                message: val.message || String(val),
+                stack: val.stack || '',
+            });
+        }
+
         if (depth >= MAX_OBJ_DEPTH) {
             return Array.isArray(val)
                 ? `<span class="console-val-null">[Array(${val.length})]</span>`
@@ -717,8 +749,44 @@ function _primitivePreview(val) {
     if (val === null) return 'null';
     if (val === undefined) return 'undefined';
     if (typeof val === 'string') return val.length > 20 ? `"${val.substring(0, 20)}…"` : `"${val}"`;
-    if (typeof val === 'object') return Array.isArray(val) ? `[…]` : `{…}`;
+    if (typeof val === 'object') {
+        if (val.__errorTag === true || val instanceof Error) {
+            const m = val.message || '';
+            return m ? `${val.name || 'Error'}: ${m.substring(0, 30)}${m.length > 30 ? '…' : ''}` : (val.name || 'Error');
+        }
+        return Array.isArray(val) ? `[…]` : `{…}`;
+    }
     return String(val);
+}
+
+function _renderError(errObj) {
+    const name = errObj.name || 'Error';
+    const message = errObj.message || '';
+    const stack = errObj.stack || '';
+    const headerText = message ? `${name}: ${message}` : name;
+
+    // The stack often repeats the header on its first line — strip it so the
+    // expanded view doesn't echo the message twice.
+    let stackBody = stack;
+    if (stackBody) {
+        const firstNl = stackBody.indexOf('\n');
+        const firstLine = firstNl >= 0 ? stackBody.substring(0, firstNl) : stackBody;
+        if (firstLine === headerText || firstLine === name || firstLine.startsWith(name + ':')) {
+            stackBody = firstNl >= 0 ? stackBody.substring(firstNl + 1) : '';
+        }
+    }
+
+    if (!stackBody) {
+        return `<span class="console-val-error">${escHtml(headerText)}</span>`;
+    }
+
+    return `<span class="console-obj-tree">` +
+        `<span class="console-obj-toggle" onclick="this.classList.toggle('open');` +
+        `this.nextElementSibling.style.display=this.classList.contains('open')?'block':'none'">` +
+        `▶ <span class="console-val-error">${escHtml(headerText)}</span></span>` +
+        `<div class="console-obj-content" style="display:none">` +
+        `<pre class="console-val-error-stack">${escHtml(stackBody)}</pre>` +
+        `</div></span>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════

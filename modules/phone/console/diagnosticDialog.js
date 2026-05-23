@@ -101,6 +101,8 @@ function renderInitialView() {
             <div class="diag-section-title">本诊断包将包含</div>
             <ul class="diag-list">
                 <li><i class="ph ph-check"></i> 插件版本、ST 版本、浏览器/屏幕信息</li>
+                <li><i class="ph ph-check"></i> 当前 ST 选中的 API / 模型（仅主机名，不含密钥）</li>
+                <li><i class="ph ph-check"></i> 你启用的正则脚本（名称 / 规则 / 启用状态）</li>
                 <li><i class="ph ph-check"></i> 最近出现在 Console 里的错误、网络请求、模块日志</li>
             </ul>
         </div>

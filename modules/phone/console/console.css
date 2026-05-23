@@ -321,6 +321,22 @@
     color: #888888;
     font-style: italic;
 }
+.console-val-error {
+    color: #ff6b6b;
+    font-weight: 600;
+}
+.console-val-error-stack {
+    color: #c8c8c8;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    padding: 6px 8px;
+    margin: 4px 0 4px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+}
 
 /* ═══ Network Entry ═══ */
 .console-net-entry {
