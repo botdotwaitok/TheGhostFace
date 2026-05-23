@@ -1,5 +1,6 @@
 # Agent configuration
 .agents/
+.claude/
 CLAUDE.md
 
 # Local planning docs (not part of the codebase)
