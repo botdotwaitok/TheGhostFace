@@ -264,8 +264,10 @@ export async function handleReturnHome() {
                     name: msg.role === 'user' ? userName : charName,
                 }));
 
-                const fragments = await generateSummary(summarizerMessages, true);
-                if (fragments && Array.isArray(fragments) && fragments.length > 0) {
+                // generateSummary returns { entries, timelineSegments }, not a bare array
+                const summaryResult = await generateSummary(summarizerMessages, true);
+                const fragments = summaryResult?.entries;
+                if (Array.isArray(fragments) && fragments.length > 0) {
                     await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
                     if (statusEl) statusEl.innerHTML = `<i class="ph ph-puzzle-piece"></i> 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;

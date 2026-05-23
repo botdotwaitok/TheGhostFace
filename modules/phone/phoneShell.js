@@ -80,9 +80,8 @@ export const phonePanelTemplate = String.raw`
         <!-- ═══ App Viewport (for in-phone app rendering — reserved for future) ═══ -->
         <div class="phone-app-viewport" id="phone_app_viewport">
             <div class="phone-app-viewport-header">
-                <button class="phone-app-back-btn" id="phone_app_back_btn" style="min-width: 60px;">
+                <button class="phone-app-back-btn" id="phone_app_back_btn">
                     <i class="fa-solid fa-chevron-left"></i>
-                    <span>返回</span>
                 </button>
                 <div class="phone-app-viewport-title" id="phone_app_viewport_title"></div>
                 <div id="phone_app_viewport_actions" style="min-width: 60px; display: flex; justify-content: flex-end; align-items: center;"></div>

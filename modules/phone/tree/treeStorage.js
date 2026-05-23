@@ -4,6 +4,7 @@
 
 import { apiRequest } from '../moments/apiClient.js';
 import { getSettings } from '../moments/state.js';
+import { dlog } from '../../utils.js';
 
 const STORAGE_KEY = 'gf_tree_data';
 const TREE_LOG_PREFIX = '[树树]';
@@ -98,7 +99,7 @@ export function loadTreeData() {
         // 可能导致 treeState.stage 与实际 growth 不匹配
         const correctStage = _getStageId(data.treeState.growth);
         if (data.treeState.stage !== correctStage) {
-            console.log(`${TREE_LOG_PREFIX} 修正阶段: "${data.treeState.stage}" → "${correctStage}" (growth=${data.treeState.growth})`);
+            dlog(`${TREE_LOG_PREFIX} 修正阶段: "${data.treeState.stage}" → "${correctStage}" (growth=${data.treeState.growth})`);
             data.treeState.stage = correctStage;
             saveTreeData(data);
         }
@@ -218,7 +219,7 @@ export function checkDailyReset() {
             data.treeState.careDateHistory.push(today);
         }
         saveTreeData(data);
-        console.log(`${TREE_LOG_PREFIX} 新的一天！每日次数已重置`);
+        dlog(`${TREE_LOG_PREFIX} 新的一天！每日次数已重置`);
     }
 
     return { isNewDay, data };
@@ -340,7 +341,7 @@ export function appendQuestions(type, questions) {
 
     data.questionBank.lastGeneratedAt = new Date().toISOString();
     saveTreeData(data);
-    console.log(`${TREE_LOG_PREFIX} 追加 ${type} 题目 ${questions.length} 条，去重后总计 ${existing.length} 条`);
+    dlog(`${TREE_LOG_PREFIX} 追加 ${type} 题目 ${questions.length} 条，去重后总计 ${existing.length} 条`);
 }
 
 // ── 扭蛋图鉴 ─────────────────────────────────────────────────────────
@@ -433,7 +434,7 @@ export function updateTreeSettings(updates) {
 export function resetTreeData() {
     const data = createDefaultData();
     saveTreeData(data);
-    console.log(`${TREE_LOG_PREFIX} 树数据已重置`);
+    dlog(`${TREE_LOG_PREFIX} 树数据已重置`);
     return data;
 }
 
@@ -451,7 +452,7 @@ export function resetTreeContent() {
     data.questionBank.tod = [];
     data.questionBank.lastGeneratedAt = '';
     saveTreeData(data);
-    console.log(`${TREE_LOG_PREFIX} 台词内容已重置（树状态保留）`);
+    dlog(`${TREE_LOG_PREFIX} 台词内容已重置（树状态保留）`);
     return data;
 }
 
@@ -469,7 +470,7 @@ export function exportTreeData() {
 export function importTreeData(data) {
     const merged = deepMerge(createDefaultData(), data);
     saveTreeData(merged);
-    console.log(`${TREE_LOG_PREFIX} 树数据已导入`);
+    dlog(`${TREE_LOG_PREFIX} 树数据已导入`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -501,7 +502,7 @@ function _syncToServer(data) {
 
     // 安全防护：不上传空白/默认数据，防止覆盖服务器上的真实数据
     if (!data?.treeState?.treeName) {
-        console.log(`${TREE_LOG_PREFIX} 跳过同步：本地数据无树名（空白默认值），不覆盖服务器`);
+        dlog(`${TREE_LOG_PREFIX} 跳过同步：本地数据无树名（空白默认值），不覆盖服务器`);
         return;
     }
 
@@ -513,7 +514,7 @@ function _syncToServer(data) {
         try {
             await apiRequest('POST', `/api/tree/${encodeURIComponent(settings.userId)}`, { data });
             _hasPendingSync = false;
-            console.log(`${TREE_LOG_PREFIX} 数据已同步到服务器 ✅`);
+            dlog(`${TREE_LOG_PREFIX} 数据已同步到服务器 ✅`);
         } catch (e) {
             console.warn(`${TREE_LOG_PREFIX} 服务器同步失败（不影响本地使用）:`, e.message);
         }
@@ -550,7 +551,7 @@ export async function flushSyncNow() {
     try {
         await apiRequest('POST', `/api/tree/${encodeURIComponent(settings.userId)}`, { data });
         _hasPendingSync = false;
-        console.log(`${TREE_LOG_PREFIX} 数据已立即同步到服务器 ✅`);
+        dlog(`${TREE_LOG_PREFIX} 数据已立即同步到服务器 ✅`);
         return true;
     } catch (e) {
         console.warn(`${TREE_LOG_PREFIX} 立即同步失败:`, e.message);
@@ -575,7 +576,7 @@ export async function forceSyncToServer() {
     }
     try {
         await apiRequest('POST', `/api/tree/${encodeURIComponent(settings.userId)}`, { data });
-        console.log(`${TREE_LOG_PREFIX} 数据已强制同步到服务器 ✅`);
+        dlog(`${TREE_LOG_PREFIX} 数据已强制同步到服务器 ✅`);
         return true;
     } catch (e) {
         console.error(`${TREE_LOG_PREFIX} 强制同步失败:`, e.message);
@@ -589,7 +590,7 @@ export async function forceSyncToServer() {
  */
 async function _pullFromServer() {
     const settings = getSettings();
-    console.log(`${TREE_LOG_PREFIX} [云端恢复] 检查 settings: backendUrl=${!!settings.backendUrl}, userId=${settings.userId || '(空)'}`);
+    dlog(`${TREE_LOG_PREFIX} [云端恢复] 检查 settings: backendUrl=${!!settings.backendUrl}, userId=${settings.userId || '(空)'}`);
     if (!settings.backendUrl || !settings.userId) {
         console.warn(`${TREE_LOG_PREFIX} [云端恢复] 跳过拉取：缺少 backendUrl 或 userId`);
         return null;
@@ -597,9 +598,9 @@ async function _pullFromServer() {
 
     try {
         const result = await apiRequest('GET', `/api/tree/${encodeURIComponent(settings.userId)}`);
-        console.log(`${TREE_LOG_PREFIX} [云端恢复] 服务器返回:`, JSON.stringify(result).slice(0, 200));
+        dlog(`${TREE_LOG_PREFIX} [云端恢复] 服务器返回:`, JSON.stringify(result).slice(0, 200));
         if (result && result.data) {
-            console.log(`${TREE_LOG_PREFIX} 从服务器恢复数据 ✅ treeName=${result.data?.treeState?.treeName}`);
+            dlog(`${TREE_LOG_PREFIX} 从服务器恢复数据 ✅ treeName=${result.data?.treeState?.treeName}`);
             return result.data;
         } else {
             console.warn(`${TREE_LOG_PREFIX} [云端恢复] 服务器返回 data 为空/null — 服务器上无此用户的树数据`);
@@ -648,28 +649,28 @@ export async function initTreeDataFromServer() {
     if (serverData && localData) {
         // 两边都有有效数据 → 比较时间戳
         if (localTime > serverTime) {
-            console.log(`${TREE_LOG_PREFIX} [同步] 本地更新 (本地=${localData._updatedAt}, 云端=${serverData._updatedAt}) → 保留本地，上传到服务器`);
+            dlog(`${TREE_LOG_PREFIX} [同步] 本地更新 (本地=${localData._updatedAt}, 云端=${serverData._updatedAt}) → 保留本地，上传到服务器`);
             _syncToServer(localData);
             return localData;
         } else {
-            console.log(`${TREE_LOG_PREFIX} [同步] 云端更新 (云端=${serverData._updatedAt}, 本地=${localData._updatedAt}) → 用云端覆盖本地`);
+            dlog(`${TREE_LOG_PREFIX} [同步] 云端更新 (云端=${serverData._updatedAt}, 本地=${localData._updatedAt}) → 用云端覆盖本地`);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
             return serverData;
         }
     } else if (serverData) {
         // 只有服务器有 → 恢复到本地
-        console.log(`${TREE_LOG_PREFIX} [同步] 本地无数据，从云端恢复 ✅`);
+        dlog(`${TREE_LOG_PREFIX} [同步] 本地无数据，从云端恢复 ✅`);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
         return serverData;
     } else if (localData) {
         // 只有本地有 → 上传到服务器
-        console.log(`${TREE_LOG_PREFIX} [同步] 云端无数据，上传本地到服务器`);
+        dlog(`${TREE_LOG_PREFIX} [同步] 云端无数据，上传本地到服务器`);
         _syncToServer(localData);
         return localData;
     }
 
     // 两边都没有 → 全新用户
-    console.log(`${TREE_LOG_PREFIX} [同步] 本地和云端都无数据，使用默认值`);
+    dlog(`${TREE_LOG_PREFIX} [同步] 本地和云端都无数据，使用默认值`);
     return createDefaultData();
 }
 
@@ -727,7 +728,7 @@ export function addFruitToCollection(treeType) {
     }
     data.treeState.fruitsCollected.push(treeType);
     saveTreeData(data);
-    console.log(`${TREE_LOG_PREFIX} 收集到新果实: ${treeType} 🎉`);
+    dlog(`${TREE_LOG_PREFIX} 收集到新果实: ${treeType} 🎉`);
     return true;
 }
 
@@ -784,7 +785,7 @@ export function archiveCurrentTree(newTreeType, newTreeName) {
     };
 
     saveTreeData(data);
-    console.log(`${TREE_LOG_PREFIX} 大树归档: ${archiveRecord.treeName} (${archiveRecord.treeType})`);
+    dlog(`${TREE_LOG_PREFIX} 大树归档: ${archiveRecord.treeName} (${archiveRecord.treeType})`);
     return archiveRecord;
 }
 

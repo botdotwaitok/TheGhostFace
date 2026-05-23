@@ -2,6 +2,7 @@
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { saveSettingsDebounced, generateRaw, getRequestHeaders, stopGeneration } from '../../../../../script.js';
 import { getChatCompletionModel } from '../../../../openai.js';
+import { dlog } from './utils.js';
 
 
 // 定义模块名称常量
@@ -106,7 +107,7 @@ export function updateApiConfigUI() {
 
     updateApiStatusDisplay();
 
-    console.log('API配置UI已更新:', { useCustomApi, config: customApiConfig });
+    dlog('API配置UI已更新:', { useCustomApi, config: customApiConfig });
 }
 
 export function setupCustomApiEvents() {
@@ -126,7 +127,7 @@ export function setupCustomApiEvents() {
             if (typeof window.logger !== 'undefined') {
                 window.logger.info('自定义API开关:', useCustomApi ? '已启用' : '已禁用');
             } else {
-                console.log('自定义API开关:', useCustomApi ? '已启用' : '已禁用');
+                dlog('自定义API开关:', useCustomApi ? '已启用' : '已禁用');
             }
 
             if (useCustomApi) {
@@ -147,7 +148,7 @@ export function setupCustomApiEvents() {
             if (typeof window.logger !== 'undefined') {
                 window.logger.info('朋友圈独立API开关:', useMomentCustomApi ? '已启用' : '已禁用');
             } else {
-                console.log('朋友圈独立API开关:', useMomentCustomApi ? '已启用' : '已禁用');
+                dlog('朋友圈独立API开关:', useMomentCustomApi ? '已启用' : '已禁用');
             }
         });
     }
@@ -206,7 +207,7 @@ export function setupCustomApiEvents() {
                 if (typeof window.logger !== 'undefined') {
                     window.logger.info('API配置已保存:', { url: customApiConfig.url, model: customApiConfig.model });
                 } else {
-                    console.log('API配置已保存:', { url: customApiConfig.url, model: customApiConfig.model });
+                    dlog('API配置已保存:', { url: customApiConfig.url, model: customApiConfig.model });
                 }
             }
         });
@@ -255,7 +256,7 @@ export function setupCustomApiEvents() {
         });
     }
 
-    console.log('API事件监听器已设置完成');
+    dlog('API事件监听器已设置完成');
 }
 
 // 保存自定义 API 设置
@@ -284,7 +285,7 @@ export function saveCustomApiSettings() {
         if (typeof window.logger !== 'undefined') {
             window.logger.info('自定义API设置已保存', { useCustomApi, config: { ...customApiConfig, apiKey: customApiConfig.apiKey ? '***' : '' } });
         } else {
-            console.log('自定义API设置已保存', { useCustomApi, config: { ...customApiConfig, apiKey: customApiConfig.apiKey ? '***' : '' } });
+            dlog('自定义API设置已保存', { useCustomApi, config: { ...customApiConfig, apiKey: customApiConfig.apiKey ? '***' : '' } });
         }
     } catch (error) {
         if (typeof window.logger !== 'undefined') {
@@ -305,14 +306,14 @@ export function loadCustomApiSettings() {
             if (savedConfig) {
                 const parsedConfig = JSON.parse(savedConfig);
                 customApiConfig = { ...customApiConfig, ...parsedConfig };
-                console.log('从localStorage加载的配置:', parsedConfig);
+                dlog('从localStorage加载的配置:', parsedConfig);
                 loaded = true;
             }
 
             const savedUseCustom = localStorage.getItem(STORAGE_KEY_USE_CUSTOM_API);
             if (savedUseCustom !== null) {
                 useCustomApi = savedUseCustom === 'true';
-                console.log('从localStorage加载的开关状态:', useCustomApi);
+                dlog('从localStorage加载的开关状态:', useCustomApi);
             }
 
             const savedMomentUseCustom = localStorage.getItem(STORAGE_KEY_USE_MOMENT_CUSTOM_API);
@@ -328,12 +329,12 @@ export function loadCustomApiSettings() {
             const ext = extension_settings[MODULE_NAME] || {};
             if (ext.customApiConfig) {
                 customApiConfig = { ...customApiConfig, ...ext.customApiConfig };
-                console.log('从扩展设置加载的配置:', ext.customApiConfig);
+                dlog('从扩展设置加载的配置:', ext.customApiConfig);
                 loaded = true;
             }
             if (typeof ext.useCustomApi === 'boolean') {
                 useCustomApi = !!ext.useCustomApi;
-                console.log('从扩展设置加载的开关状态:', useCustomApi);
+                dlog('从扩展设置加载的开关状态:', useCustomApi);
             }
             if (typeof ext.useMomentCustomApi === 'boolean') {
                 useMomentCustomApi = !!ext.useMomentCustomApi;
@@ -346,7 +347,7 @@ export function loadCustomApiSettings() {
             if (typeof window.logger !== 'undefined') {
                 window.logger.info('自定义API设置已加载');
             } else {
-                console.log('自定义API设置已加载');
+                dlog('自定义API设置已加载');
             }
         }
 
@@ -518,7 +519,7 @@ export async function loadApiModels() {
             if (typeof window.logger !== 'undefined') {
                 window.logger.info('成功加载模型:', data.data?.length || data.length);
             } else {
-                console.log('成功加载模型:', data.data?.length || data.length);
+                dlog('成功加载模型:', data.data?.length || data.length);
             }
 
         } else {
@@ -700,19 +701,19 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
             try {
                 if (useMomentCustomApi && customApiConfig?.url && customApiConfig?.model) {
                     // ─── Custom API path (手机端独立开关 useMomentCustomApi) ───
-                    if (attempt === 1) console.log('📱 [Phone LLM] 使用自定义API');
+                    if (attempt === 1) dlog('📱 [Phone LLM] 使用自定义API');
                     return await callCustomOpenAI(systemPrompt, userPrompt, { maxTokens, images, signal });
                 }
 
                 // ─── ST Main LLM path ───
                 if (images && images.length > 0) {
                     // 有图片 → 走 ST 后端代理（支持多模态，服务端持有 API key）
-                    if (attempt === 1) console.log('📱 [Phone LLM] 使用ST后端代理 (多模态)');
+                    if (attempt === 1) dlog('📱 [Phone LLM] 使用ST后端代理 (多模态)');
                     return await _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTokens, signal);
                 }
 
                 // 纯文本 → generateRaw（最可靠，适配所有 provider）
-                if (attempt === 1) console.log('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
+                if (attempt === 1) dlog('📱 [Phone LLM] 使用ST主LLM (generateRaw)');
                 const context = getContext();
                 if (typeof context.generateRaw !== 'function') {
                     throw new Error('generateRaw 不可用，请确保SillyTavern已正确加载');
@@ -814,7 +815,7 @@ async function _callSTBackendWithImages(systemPrompt, userPrompt, images, maxTok
         throw new Error('无法确定当前ST模型，请确保已在SillyTavern中选择了模型');
     }
 
-    console.log('📱 [Phone LLM] ST后端代理配置:', { source: chatCompletionSource, model });
+    dlog('📱 [Phone LLM] ST后端代理配置:', { source: chatCompletionSource, model });
 
     // ── 构建 messages 数组（OpenAI 多模态格式） ──
     const messages = [];

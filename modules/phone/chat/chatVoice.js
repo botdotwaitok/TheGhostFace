@@ -4,6 +4,7 @@
 import {
     escHtml, CHAT_LOG_PREFIX, scrollToBottom,
     getPendingMessages, updateButtonStates,
+    getPendingReplyTo, clearPendingReplyTo,
 } from './chatApp.js';
 import { renderDraftArea } from './chatMessageHandler.js';
 import {
@@ -158,8 +159,11 @@ async function _finishRecording(overlay) {
         // Store voice data for sendAllMessages() to pick up
         _pendingVoiceData = { audioPath, duration: result.duration };
 
-        // Push transcribed text into pending drafts (like kiwi drafts)
-        getPendingMessages().push(text);
+        // Push transcribed text into pending drafts (like kiwi drafts).
+        // Snapshot the active reply target (if any) onto this voice draft.
+        const replyTo = getPendingReplyTo();
+        getPendingMessages().push({ text, replyTo: replyTo || null });
+        clearPendingReplyTo();
         renderDraftArea();
         updateButtonStates();
 

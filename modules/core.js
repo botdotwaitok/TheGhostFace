@@ -1,6 +1,7 @@
 // core.js
 import { getContext, extension_settings, cancelDebouncedMetadataSave } from '../../../../extensions.js';
-import { saveChatConditional, cancelDebouncedChatSave, chat, characters, eventSource, event_types } from '../../../../../script.js';
+import { cancelDebouncedChatSave, chat, characters, eventSource, event_types } from '../../../../../script.js';
+import { queueSaveChat } from './phone/chat/chatStorage.js';
 import { createWorldInfoEntry } from '../../../../world-info.js';
 
 import { stampCreated, stampUpdated } from './worldbook/timestampHelpers.js';
@@ -838,17 +839,17 @@ export function get_extension_directory() {
     return extension_path;
 }
 
-//保存聊天 — 直接调用 saveChatConditional（可 await、有 mutex 保护）
-// ⚠️ 修复竞态：旧版用 saveChatDebounced() + sleep(1500ms)，与 saveMetadataDebounced
-// 形成两路独立定时器竞争。现在先取消所有待处理的 debounce，再同步保存。
+//保存聊天 — 通过 queueSaveChat() 串行化（防 metadata 并发写覆盖）
+// 旧版用 saveChatDebounced() + sleep(1500ms)，与 saveMetadataDebounced
+// 形成两路独立定时器竞争。现在先取消所有待处理的 debounce，再通过 queue 串行写入。
 export async function saveChat() {
     try {
         // 取消所有待处理的 debounced save，防止它们在我们保存后再覆盖
         cancelDebouncedChatSave();
         cancelDebouncedMetadataSave();
 
-        // 直接同步保存 — 内部有 isChatSaving mutex 防并发
-        await saveChatConditional();
+        // 通过统一 queue 串行写入，避免与其他模块的 saveChatConditional 并发
+        await queueSaveChat();
         return true;
 
     } catch (error) {

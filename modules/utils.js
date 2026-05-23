@@ -16,7 +16,7 @@ let systemInitialized = false;
 // 设置系统初始化状态的函数
 export function setSystemInitialized(status) {
     systemInitialized = status;
-    console.log(`🔧 [鬼面] 系统初始化状态: ${status}`);
+    dlog(`[鬼面] 系统初始化状态: ${status}`);
 }
 
 
@@ -28,6 +28,19 @@ export const LOG_LEVEL = {
     WARN: 'warn',
     ERROR: 'error'
 };
+
+// Debug flag — silent in production. To enable verbose console.log output:
+//   localStorage.setItem('GF_DEBUG', '1'); location.reload();
+// To disable:
+//   localStorage.removeItem('GF_DEBUG'); location.reload();
+// Note: console.warn / console.error are NEVER gated — warnings and errors must
+// always be visible to surface real issues to anyone debugging.
+export const DEBUG = (() => {
+    try { return localStorage.getItem('GF_DEBUG') === '1'; }
+    catch { return false; }
+})();
+
+export const dlog = (...args) => { if (DEBUG) console.log(...args); };
 
 // HTML转义函数
 export function escapeHtml(unsafe) {

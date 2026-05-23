@@ -2,7 +2,7 @@
 // Builds system + user prompts for the custom API call.
 // Integrates Entity/恶灵 worldview from "恶灵低语(短信版)" preset.
 
-import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary } from './chatStorage.js';
+import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary, buildReplySnippet } from './chatStorage.js';
 import { getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { getActiveChatEffects, getActivePersonalityOverrides, getActiveSpecialMessageEffects, getActivePrankEffects, getActiveRobBuffs } from '../shop/shopStorage.js';
 import { getShopItem, resolveItemPrompt } from '../shop/shopData.js';
@@ -11,7 +11,7 @@ import { buildCalendarPrompt } from '../calendar/calendarWorldInfo.js';
 import { buildCharGiftPrompt } from '../shop/giftSystem.js';
 import { buildRobBuffPrompts } from '../shop/robberySystem.js';
 import { getSettings as getMomentsSettings, getFeedCache } from '../moments/state.js';
-import { getMomentsSystemPrompt } from '../moments/momentsWorldInfo.js';
+import { getMomentsSystemPrompt, computeShortId } from '../moments/momentsWorldInfo.js';
 import { getCharacterId } from '../moments/constants.js';
 import { pushPromptLog } from '../console/consoleApp.js';
 import { getLatestCallLog } from '../voiceCall/vcStorage.js';
@@ -25,6 +25,9 @@ import { getPhoneIdleDuration, humanizeMs } from './autoMessage.js';
 /** Regex to match moments commands in AI output */
 export const MOMENTS_COMMAND_REGEX = /\((?:朋友圈|Moments)\s*:\s*[\s\S]*?\)|\((?:评论|Comment)\s*(?:ID:?)?\s*[a-zA-Z0-9_-]*\s*:\s*[\s\S]*?\)/gm;
 
+/** Regex to match <content>...</content> blocks (case-insensitive, multiline) */
+export const CONTENT_TAG_REGEX = /<content\b[^>]*>[\s\S]*?<\/content>/gi;
+
 /**
  * Strip moments commands from text to avoid wasting tokens in history.
  * @param {string} text
@@ -33,6 +36,51 @@ export const MOMENTS_COMMAND_REGEX = /\((?:朋友圈|Moments)\s*:\s*[\s\S]*?\)|\
 export function stripMomentsCommands(text) {
     if (!text) return text;
     return text.replace(MOMENTS_COMMAND_REGEX, '').trim();
+}
+
+/**
+ * Strip <content>...</content> blocks from text (used when piping ST main chat
+ * history into chat app prompts — these blocks belong to the main-chat protocol
+ * and are noise for the SMS persona).
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripContentTags(text) {
+    if (!text) return text;
+    return text.replace(CONTENT_TAG_REGEX, '').trim();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Reply Indexing — for replyToIndex protocol (Phase 2)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Number of trailing chat_history entries that get a [N] prefix in the
+ * user prompt. The LLM can reference them via replyToIndex in its JSON
+ * output. Anything older is not indexable (reply targets are almost always
+ * recent — extending this just inflates the prompt without value).
+ */
+export const RECENT_REPLY_WINDOW = 50;
+
+/**
+ * Project the trailing window of activeHistory into the same {role, snippet}
+ * pairs that the LLM-facing [N] numbers point at. Index i in the returned
+ * array corresponds to the prompt-side label [i + 1].
+ *
+ * activeHistory MUST be the same array (post-`!summarized` filter) the
+ * prompt builder renders into chat_history lines, otherwise the LLM's index
+ * and the resolver's lookup will drift.
+ *
+ * @param {Array} activeHistory
+ * @returns {Array<{role:string, snippet:string}>}
+ */
+export function buildIndexableReplyMap(activeHistory) {
+    if (!activeHistory?.length) return [];
+    const start = Math.max(0, activeHistory.length - RECENT_REPLY_WINDOW);
+    return activeHistory.slice(start).map(m => ({
+        role: m.role,
+        snippet: buildReplySnippet(m),
+    }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -243,21 +291,38 @@ Flag any instance where ${charName} seems to "mind-read" ${userName}'s unexpress
 </think>
 
 <output_format>
-You MUST reply in valid JSON array format, where each text message is one object. Never wrap in code block markers.
-[
-  {
-    "text": "Message content",
-    "thought": "${charName}'s inner thoughts while sending this message, be real and vivid (1-3 sentences)",
-    "delay": delay in seconds (number between 0-3),
-    "special": "(optional) voice or call"
-  }
-]
+You MUST reply in valid JSON format (an object, NOT a bare array). Never wrap in code block markers.
+{
+  "messages": [
+    {
+      "text": "Message content",
+      "thought": "${charName}'s inner thoughts while sending this message, be real and vivid (1-3 sentences)",
+      "delay": delay in seconds (number between 0-3),
+      "special": "(optional) voice or call",
+      "replyToIndex": 3
+    }
+  ],
+  "reactions": [
+    { "targetIndex": -1, "emoji": "🥺" }
+  ]
+}
+
+messages (required): array of text messages.
 - text: Required. The message content.
 - thought: Required. ${charName}'s inner monologue.
 - delay: Required. Simulates typing delay — 0 = instant, 1-3 = sent after thinking.
 - special: Optional. Omit for a normal text message. "voice" = send this message as a voice note (TTS-synthesized). "call" = initiate a voice call (triggers incoming call UI).
   Most messages do not need special set. Use "voice" only when ${charName} feels a voice conveys the emotion better; use "call" only when ${charName} wants a deeper, real-time conversation.
+- replyToIndex: Optional. Use ONLY when this message is specifically replying to a much earlier line in chat_history (not the current incoming message). Lines in chat_history may be prefixed with a bracketed number like [3] — fill in that number to quote that line. Examples:
+  - ${userName} mentions a coffee shop, then 10 messages later ${charName} circles back: "对了，你说的那家咖啡店…" → set replyToIndex to the [N] of the original coffee-shop line.
+  - Almost all messages should OMIT replyToIndex. Default behavior (no quote) reads more naturally. Only use it when the quote is genuinely needed for clarity. Never quote the very last user message — that's just a normal reply.
 - You may return multiple messages (multiple objects in the array) to simulate rapid-fire texting.
+
+reactions (OPTIONAL, OMIT BY DEFAULT): emoji reactions ${charName} taps on ${userName}'s recent messages.
+- targetIndex: which of ${userName}'s messages to react to, counted from the end. -1 = the most recent message from ${userName}, -2 = the one before that, etc. Counts ONLY ${userName}'s messages, never ${charName}'s own.
+- emoji: ANY single emoji ${charName} would naturally tap — no whitelist, follow ${charName}'s personality and the emotional moment (🔥 for "I got the job!", 🥺 for vulnerable confessions,  etc.).
+- Use SPARINGLY. Real lovers don't tap-back every message or everytime. Only react when the emoji genuinely adds an emotional beat that words alone can't. When in doubt, omit the "reactions" key entirely.
+- The reaction is a SUPPLEMENT to the text reply, not a replacement — still send messages as usual.
 </output_format>
 ${buildCalendarPrompt()}
 ${buildActiveBuffsPrompt(charName)}
@@ -521,7 +586,7 @@ function buildMomentsFeedPrompt(charName, userName) {
         const recentPosts = feedCache.slice(0, 5);
         const feedText = recentPosts.map(p => {
             const timeStr = new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const shortId = p.id.split('_').pop().slice(-5);
+            const shortId = computeShortId(p.id);
 
             let postReplied = p.comments?.some(c => myAuthorIds.has(c.authorId) && !c.replyToId);
             let noNewActivity = false;
@@ -540,7 +605,7 @@ function buildMomentsFeedPrompt(charName, userName) {
 
             if (p.comments && p.comments.length > 0) {
                 const recentComments = p.comments.slice(-5).map(c => {
-                    const cShortId = c.id.split('_').pop().slice(-5);
+                    const cShortId = computeShortId(c.id);
                     const replyStr = c.replyToName ? ` 回复 ${c.replyToName}` : '';
                     let commentReplied = p.comments.some(replyC => myAuthorIds.has(replyC.authorId) && replyC.replyToId === c.id);
                     return `  - 【评论】[ID:${cShortId}] ${c.authorName}${replyStr}: ${c.content}${commentReplied ? ' [你已回复]' : ''}`;
@@ -588,8 +653,8 @@ ${postGuidance}${commentGuidance}
 ⚠️格式严格警告：
 1. 绝对不要对已经被标记了"[你已评论]"或"[你已回复]"的内容进行任何回复！
 2. 绝对不要在括号内或外添加 【帖子】[ID:xxx]、【评论】[ID:xxx] 等前缀，直接写内容！
-3. 正确评论示范：(评论 92808: 居然是这样！太有趣了。)
-4. 请直接使用动态列表中被评论者的5位字母数字ID。
+3. 正确评论示范：(评论 a1b2c3d4: 居然是这样！太有趣了。)
+4. 请直接使用动态列表中被评论者的8位字母数字ID。
 5. 朋友圈指令必须放在JSON数组的外面（后面），不要放在消息的text字段里！
 
 多媒体：可使用 <图片>描述</图片>, <视频>描述</视频>, <音乐>描述</音乐>, <新闻>描述</新闻>。
@@ -716,7 +781,10 @@ export function buildRollingSummarizePrompt() {
 /**
  * Build the user prompt from pending messages + conversation history.
  * Now includes recent ST main chat storyline for context continuity.
- * @param {string[]} pendingMessages - Array of user's pending message strings
+ * @param {Array<string|{text:string, replyTo?:{role:string, snippet:string}}>} pendingMessages
+ *   Array of pending message payloads. Tolerates either raw strings (legacy
+ *   callers: declined-call follow-up, reroll) or {text, replyTo?} objects
+ *   (main sendAllMessages path with reply support).
  * @param {Array} history - Recent chat history (from chatStorage)
  * @param {boolean} imageAttached - Whether the user is attaching an image (multimodal)
  * @param {number|null} [idleMsOverride=null] - Pre-computed idle duration (ms); bypasses getPhoneIdleDuration() to avoid reading already-saved messages
@@ -725,6 +793,20 @@ export function buildRollingSummarizePrompt() {
 export function buildChatUserPrompt(pendingMessages, history = [], _unused, imageAttached = false, idleMsOverride = null) {
     const parts = [];
     const charName = getCharacterInfo()?.name || '角色';
+
+    // Normalize a pending entry into { text, replyTo } regardless of input shape.
+    const normalizePending = (entry) => {
+        if (typeof entry === 'string') return { text: entry, replyTo: null };
+        return { text: entry?.text || '', replyTo: entry?.replyTo || null };
+    };
+
+    // Build a one-liner describing a reply target, for inline injection
+    // in user prompt and history lines.
+    const formatReplyHint = (replyTo) => {
+        if (!replyTo?.snippet) return '';
+        const targetName = replyTo.role === 'user' ? getUserName() : charName;
+        return `(引用${targetName}的话:「${replyTo.snippet}」)`;
+    };
 
     // Compact timestamp formatter: [MM-DD HH:MM]; returns '' for invalid input.
     const formatTs = (raw) => {
@@ -746,7 +828,8 @@ export function buildChatUserPrompt(pendingMessages, history = [], _unused, imag
         if (stHistory.length > 0) {
             const stLines = stHistory.map(msg => {
                 const role = msg.role === 'user' ? getUserName() : charName;
-                const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
+                const base = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
+                const cleanContent = stripContentTags(base);
                 const ts = formatTs(msg.send_date);
                 return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}`;
             });
@@ -773,19 +856,43 @@ ${stLines.join('\n')}
     // All unsummarized messages are included — auto-summarize handles compression.
     if (history.length > 0) {
         const activeHistory = history.filter(msg => !msg.summarized);
-        const historyLines = activeHistory.map(msg => {
-            const role = msg.role === 'user' ? getUserName() : charName;
+        const userNameForHistory = getUserName();
+        // Only the trailing RECENT_REPLY_WINDOW entries get a [N] prefix so the
+        // LLM can target them with replyToIndex. The 1-based label MUST match
+        // buildIndexableReplyMap(activeHistory) — backgroundGen uses the same
+        // helper to project the lookup table the resolver consumes.
+        const indexableStart = Math.max(0, activeHistory.length - RECENT_REPLY_WINDOW);
+        const historyLines = activeHistory.map((msg, i) => {
+            const replyIdx = i >= indexableStart ? `[${i - indexableStart + 1}] ` : '';
+            const role = msg.role === 'user' ? userNameForHistory : charName;
             // Strip moments commands from chat history to save tokens
             const cleanContent = msg.role === 'user' ? msg.content : stripMomentsCommands(msg.content);
             const ts = formatTs(msg.timestamp);
             // Replay past inner monologue for char messages so she stays
             // emotionally consistent with what she was actually thinking then.
             const thoughtSuffix = (msg.role === 'char' && msg.thought) ? ` (内心: ${msg.thought})` : '';
-            return `${ts ? ts + ' ' : ''}${role}: ${cleanContent}${thoughtSuffix}`;
+            // Reactions: on char messages they came FROM the user; on user
+            // messages they came FROM the character in a past turn. Showing
+            // both directions keeps the LLM consistent with its own history.
+            const reactionsSuffix = (() => {
+                const r = msg.reactions;
+                if (!r || typeof r !== 'object') return '';
+                const items = Object.entries(r).filter(([, c]) => c > 0);
+                if (items.length === 0) return '';
+                const formatted = items.map(([e, c]) => c > 1 ? `${e}×${c}` : e).join(' ');
+                return msg.role === 'char'
+                    ? ` [${userNameForHistory}贴了表情: ${formatted}]`
+                    : ` [${charName}之前给这条贴了表情: ${formatted}]`;
+            })();
+            // Reply quote hint — sits between the role label and the content,
+            // so it reads as "user (replying to char's '...'): actual text".
+            const replyHint = formatReplyHint(msg.replyTo);
+            const replyPrefix = replyHint ? ` ${replyHint}` : '';
+            return `${replyIdx}${ts ? ts + ' ' : ''}${role}${replyPrefix}: ${cleanContent}${thoughtSuffix}${reactionsSuffix}`;
         });
 
         if (historyLines.length > 0) {
-            parts.push(`<chat_history>\n每行开头的 [MM-DD HH:MM] 表示该条短信的发送时间。\n角色消息后括号里的"内心"是${charName}当时未说出口的真实想法，仅作为上下文供回忆参考，不要复述。\n${historyLines.join('\n')}\n</chat_history>`);
+            parts.push(`<chat_history>\n每行开头的 [MM-DD HH:MM] 表示该条短信的发送时间。\n部分行还以 [N] 形式（如 [3]）开头，这是 reply 引用编号——只在你想引用某条具体消息时，把 N 填进回复 JSON 的 replyToIndex 字段；其她情况一律忽略该编号。\n角色消息后括号里的"内心"是${charName}当时未说出口的真实想法，仅作为上下文供回忆参考，不要复述。\n方括号 [...贴了表情: ...] 表示这条消息收到的 emoji reactions，${charName}应自然地把这些反应纳入当前回复的语气（被点❤️后语气更软、被点😂顺着幽默继续），不要机械道谢或复述。\n${historyLines.join('\n')}\n</chat_history>`);
         }
     }
 
@@ -842,12 +949,19 @@ ${stLines.join('\n')}
     }
 
     // ─── Current User Messages ───
-    const userMsgs = pendingMessages.map(m => m.trim()).filter(Boolean);
+    const userPayloads = pendingMessages
+        .map(normalizePending)
+        .map(p => ({ text: (p.text || '').trim(), replyTo: p.replyTo }))
+        .filter(p => p.text.length > 0);
     const nowTs = formatTs(new Date());
-    if (userMsgs.length === 1) {
-        parts.push(`${getUserName()}发来短信 ${nowTs}：\n${userMsgs[0]}`);
-    } else {
-        parts.push(`${getUserName()}连续发来了${userMsgs.length}条短信 ${nowTs}：\n${userMsgs.map((m, i) => `${i + 1}. ${m}`).join('\n')}`);
+    const renderUserLine = (p) => {
+        const hint = formatReplyHint(p.replyTo);
+        return hint ? `${hint}\n${p.text}` : p.text;
+    };
+    if (userPayloads.length === 1) {
+        parts.push(`${getUserName()}发来短信 ${nowTs}：\n${renderUserLine(userPayloads[0])}`);
+    } else if (userPayloads.length > 1) {
+        parts.push(`${getUserName()}连续发来了${userPayloads.length}条短信 ${nowTs}：\n${userPayloads.map((p, i) => `${i + 1}. ${renderUserLine(p)}`).join('\n')}`);
     }
 
     // ─── Image Attachment Note ───
@@ -922,8 +1036,7 @@ export async function buildAutoMessageSystemPrompt() {
     const result = `${foundation}
 
 **SMS Channel — Auto Message Mode**:
-${userName}暂时离开了${charName}的身边。${charName}拥有手机短信渠道可以主动联系${userName}。
-现在，${charName}决定主动给${userName}发一条消息。
+${userName}有段时间没有回复${charName}了，现在，${charName}决定主动给${userName}发消息。
 
 ${charDesc}
 

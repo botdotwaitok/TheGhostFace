@@ -10,12 +10,17 @@ import { isKeepAliveEnabled } from '../keepAlive.js';
 // HTML Builders
 // ═══════════════════════════════════════════════════════════════════════
 
+// Initial number of messages rendered into the chat view, and the step size
+// used by the "load earlier messages" button. Kept in one place so the
+// builder and the rerender/load-more paths stay in sync.
+export const CHAT_DISPLAY_COUNT = 40;
+
 export function buildChatPage(history) {
     const charName = getCharacterDisplayName();
 
     // Messages HTML
-    const displayHistory = history.slice(-20);
-    const hasMore = history.length > 20;
+    const displayHistory = history.slice(-CHAT_DISPLAY_COUNT);
+    const hasMore = history.length > CHAT_DISPLAY_COUNT;
 
     let messagesHtml = displayHistory.length > 0
         ? buildMessagesHtml(displayHistory, history.length - displayHistory.length)
@@ -25,7 +30,7 @@ export function buildChatPage(history) {
            </div>`;
 
     if (hasMore && displayHistory.length > 0) {
-        messagesHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + messagesHtml;
+        messagesHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="${CHAT_DISPLAY_COUNT}">查看更早的聊天记录</div>` + messagesHtml;
     }
 
     return `
@@ -38,40 +43,46 @@ export function buildChatPage(history) {
             ${messagesHtml}
         </div>
 
-        <!-- Draft area -->
-        <div class="chat-draft-area" id="chat_draft_area" style="display:none;">
-            <div class="chat-draft-label">待发送:</div>
-            <div id="chat_draft_list"></div>
-        </div>
+        <!-- Bottom-pinned stack: draft area sits above the input bar, and the
+             delete toolbar swaps in for the input bar in delete mode. The stack
+             is absolute-positioned so .chat-messages can extend to the phone's
+             bottom edge and fade out behind it. -->
+        <div class="chat-bottom-stack">
+            <!-- Draft area -->
+            <div class="chat-draft-area" id="chat_draft_area" style="display:none;">
+                <div class="chat-draft-label">待发送:</div>
+                <div id="chat_draft_list"></div>
+            </div>
 
-        <!-- Input bar — extended text area with inline buttons -->
-        <div class="chat-input-bar" id="chat_input_bar">
-            <button class="chat-btn-plus" id="chat_plus_btn" title="更多选项">
-                <i class="fa-solid fa-plus"></i>
-            </button>
-            <div class="chat-input-wrap">
-                <textarea class="chat-input" id="chat_input" rows="1"
-                    placeholder="输入消息…"></textarea>
-                <div class="chat-input-actions">
-                    <button class="chat-btn-kiwi" id="chat_kiwi_btn" title="添加到待发">
-                        🥝
-                    </button>
-                    <button class="chat-btn-send" id="chat_send_btn" title="发送" disabled>
-                        <i class="fa-solid fa-arrow-up"></i>
-                    </button>
+            <!-- Input bar — extended text area with inline buttons -->
+            <div class="chat-input-bar" id="chat_input_bar">
+                <button class="chat-btn-plus" id="chat_plus_btn" title="更多选项">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <div class="chat-input-wrap">
+                    <textarea class="chat-input" id="chat_input" rows="1"
+                        placeholder="输入消息…"></textarea>
+                    <div class="chat-input-actions">
+                        <button class="chat-btn-kiwi" id="chat_kiwi_btn" title="添加到待发">
+                            🥝
+                        </button>
+                        <button class="chat-btn-send" id="chat_send_btn" title="发送" disabled>
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Delete mode toolbar (hidden by default) -->
-        <div class="chat-delete-toolbar" id="chat_delete_toolbar" style="display:none;">
-            <div class="chat-delete-toolbar-info">
-                <span id="chat_delete_count">已选 0 条</span>
-            </div>
-            <div class="chat-delete-toolbar-actions">
-                <button class="chat-delete-toolbar-btn select-all" id="chat_select_all_btn">全选</button>
-                <button class="chat-delete-toolbar-btn cancel" id="chat_delete_cancel_btn">取消</button>
-                <button class="chat-delete-toolbar-btn confirm" id="chat_delete_confirm_btn" disabled>删除</button>
+            <!-- Delete mode toolbar (hidden by default) -->
+            <div class="chat-delete-toolbar" id="chat_delete_toolbar" style="display:none;">
+                <div class="chat-delete-toolbar-info">
+                    <span id="chat_delete_count">已选 0 条</span>
+                </div>
+                <div class="chat-delete-toolbar-actions">
+                    <button class="chat-delete-toolbar-btn select-all" id="chat_select_all_btn">全选</button>
+                    <button class="chat-delete-toolbar-btn cancel" id="chat_delete_cancel_btn">取消</button>
+                    <button class="chat-delete-toolbar-btn confirm" id="chat_delete_confirm_btn" disabled>删除</button>
+                </div>
             </div>
         </div>
 
@@ -82,6 +93,10 @@ export function buildChatPage(history) {
                     <div class="chat-plus-action" id="chat_return_home_btn">
                         <i class="fa-solid fa-house"></i>
                         <span>回家</span>
+                    </div>
+                    <div class="chat-plus-action" id="chat_plus_call_btn">
+                        <i class="fa-solid fa-phone"></i>
+                        <span>通话</span>
                     </div>
                     <div class="chat-plus-action" id="chat_plus_image_btn">
                         <i class="fa-solid fa-image"></i>
@@ -216,7 +231,29 @@ export function buildMessagesHtml(history, startIndex = 0) {
     return html;
 }
 
+/**
+ * Build the reply quote block that sits at the top of a bubble column.
+ * Used by all three bubble forms (normal / image / voice) when the message
+ * carries a replyTo snapshot.
+ * @param {{role:string, snippet:string}|null|undefined} replyTo
+ * @returns {string} HTML or empty string
+ */
+function buildReplyQuoteHtml(replyTo) {
+    if (!replyTo?.snippet) return '';
+    const targetName = replyTo.role === 'user'
+        ? getUserName()
+        : (getCharacterInfo()?.name || '角色');
+    return `
+        <div class="chat-bubble-reply-quote">
+            <i class="ph ph-arrow-bend-up-left chat-bubble-reply-quote-icon"></i>
+            <span class="chat-bubble-reply-quote-name">${escHtml(targetName)}</span>
+            <span class="chat-bubble-reply-quote-snippet">${escHtml(replyTo.snippet)}</span>
+        </div>`;
+}
+
 export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg) {
+    const replyQuoteHtml = buildReplyQuoteHtml(msg?.replyTo);
+
     // ── Image message bubble ──
     if (msg && msg.special === 'image' && msg.imageThumbnail) {
         const indexAttr = msgIndex !== undefined ? ` data-msg-index="${msgIndex}"` : '';
@@ -231,7 +268,7 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
         if (reactions && typeof reactions === 'object' && Object.keys(reactions).length > 0) {
             const badges = Object.entries(reactions)
                 .filter(([, count]) => count > 0)
-                .map(([emoji, count]) => `<span class="chat-reaction-item">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
+                .map(([emoji, count]) => `<span class="chat-reaction-item" data-emoji="${emoji}">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
                 .join('');
             if (badges) reactionHtml = `<div class="chat-reaction-badge" data-msg-index="${msgIndex}">${badges}</div>`;
         }
@@ -243,12 +280,15 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
         <div class="chat-bubble-row ${role}"${indexAttr}>
             ${checkboxHtml}
             <div class="chat-bubble-column">
-                <div class="chat-image-bubble" data-full-src="${escHtml(msg.imageThumbnail)}">
-                    <img src="${escHtml(msg.imageThumbnail)}" alt="图片" loading="lazy" />
+                ${replyQuoteHtml}
+                <div class="chat-bubble-anchor">
+                    <div class="chat-image-bubble" data-full-src="${escHtml(msg.imageThumbnail)}">
+                        <img src="${escHtml(msg.imageThumbnail)}" alt="图片" loading="lazy" />
+                    </div>
+                    ${reactionHtml}
                 </div>
                 ${captionHtml}
                 ${thoughtHtml}
-                ${reactionHtml}
             </div>
         </div>`;
     }
@@ -276,7 +316,7 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
         if (reactions && typeof reactions === 'object' && Object.keys(reactions).length > 0) {
             const badges = Object.entries(reactions)
                 .filter(([, count]) => count > 0)
-                .map(([emoji, count]) => `<span class="chat-reaction-item">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
+                .map(([emoji, count]) => `<span class="chat-reaction-item" data-emoji="${emoji}">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
                 .join('');
             if (badges) reactionHtml = `<div class="chat-reaction-badge" data-msg-index="${msgIndex}">${badges}</div>`;
         }
@@ -285,15 +325,18 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
         <div class="chat-bubble-row ${role}"${indexAttr}>
             ${checkboxHtml}
             <div class="chat-bubble-column">
-                <div class="chat-bubble">
-                    <div class="voice-bubble" data-audio-src="${escHtml(audioSrc)}">
-                        <button class="voice-play-btn"><i class="fa-solid fa-play"></i></button>
-                        <div class="voice-waveform">${barsHtml}</div>
-                        <span class="voice-duration">${durStr}</span>
+                ${replyQuoteHtml}
+                <div class="chat-bubble-anchor">
+                    <div class="chat-bubble">
+                        <div class="voice-bubble" data-audio-src="${escHtml(audioSrc)}">
+                            <button class="voice-play-btn"><i class="fa-solid fa-play"></i></button>
+                            <div class="voice-waveform">${barsHtml}</div>
+                            <span class="voice-duration">${durStr}</span>
+                        </div>
                     </div>
+                    ${reactionHtml}
                 </div>
                 ${thoughtHtml}
-                ${reactionHtml}
             </div>
         </div>`;
     }
@@ -314,7 +357,7 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
     if (reactions && typeof reactions === 'object' && Object.keys(reactions).length > 0) {
         const badges = Object.entries(reactions)
             .filter(([, count]) => count > 0)
-            .map(([emoji, count]) => `<span class="chat-reaction-item">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
+            .map(([emoji, count]) => `<span class="chat-reaction-item" data-emoji="${emoji}">${emoji}${count > 1 ? ` ${count}` : ''}</span>`)
             .join('');
         if (badges) {
             reactionHtml = `<div class="chat-reaction-badge" data-msg-index="${msgIndex}">${badges}</div>`;
@@ -325,9 +368,12 @@ export function buildBubbleRow(role, content, thought, msgIndex, reactions, msg)
     <div class="chat-bubble-row ${role}"${indexAttr}>
         ${checkboxHtml}
         <div class="chat-bubble-column">
-            ${parsed}
+            ${replyQuoteHtml}
+            <div class="chat-bubble-anchor">
+                ${parsed}
+                ${reactionHtml}
+            </div>
             ${thoughtHtml}
-            ${reactionHtml}
         </div>
     </div>`;
 }
@@ -429,7 +475,7 @@ function parseSpecialMessages(text) {
             render: (m) => {
                 const giftName = m[1].trim();
                 const charName = getCharacterInfo()?.name || '角色';
-                return getGiftEventCardHtml(giftName, charName);
+                return `<div class="chat-bubble">${getGiftEventCardHtml(giftName, charName)}</div>`;
             },
         },
         {
@@ -515,6 +561,88 @@ function parseSpecialMessages(text) {
 
     // ── No bracket-style tokens found → plain text with media tag rendering ──
     return `<div class="chat-bubble">${parseChatMediaTags(escHtml(text))}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Bubble-tail grouping (iMessage convention)
+// ═══════════════════════════════════════════════════════════════════════
+// Only the bottom-most bubble of a consecutive same-sender burst should
+// show a tail. Any non-bubble-row element between two same-sender rows
+// (time divider, retract notice, load-more button, gift card, etc.) ends
+// the current burst — so the bubble before the divider also gets a tail.
+//
+// We don't mark .has-tail at build time because bubbles are appended from
+// many different call sites (chatMessageHandler, chatVoice, chatInventory,
+// chatEditDelete, ...). Instead, attachBubbleTailObserver() sets up a
+// MutationObserver that re-runs applyBubbleTails() whenever the messages
+// area's child list changes. The reflow happens at the end of the current
+// microtask, before the next paint — no visible flicker.
+
+let _bubbleTailObserver = null;
+
+export function applyBubbleTails(container) {
+    if (!container) return;
+    container.querySelectorAll('.chat-bubble.has-tail').forEach(b => b.classList.remove('has-tail'));
+
+    let pendingRow = null;
+    let pendingRole = null;
+
+    const seal = () => {
+        if (!pendingRow) return;
+        const col = pendingRow.querySelector('.chat-bubble-column');
+        if (!col) return;
+        // Bubbles can live directly in the column OR wrapped in a
+        // .chat-bubble-anchor (introduced for reaction badge positioning).
+        const bubbles = col.querySelectorAll(
+            ':scope > .chat-bubble:not(.chat-thought-bubble),'
+            + ' :scope > .chat-bubble-anchor > .chat-bubble:not(.chat-thought-bubble)'
+        );
+        if (bubbles.length === 0) return;
+        bubbles[bubbles.length - 1].classList.add('has-tail');
+    };
+
+    for (const el of container.children) {
+        if (!el.classList || !el.classList.contains('chat-bubble-row')) {
+            seal();
+            pendingRow = null;
+            pendingRole = null;
+            continue;
+        }
+        const role = el.classList.contains('user') ? 'user'
+            : el.classList.contains('char') ? 'char' : null;
+        if (!role) {
+            seal();
+            pendingRow = null;
+            pendingRole = null;
+            continue;
+        }
+        if (pendingRole && pendingRole !== role) {
+            seal();
+        }
+        pendingRow = el;
+        pendingRole = role;
+    }
+    seal();
+}
+
+export function attachBubbleTailObserver(container) {
+    if (_bubbleTailObserver) {
+        _bubbleTailObserver.disconnect();
+        _bubbleTailObserver = null;
+    }
+    if (!container) return;
+
+    applyBubbleTails(container);
+
+    _bubbleTailObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            if (m.type === 'childList' && (m.addedNodes.length || m.removedNodes.length)) {
+                applyBubbleTails(container);
+                return;
+            }
+        }
+    });
+    _bubbleTailObserver.observe(container, { childList: true });
 }
 
 /** Build a "peeked" recalled message bubble (translucent + strikethrough) */

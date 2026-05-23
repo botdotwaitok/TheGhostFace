@@ -13,7 +13,7 @@ import {
     deleteMessagesByIndices, updateMessageByIndex,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
-import { buildChatSystemPrompt, buildChatUserPrompt } from './chatPromptBuilder.js';
+import { buildChatSystemPrompt, buildChatUserPrompt, buildIndexableReplyMap } from './chatPromptBuilder.js';
 import { renderResponseToDom } from './chatMessageHandler.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -53,6 +53,19 @@ export function toggleDeleteMode() {
     }
 
     if (getIsDeleteMode()) updateDeleteToolbar();
+}
+
+/**
+ * Enter delete mode and preselect a single message — convenience entry point
+ * for the long-press bubble menu's "delete this one" action. Order matters:
+ * toggleDeleteMode must run first so the row receives the .delete-mode class
+ * and the toolbar appears; only then can the row be marked .selected.
+ */
+export function selectMessageForDeletion(msgIndex) {
+    if (getIsDeleteMode()) return;
+    toggleDeleteMode();
+    const row = document.querySelector(`.chat-bubble-row[data-msg-index="${msgIndex}"]`);
+    if (row) toggleSelectMessage(msgIndex, row);
 }
 
 /**
@@ -255,24 +268,37 @@ export async function rerollLastMessage() {
         return;
     }
 
-    // Save the trimmed history (without the removed AI messages)
-    await saveChatHistory(history);
+    // Persist trimmed history — fire-and-forget through the serialized save
+    // queue. Mirrors sendAllMessages: chat_metadata is already updated
+    // synchronously inside saveChatHistory before its first await, so the
+    // in-memory state is consistent for the rerender below. The disk write
+    // can take seconds-to-minutes on remote (tailscale) sessions and must
+    // not block visual feedback or the LLM call.
+    saveChatHistory(history).catch(e =>
+        console.warn(`${CHAT_LOG_PREFIX} background save during reroll failed:`, e));
 
-    // Re-render without the removed AI messages
+    // Re-render without the removed AI messages — reads chat_metadata, which
+    // the synchronous portion of saveChatHistory has already updated.
     rerenderMessagesArea();
 
     // Exit delete mode if active
     if (getIsDeleteMode()) toggleDeleteMode();
 
-    // Now re-generate — reuse the core send logic
+    // Flip UI to generating state right away — buttons grey out, typing
+    // indicator appears — instead of waiting on the disk write.
     setIsGenerating(true);
     updateButtonStates();
     showTypingIndicator(true);
 
     const messagesArea = document.getElementById('chat_messages_area');
     try {
+        const historyBeforeReroll = history.slice(0, -lastUserMessages.length);
         const systemPrompt = await buildChatSystemPrompt();
-        const userPrompt = buildChatUserPrompt(lastUserMessages, history.slice(0, -lastUserMessages.length));
+        const userPrompt = buildChatUserPrompt(lastUserMessages, historyBeforeReroll);
+        // Mirror backgroundGen: snapshot the [N] lookup table for replyToIndex
+        // resolution so a reroll can still produce reply-quoted bubbles.
+        const rerollReplyMap = buildIndexableReplyMap(
+            historyBeforeReroll.filter(m => !m.summarized));
 
         console.log(`${CHAT_LOG_PREFIX} Reroll: re-generating with ${lastUserMessages.length} user messages...`);
 
@@ -289,7 +315,7 @@ export async function rerollLastMessage() {
 
         // Delegate to the unified render path so reroll picks up buff decrement,
         // gift detection, robbery, AI reactions, auto-summarize — same as a normal send.
-        await renderResponseToDom(rawResponse, lastUserMessages);
+        await renderResponseToDom(rawResponse, lastUserMessages, rerollReplyMap);
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} Reroll failed:`, error);

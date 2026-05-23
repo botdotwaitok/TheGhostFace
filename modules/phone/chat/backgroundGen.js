@@ -4,7 +4,7 @@
 // Includes auto-retry with exponential backoff on failure.
 
 import { callPhoneLLM } from '../../api.js';
-import { buildChatSystemPrompt, buildChatUserPrompt, stripMomentsCommands } from './chatPromptBuilder.js';
+import { buildChatSystemPrompt, buildChatUserPrompt, stripMomentsCommands, buildIndexableReplyMap } from './chatPromptBuilder.js';
 import { persistPendingResult, loadPersistedPendingResult, clearPersistedPendingResult } from './chatStorage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -52,6 +52,11 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
 
     // Build prompts once (no need to rebuild on retry)
     let systemPrompt, userPrompt;
+    // Snapshot of the {role, snippet} lookup table that backs [N] in the
+    // prompt. Must mirror buildChatUserPrompt's activeHistory filter so the
+    // LLM's replyToIndex resolves against the exact rows it saw.
+    const activeHistorySnapshot = (historyBeforeSend || []).filter(m => !m.summarized);
+    const indexableReplyMap = buildIndexableReplyMap(activeHistorySnapshot);
     try {
         systemPrompt = await buildChatSystemPrompt();
         userPrompt = buildChatUserPrompt(messagesToSend, historyBeforeSend, undefined, !!imageBase64, idleMsSnapshot);
@@ -91,19 +96,23 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
             } catch (e) { /* moments module not loaded */ }
 
             // ── Success! Store result and exit loop ──
-            _pendingResult = { rawResponse, messagesToSend };
-            // Flip the generating flag BEFORE awaiting the disk write. The
-            // persist below can take hundreds of ms (ST's saveChatConditional
-            // mutex + network on remote); any caller that re-mounts the chat
-            // during that window (e.g. switching to Console app and back)
-            // would otherwise read hasPendingResult=true AND
-            // isBackgroundGenerating=true at the same time, and re-show the
-            // typing indicator / stop button on top of an already-rendered
-            // response.
+            _pendingResult = { rawResponse, messagesToSend, indexableReplyMap };
+            // Flip the generating flag BEFORE the disk write. Any caller that
+            // re-mounts the chat between this point and the persist completing
+            // (e.g. switching to Console app and back) would otherwise read
+            // hasPendingResult=true AND isBackgroundGenerating=true at the same
+            // time, and re-show the typing indicator / stop button on top of an
+            // already-rendered response.
             _isGenerating = false;
-            // Persist to disk so the result survives a page refresh.
-            await persistPendingResult(_pendingResult);
             _error = null;
+            // Persist to disk for refresh durability — fire-and-forget through
+            // the serialized save queue. On remote (tailscale) sessions this
+            // HTTP write can take seconds to minutes, and the UI only needs
+            // the in-memory _pendingResult to render. Awaiting it here would
+            // delay _dispatchReady (below) — and therefore the chat render —
+            // by the full HTTP latency.
+            persistPendingResult(_pendingResult).catch(e =>
+                console.warn(`${LOG_PREFIX} background persist of pending result failed:`, e));
             console.log(`${LOG_PREFIX} Generation succeeded on attempt ${attempt + 1}.`);
             break;
 
@@ -183,7 +192,7 @@ export function cancelGeneration() {
 
 /**
  * Consume and clear the pending result.
- * @returns {{ rawResponse: string, messagesToSend: string[] } | null}
+ * @returns {{ rawResponse: string, messagesToSend: string[], indexableReplyMap?: Array<{role:string, snippet:string}> } | null}
  */
 export function consumePendingResult() {
     let result = _pendingResult;

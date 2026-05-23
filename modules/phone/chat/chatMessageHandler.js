@@ -43,6 +43,7 @@ import {
     getPendingMessages, setPendingMessages,
     getIsGenerating, setIsGenerating,
     getPendingImageData, setPendingImageData,
+    getPendingReplyTo, clearPendingReplyTo, cancelReplyTo,
     updateButtonStates, rerenderMessagesArea,
     isUserInChatApp,
 } from './chatApp.js';
@@ -111,7 +112,11 @@ export function addPendingMessage() {
     const text = input?.value?.trim();
     if (!text || getIsGenerating()) return;
 
-    getPendingMessages().push(text);
+    // Snapshot the active reply target (if any) onto this draft and clear it
+    // so the next draft starts fresh — replies are per-message, not per-batch.
+    const replyTo = getPendingReplyTo();
+    getPendingMessages().push({ text, replyTo: replyTo || null });
+    clearPendingReplyTo();
     input.value = '';
     input.style.height = 'auto';
 
@@ -139,8 +144,9 @@ export function renderDraftArea() {
 
     const pendingMessages = getPendingMessages();
     const imageData = getPendingImageData();
+    const replyTo = getPendingReplyTo();
 
-    if (pendingMessages.length === 0 && !imageData) {
+    if (pendingMessages.length === 0 && !imageData && !replyTo) {
         area.style.display = 'none';
         return;
     }
@@ -148,6 +154,30 @@ export function renderDraftArea() {
     area.style.display = 'flex';
 
     let html = '';
+
+    // ── Active reply preview ──
+    // Rendered as a real chat bubble (lifted out of the conversation onto the
+    // input bar) rather than a separate "preview card" treatment — preserves
+    // the iMessage feel without the perf cost of a full-screen blur overlay.
+    if (replyTo) {
+        const charName = getCharacterInfo()?.name || '角色';
+        const userName = getUserName();
+        const targetLabel = replyTo.role === 'user' ? userName : charName;
+        html += `
+        <div class="chat-reply-preview chat-bubble-row ${replyTo.role}">
+            <div class="chat-bubble-column">
+                <div class="chat-reply-preview-label">
+                    <i class="ph ph-arrow-bend-up-left"></i> 回复 ${escHtml(targetLabel)}
+                </div>
+                <div class="chat-bubble-anchor">
+                    <div class="chat-bubble">${escHtml(replyTo.snippet)}</div>
+                    <button class="chat-reply-preview-close" id="chat_reply_preview_close" title="取消引用">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
 
     // ── Image draft (shown first if present) ──
     if (imageData) {
@@ -160,7 +190,15 @@ export function renderDraftArea() {
 
     // ── Text/voice drafts ──
     const voiceData = getPendingVoiceData();
-    html += pendingMessages.map((msg, i) => {
+    html += pendingMessages.map((payload, i) => {
+        const text = payload?.text || '';
+        const draftReply = payload?.replyTo;
+        // Small inline reply indicator on the draft bubble itself, so the user
+        // can see which queued draft carries a quote (in case they queue many).
+        const replyTag = draftReply
+            ? `<span class="chat-draft-reply-tag" title="引用：${escHtml(draftReply.snippet)}"><i class="ph ph-arrow-bend-up-left"></i></span>`
+            : '';
+
         // If this is the last item and we have pending voice data, mark as voice draft
         const isVoice = voiceData && i === pendingMessages.length - 1;
         if (isVoice) {
@@ -168,6 +206,7 @@ export function renderDraftArea() {
             const durStr = dur >= 60 ? `${Math.floor(dur / 60)}:${String(Math.round(dur % 60)).padStart(2, '0')}` : `${Math.round(dur)}″`;
             return `
             <div class="chat-draft-bubble chat-draft-voice" data-draft-index="${i}">
+                ${replyTag}
                 <span class="chat-draft-voice-icon">
                     <svg width="14" height="12" viewBox="0 0 20 16" fill="currentColor">
                         <rect x="0" y="5" width="2.5" height="6" rx="1"/>
@@ -178,11 +217,11 @@ export function renderDraftArea() {
                     </svg>
                     ${durStr}
                 </span>
-                ${escHtml(msg)}
+                ${escHtml(text)}
             </div>`;
         }
         return `
-            <div class="chat-draft-bubble" data-draft-index="${i}">${escHtml(msg)}</div>
+            <div class="chat-draft-bubble" data-draft-index="${i}">${replyTag}${escHtml(text)}</div>
         `;
     }).join('');
 
@@ -205,6 +244,15 @@ export function renderDraftArea() {
             updateButtonStates();
         });
     }
+
+    // Reply preview bar close button — cancels the active reply target
+    const replyClose = list.querySelector('#chat_reply_preview_close');
+    if (replyClose) {
+        replyClose.addEventListener('click', (e) => {
+            e.stopPropagation();
+            cancelReplyTo();
+        });
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -218,9 +266,13 @@ export async function sendAllMessages() {
     const input = document.getElementById('chat_input');
     const remainingText = input?.value?.trim();
 
-    // If there's text in the input field, add it to pending
+    // If there's text in the input field, add it to pending. Capture the
+    // active reply target onto THIS draft (and clear it) — same per-message
+    // ownership as addPendingMessage.
     if (remainingText) {
-        getPendingMessages().push(remainingText);
+        const replyTo = getPendingReplyTo();
+        getPendingMessages().push({ text: remainingText, replyTo: replyTo || null });
+        clearPendingReplyTo();
         if (input) {
             input.value = '';
             input.style.height = 'auto';
@@ -233,7 +285,10 @@ export async function sendAllMessages() {
     setIsGenerating(true);
     updateButtonStates();
 
-    const messagesToSend = [...pendingMessages];
+    // payloads is the object array; messagesToSend keeps text-only form for
+    // legacy call sites (e.g. DOM rendering loop below uses raw text).
+    const payloads = [...pendingMessages];
+    const messagesToSend = payloads.map(p => p?.text ?? '');
     setPendingMessages([]);
 
     // Capture image data (if any)
@@ -249,6 +304,7 @@ export async function sendAllMessages() {
     // If we have an image but no text messages, add a placeholder
     if (imageData && messagesToSend.length === 0) {
         messagesToSend.push('[图片]');
+        payloads.push({ text: '[图片]', replyTo: null });
     }
 
     // Load history, add user messages
@@ -264,6 +320,7 @@ export async function sendAllMessages() {
 
     for (let i = 0; i < messagesToSend.length; i++) {
         const msg = messagesToSend[i];
+        const payload = payloads[i];
         const entry = { role: 'user', content: msg, timestamp: now };
 
         // Attach voice metadata to the last message if we have pending voice data
@@ -280,14 +337,19 @@ export async function sendAllMessages() {
             entry.imageFileName = imageData.fileName;
         }
 
+        // Freeze the reply target onto the history entry.
+        if (payload?.replyTo) {
+            entry.replyTo = payload.replyTo;
+        }
+
         history.push(entry);
     }
 
     // Render user messages FIRST (synchronous DOM ops, instant) so the user
-    // sees their bubble immediately. The save below awaits ST's mutex-protected
-    // saveChatConditional which can block for several seconds if any other ST
-    // IO is in flight — doing it before render makes the UI appear frozen
-    // until the LLM finally replies.
+    // sees their bubble immediately. The save below is queued through
+    // queueSaveChat (serialized to prevent metadata-overwrite races) but NOT
+    // awaited — on remote (tailscale) sessions one saveChatConditional can
+    // take seconds to minutes, and we do not want to block generation on it.
     const messagesArea = document.getElementById('chat_messages_area');
     if (messagesArea) {
         // Remove empty state if present
@@ -311,12 +373,11 @@ export async function sendAllMessages() {
             const histIdx = history.length - messagesToSend.length + i;
             const histEntry = history[histIdx];
 
-            if (histEntry?.special === 'voice' || histEntry?.special === 'image') {
-                messagesArea.insertAdjacentHTML('beforeend',
-                    buildBubbleRow('user', msg, null, histIdx, null, histEntry));
-            } else {
-                messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('user', msg));
-            }
+            // Pass histEntry through unconditionally so buildBubbleRow can
+            // render special (voice/image) bubbles AND the reply quote block
+            // for quoted text messages.
+            messagesArea.insertAdjacentHTML('beforeend',
+                buildBubbleRow('user', msg, null, histIdx, null, histEntry));
         }
     }
 
@@ -325,14 +386,21 @@ export async function sendAllMessages() {
     // Show typing indicator
     showTypingIndicator(true);
 
-    // Persist BEFORE kicking off generation so a refresh mid-LLM still keeps
-    // the user's message on disk (the saved entry is the only record once
-    // pendingMessages got cleared above).
-    await saveChatHistory(history);
+    // Persist user messages — fire-and-forget through the serialized save queue.
+    // We do NOT await: chat_metadata is already updated synchronously inside
+    // saveChatHistory before its first await, so a refresh between this call
+    // and the queue draining would lose only the disk write, not the in-memory
+    // state. Awaiting would block generation behind a possibly multi-minute
+    // remote HTTP round-trip.
+    saveChatHistory(history).catch(e =>
+        console.warn(`${CHAT_LOG_PREFIX} background save of user messages failed:`, e));
 
     // ── Fire off background generation (does NOT block the UI) ──
-    // The result will be handled by _handleResponseReady() via event
-    startBackgroundGeneration(messagesToSend, historyBeforeSend, imageData?.base64 || null, idleMsSnapshot);
+    // The result will be handled by _handleResponseReady() via event.
+    // Pass the payload objects (with replyTo metadata) so the prompt builder
+    // can inject reply context. Legacy string-array callers (declined call,
+    // reroll) keep working — buildChatUserPrompt tolerates either shape.
+    startBackgroundGeneration(payloads, historyBeforeSend, imageData?.base64 || null, idleMsSnapshot);
 
     // Reset auto-message timer (user just sent a message, restart idle countdown)
     resetAutoMessageTimer();
@@ -358,7 +426,7 @@ export function handleResponseReady(e) {
         if (success && hasPendingResult()) {
             const result = consumePendingResult();
             if (result) {
-                renderResponseToDom(result.rawResponse, result.messagesToSend);
+                renderResponseToDom(result.rawResponse, result.messagesToSend, result.indexableReplyMap || null);
             }
         } else if (!success) {
             const errMsg = consumeError();
@@ -514,10 +582,28 @@ export function renderAutoMessages(messages) {
     for (const msg of messages) {
         const text = (msg.text || msg.content || '').trim();
         if (!text) continue;
-        messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', text));
+        messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', text, msg.thought));
     }
 
     scrollToBottom(true);
+}
+
+/**
+ * Resolve a 1-based replyToIndex (from LLM JSON) against the snapshot of
+ * indexable history rows the prompt actually showed. Returns null on any
+ * miss — out of range, missing snippet, bad type — so callers can simply
+ * skip attaching replyTo instead of branching on each failure mode.
+ * @param {number|null|undefined} idx
+ * @param {Array<{role:string, snippet:string}>|null|undefined} indexableReplyMap
+ * @returns {{role:string, snippet:string}|null}
+ */
+function resolveReplyToIndex(idx, indexableReplyMap) {
+    if (!indexableReplyMap?.length) return null;
+    if (typeof idx !== 'number' || !Number.isInteger(idx)) return null;
+    if (idx < 1 || idx > indexableReplyMap.length) return null;
+    const target = indexableReplyMap[idx - 1];
+    if (!target || !target.snippet) return null;
+    return { role: target.role, snippet: target.snippet };
 }
 
 /**
@@ -528,8 +614,12 @@ export function renderAutoMessages(messages) {
  *
  * @param {string} rawResponse - Raw LLM response text
  * @param {string[]} messagesToSend - The user messages that triggered this response
+ * @param {Array<{role:string, snippet:string}>|null} [indexableReplyMap=null]
+ *   Snapshot of {role, snippet} pairs the LLM's replyToIndex addresses. Null
+ *   when the caller (reroll legacy path) didn't compute one — replyToIndex
+ *   silently degrades to "no quote" in that case.
  */
-export async function renderResponseToDom(rawResponse, messagesToSend) {
+export async function renderResponseToDom(rawResponse, messagesToSend, indexableReplyMap = null) {
     const messagesArea = document.getElementById('chat_messages_area');
 
     try {
@@ -587,6 +677,18 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
             };
             if (cmsg.recalledContent) {
                 historyEntry.recalledContent = cmsg.recalledContent;
+            }
+            // Resolve replyToIndex against the prompt-time history snapshot
+            // and freeze the {role, snippet} pair onto this char entry. Out
+            // of range / missing snippet → silently skip and console.warn so
+            // a hallucinated index doesn't crash the render.
+            if (cmsg.replyToIndex != null) {
+                const resolved = resolveReplyToIndex(cmsg.replyToIndex, indexableReplyMap);
+                if (resolved) {
+                    historyEntry.replyTo = resolved;
+                } else {
+                    console.warn(`${CHAT_LOG_PREFIX} replyToIndex=${cmsg.replyToIndex} did not resolve (window=${indexableReplyMap?.length ?? 0}); rendering as plain message.`);
+                }
             }
             updatedHistory.push(historyEntry);
 
@@ -649,7 +751,10 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                     messagesArea.insertAdjacentHTML('beforeend',
                         buildRecalledPeekBubble(cmsg.recalledContent));
                 } else {
-                    messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', cmsg.text, cmsg.thought));
+                    // Pass historyEntry through so buildBubbleRow can render
+                    // the reply quote block when replyToIndex resolved above.
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        buildBubbleRow('char', cmsg.text, cmsg.thought, undefined, null, historyEntry));
                 }
             }
 
@@ -793,7 +898,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                 const { html: robCardHtml, cardId: robCardId } = getAutoRobberyCardHtml(charName2);
                 if (messagesArea) {
                     messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-bubble-row char"><div class="chat-bubble-column">${robCardHtml}</div></div>`);
+                        `<div class="chat-bubble-row char"><div class="chat-bubble-column"><div class="chat-bubble">${robCardHtml}</div></div></div>`);
                     scrollToBottom(true);
                 }
                 // 标记已执行（无论结果如何）+ 激活社区背景信息
@@ -805,7 +910,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend) {
                 const result = await triggerRobbery(candidates || [], charName2, `${robCardId}_status`);
                 if (messagesArea && result && !result.error) {
                     messagesArea.insertAdjacentHTML('beforeend',
-                        `<div class="chat-bubble-row char"><div class="chat-bubble-column">${getRobberyResultCardHtml(result, charName2)}</div></div>`);
+                        `<div class="chat-bubble-row char"><div class="chat-bubble-column"><div class="chat-bubble">${getRobberyResultCardHtml(result, charName2)}</div></div></div>`);
                     scrollToBottom(true);
                     // 广播到 Moments
                     broadcastRobberyToMoments(result, charName2).catch(e =>
@@ -853,6 +958,10 @@ export function parseApiResponse(raw) {
             recalledContent: (m.recalledContent && typeof m.recalledContent === 'string') ? m.recalledContent.trim() : '',
             // Phase 3: AI-initiated voice messages & calls
             special: (m.special === 'voice' || m.special === 'call') ? m.special : '',
+            // chat-reply Phase 2: raw 1-based index of a history line the LLM
+            // wants to quote; renderResponseToDom resolves it against the
+            // indexableReplyMap snapshot from the prompt-time history.
+            replyToIndex: (typeof m.replyToIndex === 'number' && Number.isFinite(m.replyToIndex)) ? m.replyToIndex : null,
         });
 
         // Extract optional AI reactions

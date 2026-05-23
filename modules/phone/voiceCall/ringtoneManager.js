@@ -9,6 +9,7 @@ import { callPhoneLLM } from '../../api.js';
 import { resolveProxyUrl } from '../utils/corsProxyFetch.js';
 import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { getSettings as getMomentsSettings } from '../moments/state.js';
+import { dlog } from '../../utils.js';
 
 const LOG = '[RingtoneManager]';
 const META_KEY = 'gf_phone_ringtone';
@@ -46,7 +47,7 @@ export async function fetchManifest() {
     const manifestUrl = `${backendUrl.replace(/\/$/, '')}/ringtones/manifest.json`;
     const fetchUrl = resolveProxyUrl(manifestUrl);
 
-    console.log(`${LOG} Fetching manifest from: ${fetchUrl}`);
+    dlog(`${LOG} Fetching manifest from: ${fetchUrl}`);
     const resp = await fetch(fetchUrl);
     if (!resp.ok) {
         throw new Error(`获取铃声清单失败: ${resp.status} ${resp.statusText}`);
@@ -57,7 +58,7 @@ export async function fetchManifest() {
         throw new Error('铃声清单为空');
     }
 
-    console.log(`${LOG} Manifest loaded: ${manifest.length} ringtones`);
+    dlog(`${LOG} Manifest loaded: ${manifest.length} ringtones`);
     return manifest;
 }
 
@@ -97,12 +98,12 @@ ${ringtoneList}
 
 请选择你最喜欢的一首铃声。`;
 
-    console.log(`${LOG} Asking ${charName} to choose a ringtone...`);
+    dlog(`${LOG} Asking ${charName} to choose a ringtone...`);
     const response = await callPhoneLLM(systemPrompt, userPrompt);
 
     // Parse the JSON response
     const parsed = _parseJsonResponse(response, validIds);
-    console.log(`${LOG} ${charName} chose: "${parsed.id}" — "${parsed.reason}"`);
+    dlog(`${LOG} ${charName} chose: "${parsed.id}" — "${parsed.reason}"`);
     return parsed;
 }
 
@@ -170,18 +171,18 @@ export async function downloadAndCache(ringtoneId, filename) {
     const audioUrl = `${backendUrl.replace(/\/$/, '')}/ringtones/${filename}`;
     const fetchUrl = resolveProxyUrl(audioUrl);
 
-    console.log(`${LOG} Downloading ringtone: ${fetchUrl}`);
+    dlog(`${LOG} Downloading ringtone: ${fetchUrl}`);
     const resp = await fetch(fetchUrl);
     if (!resp.ok) {
         throw new Error(`下载铃声失败: ${resp.status} ${resp.statusText}`);
     }
 
     const audioBlob = await resp.blob();
-    console.log(`${LOG} Downloaded: ${audioBlob.size} bytes`);
+    dlog(`${LOG} Downloaded: ${audioBlob.size} bytes`);
 
     // Upload to ST file system for persistence
     const webPath = await uploadAudioToST(audioBlob, `ringtone_${ringtoneId}`);
-    console.log(`${LOG} Cached to ST: ${webPath}`);
+    dlog(`${LOG} Cached to ST: ${webPath}`);
     return webPath;
 }
 
@@ -227,7 +228,7 @@ export function saveRingtoneSelection(ringtoneData) {
                 selectedAt: new Date().toISOString(),
             };
             saveMetadataDebounced();
-            console.log(`${LOG} Saved ringtone selection: ${ringtoneData.id}`);
+            dlog(`${LOG} Saved ringtone selection: ${ringtoneData.id}`);
         }
     } catch (e) {
         console.warn(`${LOG} Save failed:`, e);
@@ -242,7 +243,7 @@ export function clearRingtoneSelection() {
         if (chat_metadata) {
             delete chat_metadata[META_KEY];
             saveMetadataDebounced();
-            console.log(`${LOG} Ringtone selection cleared`);
+            dlog(`${LOG} Ringtone selection cleared`);
         }
     } catch (e) {
         console.warn(`${LOG} Clear failed:`, e);
@@ -266,7 +267,7 @@ export function clearRingtoneSelection() {
 export function playRingtone(audioPath) {
     const path = audioPath || getCurrentRingtone()?.audioPath;
     if (!path) {
-        console.log(`${LOG} No ringtone selected — vibration fallback only`);
+        dlog(`${LOG} No ringtone selected — vibration fallback only`);
         _startVibrationLoop();
         return false;
     }
@@ -278,7 +279,7 @@ export function playRingtone(audioPath) {
     _audioEl.volume = 0.7;
     _audioEl.play()
         .then(() => {
-            console.log(`${LOG} Playing ringtone: ${path}`);
+            dlog(`${LOG} Playing ringtone: ${path}`);
         })
         .catch(e => {
             // NotAllowedError is the iOS / Chrome autoplay-policy block. Other
@@ -309,7 +310,7 @@ export function stopRingtone() {
         stopped = true;
     }
     if (_stopVibrationLoop()) stopped = true;
-    if (stopped) console.log(`${LOG} Ringtone stopped`);
+    if (stopped) dlog(`${LOG} Ringtone stopped`);
 }
 
 /**
@@ -328,7 +329,7 @@ function _startVibrationLoop() {
     };
     tick();
     _vibrationIntervalId = setInterval(tick, _VIBRATION_CYCLE_MS);
-    console.log(`${LOG} Vibration fallback started`);
+    dlog(`${LOG} Vibration fallback started`);
 }
 
 /**
@@ -351,7 +352,7 @@ function _stopVibrationLoop() {
 if (typeof window !== 'undefined') {
     window.addEventListener('phone-closed', () => {
         if (_audioEl || _vibrationIntervalId !== null) {
-            console.log(`${LOG} phone-closed — stopping ringtone`);
+            dlog(`${LOG} phone-closed — stopping ringtone`);
             stopRingtone();
         }
     });
@@ -409,7 +410,7 @@ export async function runSelectionFlow(onStatus) {
     };
     saveRingtoneSelection(ringtoneData);
 
-    console.log(`${LOG} Selection complete: "${chosen.name}" — ${reason}`);
+    dlog(`${LOG} Selection complete: "${chosen.name}" — ${reason}`);
     return ringtoneData;
 }
 
@@ -441,7 +442,7 @@ export async function uploadUserRingtone(audioFile, onStatus) {
     }
 
     notify('正在上传铃声...');
-    console.log(`${LOG} Uploading user ringtone: ${audioFile.name} (${audioFile.size} bytes)`);
+    dlog(`${LOG} Uploading user ringtone: ${audioFile.name} (${audioFile.size} bytes)`);
 
     // Upload to ST file system
     const audioBlob = new Blob([await audioFile.arrayBuffer()], { type: audioFile.type });
@@ -459,7 +460,7 @@ export async function uploadUserRingtone(audioFile, onStatus) {
     };
 
     saveRingtoneSelection(ringtoneData);
-    console.log(`${LOG} User ringtone uploaded: "${displayName}" → ${audioPath}`);
+    dlog(`${LOG} User ringtone uploaded: "${displayName}" → ${audioPath}`);
     return ringtoneData;
 }
 

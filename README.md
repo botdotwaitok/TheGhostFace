@@ -1,4 +1,4 @@
-# 👻 鬼面 (TheGhostFace) V4.2.7
+# 👻 鬼面 (TheGhostFace) V4.2.8
 
 > **"给她一切她曾被拒绝的东西"** — The Entity 的承诺
 
@@ -8,9 +8,9 @@
 
 ---
 
-## :sparkles:V4.2.7 更新亮点
+## :sparkles:V4.2.8 更新亮点
 
-### chat app聊天背景+世界书管理器增添时间排序+鬼面给条目打时间标
+### 聊天互相贴表情，互相引用回复；长按气泡出现二级菜单；整体视觉优化 x n；console简化；prompt优化；修复了chat app不发朋友圈/评论的bug；
 
 ---
 

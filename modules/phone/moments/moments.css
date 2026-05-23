@@ -54,8 +54,8 @@
 
 @media (min-width: 768px) {
     .moments-container {
-        width: 600px;
-        max-width: 90vw;
+        width: 400px;
+        max-width: 95vw;
         height: 90vh;
         max-height: 900px;
         border-radius: 20px;

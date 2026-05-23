@@ -30,15 +30,27 @@
     background: transparent;
 }
 
-/* When a chat background is present, make the surrounding chrome translucent so
-   the image actually shows through, and restyle the time divider iMessage-style
-   (white text with a soft gray drop shadow) to stay legible on any image. */
-.phone-app-viewport:has(.chat-page.has-chat-bg) .phone-app-viewport-header {
-    background: rgba(255, 255, 255, 0.5);
+/* Chat header is fully transparent and absolutely positioned so .chat-messages
+   can extend all the way to the phone's top edge — messages fade out behind
+   the floating header pills, mirroring the bottom-stack treatment. */
+.phone-app-viewport:has(.chat-page) .phone-app-viewport-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: none;
 }
 
-.chat-page.has-chat-bg .chat-input-bar {
-    background: rgba(242, 242, 247, 0.55);
+/* Title region (avatar + name) becomes a small soft-gray pill instead of a
+   bare flex row. */
+.phone-app-viewport:has(.chat-page) .phone-app-viewport-title {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 4px 14px 4px 4px;
+    border-radius: 50px;
 }
 
 .chat-page.has-chat-bg .chat-time-divider {
@@ -115,22 +127,22 @@
 /* Actions moved to #phone_app_viewport_actions, we just keep the btn */
 
 .chat-nav-btn {
-    background: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.9);
     border: none;
     color: #418ef6;
-    font-size: 17px;
+    font-size: 15px;
     cursor: pointer;
-    padding: 4px;
-    transition: opacity 0.2s;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 50px;
+    transition: background 0.2s ease;
 }
 
 .chat-nav-btn:hover {
-    opacity: 0.6;
-}
-
-/* Phone call button — extra spacing from ⋯ */
-#chat_call_btn {
-    margin-right: 8px;
+    background: rgba(255, 255, 255, 1);
 }
 
 /* ─── Messages Area ─── */
@@ -138,11 +150,47 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 12px 24px 8px;
+    /* Vertical paddings reserve room for the floating header (top) and
+       bottom-stack (bottom). Top fits the header pills; bottom fits the
+       single-line input bar comfortably. */
+    padding: 70px 24px 130px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
+
+    /* Symmetric soft fade at both edges: messages dissolve through the
+       transparent header region into the phone's top edge, and through the
+       transparent input-bar region into the bottom edge, instead of being
+       hard-clipped. */
+    -webkit-mask-image: linear-gradient(to bottom,
+        transparent 0,
+        black 60px,
+        black calc(100% - 120px),
+        transparent 100%);
+    mask-image: linear-gradient(to bottom,
+        transparent 0,
+        black 60px,
+        black calc(100% - 120px),
+        transparent 100%);
+}
+
+/* Bottom-pinned stack containing draft area + input bar + delete toolbar.
+   Floats over .chat-messages so messages can fade out behind the transparent
+   input bar all the way to the phone's bottom edge. */
+.chat-bottom-stack {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+}
+
+.chat-bottom-stack > * {
+    pointer-events: auto;
 }
 
 .chat-messages::-webkit-scrollbar {
@@ -169,6 +217,15 @@
     justify-content: flex-start;
 }
 
+/* Extra breathing room at sender transitions. The base 8px gap from
+   .chat-messages keeps consecutive same-sender bubbles tight; when the
+   previous row ends a burst (its last bubble carries .has-tail), the next
+   row is by definition a different sender, so add 8px on top — doubling the
+   visual gap to 16px exactly at the user↔char seam. */
+.chat-bubble-row:has(.chat-bubble.has-tail) + .chat-bubble-row {
+    margin-top: 8px;
+}
+
 .chat-bubble {
     max-width: 75%;
     padding: 8px 14px;
@@ -187,20 +244,32 @@
 .chat-bubble-row.user .chat-bubble {
     background: #418ef6;
     color: #fff;
-    border-bottom-right-radius: 4px;
 }
 
 /* Character bubble — light gray */
 .chat-bubble-row.char .chat-bubble {
     background: #e9e9ea;
     color: #1c1c1e;
+}
+
+/* Squared tail-side corner only on the bubble that actually shows the
+   tail. Grouped (non-end) bubbles stay as fully rounded pills. */
+.chat-bubble-row.user .chat-bubble.has-tail {
+    border-bottom-right-radius: 4px;
+}
+
+.chat-bubble-row.char .chat-bubble.has-tail {
     border-bottom-left-radius: 4px;
 }
 
 /* ─── iMessage-style bubble tails ─── */
+/* iMessage grouping convention: only the last bubble of a consecutive
+   same-sender burst shows the tail. The .has-tail class is assigned at
+   render time by applyBubbleTails() in chatHtmlBuilder.js, and refreshed
+   automatically via a MutationObserver after any insert/remove. */
 
 /* User tail (right side, blue) */
-.chat-bubble-row.user .chat-bubble::after {
+.chat-bubble-row.user .chat-bubble.has-tail::after {
     content: '';
     position: absolute;
     bottom: 0;
@@ -220,7 +289,7 @@
 }
 
 /* Char tail (left side, gray) — SVG flipped internally via SVG transform attribute */
-.chat-bubble-row.char .chat-bubble::after {
+.chat-bubble-row.char .chat-bubble.has-tail::after {
     content: '';
     position: absolute;
     bottom: 0;
@@ -237,7 +306,6 @@
     pointer-events: none;
 }
 
-/* Consecutive same-sender grouping has been removed to match iMessage */
 
 /* ─── Timestamp Divider ─── */
 .chat-time-divider {
@@ -340,6 +408,94 @@
     text-align: right;
     padding-right: 4px;
     margin-bottom: 2px;
+}
+
+/* ─── Reply preview (real chat bubble lifted onto the input bar) ─── */
+/* Reuses .chat-bubble-row/.chat-bubble color rules so the preview looks
+   identical to the bubble it quotes, just with a "回复 X" label and a
+   close × hooked onto the corner. */
+.chat-reply-preview.chat-bubble-row {
+    margin: 0;
+    /* Override the draft area's align-items: flex-end so char-side previews
+       float to the left side, mirroring the original conversation. */
+    align-self: stretch;
+}
+
+.chat-reply-preview.chat-bubble-row.user .chat-bubble-column {
+    align-items: flex-end;
+}
+
+.chat-reply-preview.chat-bubble-row.char .chat-bubble-column {
+    align-items: flex-start;
+}
+
+/* Soft shadow to lift the preview bubble out of the input bar — signals
+   "this is the message you're quoting" without needing a full-screen blur. */
+.chat-reply-preview .chat-bubble {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Tiny "↩ 回复 X" label above the bubble. */
+.chat-reply-preview-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #8e8e93;
+    line-height: 1.2;
+    padding: 0 2px;
+}
+
+.chat-reply-preview-label i {
+    font-size: 13px;
+    line-height: 1;
+}
+
+/* Close button — small circular badge tucked at the bubble's outer corner.
+   Mirrors the user/char layout so it never overlaps the bubble's tail. */
+.chat-reply-preview-close {
+    position: absolute;
+    top: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #8e8e93;
+    color: #fff;
+    border: none;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: background 0.15s ease;
+}
+
+.chat-reply-preview.chat-bubble-row.user .chat-reply-preview-close {
+    right: -6px;
+}
+
+.chat-reply-preview.chat-bubble-row.char .chat-reply-preview-close {
+    left: auto;
+    right: -6px;
+}
+
+.chat-reply-preview-close:hover {
+    background: #FF3B30;
+}
+
+/* ─── Small reply tag on draft bubbles (when a draft carries a quote) ─── */
+.chat-draft-reply-tag {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 4px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.chat-draft-reply-tag i {
+    line-height: 1;
 }
 
 /* ─── Image Draft (pending image in draft area) ─── */
@@ -465,18 +621,18 @@
 }
 
 /* ─── Input Bar ─── */
+/* The bar itself is fully transparent — only the rounded input pill and the
+   round buttons render. Avoids the backdrop-filter flicker we used to hit on
+   ancestors that hold a non-none transform, and lets the chat background show
+   through cleanly. */
 .chat-input-bar {
     display: flex;
     align-items: flex-end;
     padding: 20px 24px;
     padding-bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
-    background: rgba(242, 242, 247, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-top: 0.5px solid rgba(0, 0, 0, 0.12);
+    background: transparent;
     gap: 8px;
     flex-shrink: 0;
-    will-change: transform;
 }
 
 /* Mobile: extra bottom padding to clear browser chrome */
@@ -901,12 +1057,73 @@
     gap: 2px;
 }
 
+/* Wraps the main bubble + reaction badge. Content-sized (fit-content) so the
+   badge can absolute-position against the bubble's actual inner edge instead
+   of the full-width column edge. Also caps bubble width at 75% of column. */
+.chat-bubble-anchor {
+    position: relative;
+    max-width: 75%;
+    width: fit-content;
+}
+
+.chat-bubble-anchor > .chat-bubble {
+    max-width: 100%;
+}
+
+/* special card margin between other mes */
+.chat-bubble-anchor > .chat-bubble + .chat-bubble {
+    margin-top: 6px;
+}
+
 .chat-bubble-row.user .chat-bubble-column {
     align-items: flex-end;
 }
 
 .chat-bubble-row.char .chat-bubble-column {
     align-items: flex-start;
+}
+
+/* ─── Reply quote on top of a bubble (when msg.replyTo is set) ─── */
+/* Minimal text-only label, same visual language as .chat-time-divider:
+   transparent background, gray text, relies on text-shadow when a chat
+   background is set. Keeps the bubble itself the only colored container. */
+.chat-bubble-reply-quote {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 75%;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: #8e8e93;
+}
+
+.chat-bubble-reply-quote-icon {
+    font-size: 12px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.chat-bubble-reply-quote-name {
+    flex-shrink: 0;
+}
+
+.chat-bubble-reply-quote-snippet {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.85;
+}
+
+/* On a chat background image, lift to white + shadow (same pattern as time
+   divider) so the label remains legible regardless of bg colors. */
+.chat-page.has-chat-bg .chat-bubble-reply-quote {
+    color: #ffffff;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(60, 60, 67, 0.65);
 }
 
 .chat-thought-bubble {
@@ -1103,8 +1320,13 @@
     transform: scale(0.95);
 }
 
-/* ─── Emoji Reaction Picker ─── */
+/* ─── Emoji Reaction Picker (long-press floating overlay) ─── */
+/* Mounted to document.body and positioned via JS using getBoundingClientRect.
+   No flex sibling alignment — JS handles top/left absolutely. */
 .chat-reaction-picker {
+    position: fixed;
+    top: 0;
+    left: 0;
     display: flex;
     gap: 4px;
     padding: 6px 10px;
@@ -1114,25 +1336,16 @@
     border-radius: 24px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
     width: fit-content;
-    margin-bottom: 4px;
     opacity: 0;
-    transform: translateY(8px) scale(0.9);
+    transform: translateY(8px);
     transition: opacity 0.2s ease, transform 0.2s ease;
-    z-index: 20;
+    /* Above .phone-overlay (z-index 99998) since we body-mount the picker. */
+    z-index: 999999;
 }
 
 .chat-reaction-picker.visible {
     opacity: 1;
-    transform: translateY(0) scale(1);
-}
-
-.chat-reaction-picker.align-right {
-    align-self: flex-end;
-    margin-left: auto;
-}
-
-.chat-reaction-picker.align-left {
-    align-self: flex-start;
+    transform: translateY(0);
 }
 
 .chat-reaction-emoji {
@@ -1159,39 +1372,347 @@
     transform: scale(0.9);
 }
 
-/* ─── Reaction Badge (below bubble) ─── */
+/* ─── Action Menu (vertical, sits below the bubble — Phase 2) ─── */
+/* Same body-mount + JS positioning model as the emoji picker above. */
+.chat-bubble-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 4px 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 999999;
+    overflow: hidden;
+}
+
+.chat-bubble-menu.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.chat-bubble-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 11px 16px;
+    border: none;
+    background: transparent;
+    color: #1c1c1e;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+}
+
+.chat-bubble-menu-item + .chat-bubble-menu-item {
+    border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-bubble-menu-item:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.chat-bubble-menu-item:active {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.chat-bubble-menu-label {
+    flex: 1;
+}
+
+.chat-bubble-menu-icon {
+    font-size: 18px;
+    color: #1c1c1e;
+    margin-left: 12px;
+}
+
+/* Destructive variant (used by Delete) — iOS system red.
+   Different shade in dark mode matches Apple's system red treatment. */
+.chat-bubble-menu-item.destructive,
+.chat-bubble-menu-item.destructive .chat-bubble-menu-icon {
+    color: #ff3b30;
+}
+
+.phone-dark-mode .chat-bubble-menu-item.destructive,
+.phone-dark-mode .chat-bubble-menu-item.destructive .chat-bubble-menu-icon,
+.chat-bubble-menu.dark .chat-bubble-menu-item.destructive,
+.chat-bubble-menu.dark .chat-bubble-menu-item.destructive .chat-bubble-menu-icon {
+    color: #ff453a;
+}
+
+/* ─── Reaction Badge (floats over the bubble's top corner, iMessage-style) ─── */
 .chat-reaction-badge {
+    position: absolute;
+    top: -22px;
     display: flex;
     gap: 4px;
-    flex-wrap: wrap;
-    margin-top: 2px;
+    flex-wrap: nowrap;
+    z-index: 2;
+}
+
+/* The badge above sits at top: -22px (sticking out above the bubble's top
+   edge). It's absolutely positioned, so it takes no space in flow — without
+   help it would visually overlap the row above. Mirror iMessage's behavior:
+   when a row has a reaction, push the row itself down so the badge clears
+   the previous message. Two selectors so this wins over the 8px
+   sender-transition margin (`:has(.has-tail) + ...`) when both apply. */
+.chat-bubble-row:has(.chat-reaction-badge),
+.chat-bubble-row:has(.chat-bubble.has-tail) + .chat-bubble-row:has(.chat-reaction-badge) {
+    margin-top: 24px;
 }
 
 .chat-reaction-item {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 8px;
-    background: rgba(0, 0, 0, 0.06);
-    border-radius: 12px;
-    font-size: 14px;
-    line-height: 1.4;
+    justify-content: center;
+    gap: 4px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 9px;
+    border-radius: 18px;
+    font-size: 22px;
+    line-height: 1;
     cursor: pointer;
     transition: all 0.15s;
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
 }
 
 .chat-reaction-item:hover {
-    background: rgba(0, 0, 0, 0.1);
-    transform: scale(1.05);
+    transform: scale(1.08);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
 }
 
+/* iMessage convention: the reaction floats on the side facing the conversation
+   center, not the wall — so user bubbles (right-aligned) get reactions on the
+   LEFT, and char bubbles (left-aligned) get them on the RIGHT. */
 .chat-bubble-row.user .chat-reaction-badge {
-    justify-content: flex-end;
+    left: -8px;
 }
 
 .chat-bubble-row.char .chat-reaction-badge {
-    justify-content: flex-start;
+    right: -8px;
+}
+
+/* Reaction pill background reflects WHO applied it, not which bubble it sits on:
+   - reactions on char bubbles come from the user → user-bubble color
+   - reactions on user bubbles come from the AI → char-bubble color */
+.chat-bubble-row.char .chat-reaction-item {
+    background: #418ef6;
+    color: #fff;
+}
+
+.chat-bubble-row.user .chat-reaction-item {
+    background: #e9e9ea;
+    color: #1c1c1e;
+}
+
+/* ─── "+" button at the end of the quick reaction bar ─── */
+/* Inherits .chat-reaction-emoji sizing; we just style the icon inside. */
+.chat-reaction-more i {
+    font-size: 22px;
+    color: #1c1c1e;
+    opacity: 0.55;
+}
+
+.chat-reaction-more:hover i {
+    opacity: 1;
+}
+
+/* ─── Full Emoji Picker (opened via the "+" button) ─── */
+/* Bottom-anchored sheet on top of a dimmed backdrop. Lives on body so it
+   escapes the phone-container's transform/clipping.
+   IMPORTANT: cannot rely on `bottom: 0` / `inset: 0` here — on mobile some
+   parent (likely body in ST's mobile mode) carries a transform, which makes
+   `position: fixed` resolve against THAT element instead of the viewport.
+   Result: `bottom: 0` lands at the top of the transformed ancestor.
+   Mirror the existing bubble-menu pattern: start at 0,0 and let JS compute
+   real top/left after mount, with width/height in vw/vh units which stay
+   viewport-relative regardless of any ancestor transform. */
+.chat-emoji-picker-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 999998;
+}
+
+.chat-emoji-picker-backdrop.visible {
+    opacity: 1;
+}
+
+.chat-emoji-picker-full {
+    position: fixed;
+    top: 0;
+    left: 0;
+    /* JS sets the actual top/left in showFullEmojiPicker() after mount. */
+    width: min(420px, 100vw);
+    height: min(420px, 65vh);
+    height: min(420px, 65dvh);
+    background: rgba(245, 245, 247, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    opacity: 0;
+    /* JS sets --picker-h so the panel slides up from its own height below
+       its final position; falls back to a small slide if the var is unset. */
+    transform: translateY(var(--picker-h, 30px));
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 999999;
+}
+
+.chat-emoji-picker-full.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.chat-emoji-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 8px;
+    flex-shrink: 0;
+}
+
+.chat-emoji-picker-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.chat-emoji-picker-close {
+    border: none;
+    background: rgba(0, 0, 0, 0.06);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #1c1c1e;
+    padding: 0;
+    transition: background 0.15s;
+}
+
+.chat-emoji-picker-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.chat-emoji-picker-close i {
+    font-size: 16px;
+}
+
+.chat-emoji-picker-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 8px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-emoji-picker-section {
+    display: none;
+}
+
+.chat-emoji-picker-section.active {
+    display: block;
+}
+
+.chat-emoji-picker-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(60, 60, 67, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 8px 8px 4px;
+}
+
+.chat-emoji-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 2px;
+}
+
+.chat-emoji-picker-cell {
+    aspect-ratio: 1;
+    border: none;
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.1s, transform 0.1s;
+}
+
+.chat-emoji-picker-cell:hover {
+    background: rgba(0, 0, 0, 0.06);
+    transform: scale(1.15);
+}
+
+.chat-emoji-picker-cell:active {
+    transform: scale(0.92);
+}
+
+.chat-emoji-picker-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 6px 8px;
+    border-top: 0.5px solid rgba(60, 60, 67, 0.18);
+    background: rgba(255, 255, 255, 0.6);
+    flex-shrink: 0;
+}
+
+.chat-emoji-picker-tab {
+    border: none;
+    background: transparent;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: rgba(60, 60, 67, 0.6);
+    padding: 0;
+    transition: all 0.15s;
+}
+
+.chat-emoji-picker-tab:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #1c1c1e;
+}
+
+.chat-emoji-picker-tab.active {
+    background: rgba(0, 0, 0, 0.08);
+    color: #1c1c1e;
+}
+
+.chat-emoji-picker-tab i {
+    font-size: 20px;
 }
 
 /* ─── Chat Overlay Base ─── */
@@ -1548,7 +2069,7 @@ textarea#chat_edit_textarea {
 /* .chat-plus-overlay 沿用 .chat-overlay-base 定位，但因为里面要塞 6 个动作图标，
    单独把内层 sheet 加宽，避免和窄的 menu / inventory sheet 共享 320px 上限。 */
 .chat-plus-overlay .chat-menu-sheet {
-    max-width: 420px;
+    max-width: 480px;
 }
 
 .chat-plus-row {
@@ -1627,12 +2148,8 @@ textarea#chat_edit_textarea {
     background: transparent;
 }
 
-.phone-dark-mode .phone-app-viewport:has(.chat-page.has-chat-bg) .phone-app-viewport-header {
-    background: rgba(28, 28, 30, 0.55);
-}
-
-.phone-dark-mode .chat-page.has-chat-bg .chat-input-bar {
-    background: rgba(0, 0, 0, 0.55);
+.phone-dark-mode .phone-app-viewport:has(.chat-page) .phone-app-viewport-title {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 /* Time divider keeps the same white-with-shadow treatment in dark mode —
@@ -1668,7 +2185,12 @@ textarea#chat_edit_textarea {
 }
 
 .phone-dark-mode .chat-nav-btn {
+    background: rgba(255, 255, 255, 0.08);
     color: #0a84ff;
+}
+
+.phone-dark-mode .chat-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
 }
 
 /* Messages area scrollbar */
@@ -1710,10 +2232,29 @@ textarea#chat_edit_textarea {
     color: #ff453a;
 }
 
-/* Input bar */
-.phone-dark-mode .chat-input-bar {
-    background: rgba(0, 0, 0, 0.95);
-    border-top-color: rgba(255, 255, 255, 0.08);
+/* Reply preview — dark (label + close button; bubble colors inherit) */
+.phone-dark-mode .chat-reply-preview-label {
+    color: #8e8e93;
+}
+
+.phone-dark-mode .chat-reply-preview-close {
+    background: #636366;
+}
+
+.phone-dark-mode .chat-reply-preview-close:hover {
+    background: #ff453a;
+}
+
+/* Bubble reply quote — dark (no bg image): plain gray, matches time divider */
+.phone-dark-mode .chat-bubble-reply-quote {
+    color: #636366;
+}
+
+/* Bubble reply quote — dark with bg image: white + shadow */
+.phone-dark-mode .chat-page.has-chat-bg .chat-bubble-reply-quote {
+    color: #ffffff;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
 .phone-dark-mode .chat-input-wrap {
@@ -1855,28 +2396,75 @@ textarea#chat_edit_textarea {
 }
 
 /* Bubble tails in dark mode */
-.phone-dark-mode .chat-bubble-row.char .chat-bubble::after {
+.phone-dark-mode .chat-bubble-row.char .chat-bubble.has-tail::after {
     background: #2c2c2e;
 }
 
-/* Reaction picker dark mode */
-.phone-dark-mode .chat-reaction-picker {
+/* Reaction picker dark mode.
+   The picker is body-mounted (the phone-container transform breaks fixed
+   positioning), so we mirror the dark flag onto the overlay itself via JS
+   as well as keeping the legacy nested selector for any in-tree pickers. */
+.phone-dark-mode .chat-reaction-picker,
+.chat-reaction-picker.dark {
     background: rgba(44, 44, 46, 0.95);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
 }
 
-.phone-dark-mode .chat-reaction-emoji:hover {
+.phone-dark-mode .chat-reaction-emoji:hover,
+.chat-reaction-picker.dark .chat-reaction-emoji:hover {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* Reaction badge dark mode */
+/* Action menu dark mode — same body-mount caveat as the picker. */
+.phone-dark-mode .chat-bubble-menu,
+.chat-bubble-menu.dark {
+    background: rgba(44, 44, 46, 0.95);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-bubble-menu-item,
+.chat-bubble-menu.dark .chat-bubble-menu-item {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-bubble-menu-icon,
+.chat-bubble-menu.dark .chat-bubble-menu-icon {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-bubble-menu-item:hover,
+.chat-bubble-menu.dark .chat-bubble-menu-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-bubble-menu-item:active,
+.chat-bubble-menu.dark .chat-bubble-menu-item:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.phone-dark-mode .chat-bubble-menu-item + .chat-bubble-menu-item,
+.chat-bubble-menu.dark .chat-bubble-menu-item + .chat-bubble-menu-item {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Reaction badge dark mode — preserve the "who applied it" color mapping:
+   user-side reactions use the dark char-bubble color, char-side stays blue. */
 .phone-dark-mode .chat-reaction-item {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-bubble-row.user .chat-reaction-item {
+    background: #2c2c2e;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-bubble-row.char .chat-reaction-item {
+    background: #418ef6;
+    color: #fff;
 }
 
 .phone-dark-mode .chat-reaction-item:hover {
-    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
 }
 
 /* Plus action panel row */
@@ -1896,6 +2484,54 @@ textarea#chat_edit_textarea {
 .phone-dark-mode .chat-plus-action.active i {
     background: linear-gradient(135deg, #34C759, #30D158);
     color: #fff;
+}
+
+/* ─── Full Emoji Picker — Dark Mode ─── */
+/* The overlay lives on body (outside .phone-container), so it uses its
+   own .dark modifier class instead of the .phone-dark-mode descendant rule. */
+.chat-reaction-picker.dark .chat-reaction-more i {
+    color: #f2f2f7;
+}
+
+.chat-emoji-picker-full.dark {
+    background: rgba(28, 28, 30, 0.98);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-title {
+    color: #f2f2f7;
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-close {
+    background: rgba(255, 255, 255, 0.1);
+    color: #f2f2f7;
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-close:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-section-label {
+    color: rgba(235, 235, 245, 0.5);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-cell:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-tabs {
+    border-top-color: rgba(255, 255, 255, 0.12);
+    background: rgba(44, 44, 46, 0.6);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-tab {
+    color: rgba(235, 235, 245, 0.5);
+}
+
+.chat-emoji-picker-full.dark .chat-emoji-picker-tab:hover,
+.chat-emoji-picker-full.dark .chat-emoji-picker-tab.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: #f2f2f7;
 }
 
 .phone-dark-mode .chat-plus-action.active span {

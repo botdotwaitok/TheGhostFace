@@ -6,6 +6,7 @@ import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { resolveProxyUrl } from '../utils/corsProxyFetch.js';
 import { getSettings as getMomentsSettings } from '../moments/state.js';
 import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
+import { dlog } from '../../utils.js';
 
 const LOG = '[AmbientManager]';
 
@@ -48,7 +49,7 @@ export function isAmbientEnabled() {
  */
 export function setAmbientEnabled(enabled) {
     setPhoneSetting('ambientEnabled', enabled);
-    console.log(`${LOG} Ambient ${enabled ? 'enabled' : 'disabled'}`);
+    dlog(`${LOG} Ambient ${enabled ? 'enabled' : 'disabled'}`);
 }
 
 /**
@@ -80,21 +81,21 @@ export function getAmbientInfo() {
  */
 export async function initAmbient() {
     if (!isAmbientEnabled()) {
-        console.log(`${LOG} Ambient disabled, skipping init`);
+        dlog(`${LOG} Ambient disabled, skipping init`);
         return;
     }
 
     // If user has custom audio, we're good
     const customPath = getPhoneSetting('ambientCustomPath');
     if (customPath) {
-        console.log(`${LOG} Using custom ambient: ${customPath}`);
+        dlog(`${LOG} Using custom ambient: ${customPath}`);
         return;
     }
 
     // Check if default is already cached
     const cachedPath = getPhoneSetting('ambientDefaultPath');
     if (cachedPath) {
-        console.log(`${LOG} Default ambient already cached: ${cachedPath}`);
+        dlog(`${LOG} Default ambient already cached: ${cachedPath}`);
         return;
     }
 
@@ -109,7 +110,7 @@ export async function initAmbient() {
         const audioUrl = `${backendUrl.replace(/\/$/, '')}/ambient/default.mp3`;
         const fetchUrl = resolveProxyUrl(audioUrl);
 
-        console.log(`${LOG} Downloading default ambient from: ${fetchUrl}`);
+        dlog(`${LOG} Downloading default ambient from: ${fetchUrl}`);
         const resp = await fetch(fetchUrl);
         if (!resp.ok) {
             console.warn(`${LOG} Download failed: ${resp.status} ${resp.statusText}`);
@@ -117,12 +118,12 @@ export async function initAmbient() {
         }
 
         const audioBlob = await resp.blob();
-        console.log(`${LOG} Downloaded: ${audioBlob.size} bytes`);
+        dlog(`${LOG} Downloaded: ${audioBlob.size} bytes`);
 
         // Cache to ST file system
         const webPath = await uploadAudioToST(audioBlob, 'ambient_default');
         setPhoneSetting('ambientDefaultPath', webPath);
-        console.log(`${LOG} Default ambient cached: ${webPath}`);
+        dlog(`${LOG} Default ambient cached: ${webPath}`);
     } catch (e) {
         console.warn(`${LOG} Failed to download default ambient:`, e);
     }
@@ -142,7 +143,7 @@ export function startAmbient() {
 
     const info = getAmbientInfo();
     if (!info.audioPath) {
-        console.log(`${LOG} No ambient audio available`);
+        dlog(`${LOG} No ambient audio available`);
         return false;
     }
 
@@ -176,7 +177,7 @@ export function startAmbient() {
     // Fade in
     _fadeToVolume(AMBIENT_VOLUME, FADE_DURATION);
 
-    console.log(`${LOG} Ambient started: ${info.name}`);
+    dlog(`${LOG} Ambient started: ${info.name}`);
     return true;
 }
 
@@ -232,7 +233,7 @@ export function stopAmbient() {
             _audioEl.pause();
             _audioEl.currentTime = 0;
         }
-        console.log(`${LOG} Ambient stopped (paused, element kept for reuse)`);
+        dlog(`${LOG} Ambient stopped (paused, element kept for reuse)`);
     });
 }
 
@@ -271,7 +272,7 @@ export async function uploadUserAmbient(audioFile) {
         throw new Error('文件太大，请选择 10MB 以内的音频文件');
     }
 
-    console.log(`${LOG} Uploading user ambient: ${audioFile.name} (${audioFile.size} bytes)`);
+    dlog(`${LOG} Uploading user ambient: ${audioFile.name} (${audioFile.size} bytes)`);
 
     const audioBlob = new Blob([await audioFile.arrayBuffer()], { type: audioFile.type });
     const audioPath = await uploadAudioToST(audioBlob, 'ambient_user');
@@ -280,7 +281,7 @@ export async function uploadUserAmbient(audioFile) {
     setPhoneSetting('ambientCustomPath', audioPath);
     setPhoneSetting('ambientCustomName', displayName);
 
-    console.log(`${LOG} User ambient uploaded: "${displayName}" → ${audioPath}`);
+    dlog(`${LOG} User ambient uploaded: "${displayName}" → ${audioPath}`);
     return { name: displayName, audioPath };
 }
 
@@ -290,7 +291,7 @@ export async function uploadUserAmbient(audioFile) {
 export function clearUserAmbient() {
     removePhoneSetting('ambientCustomPath');
     removePhoneSetting('ambientCustomName');
-    console.log(`${LOG} Custom ambient cleared, using default`);
+    dlog(`${LOG} Custom ambient cleared, using default`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

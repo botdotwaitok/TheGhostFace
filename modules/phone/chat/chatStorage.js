@@ -37,6 +37,35 @@ const META_KEY_HOME_MARKER = 'gf_phoneChatLastHomeMarker';  // ISO timestamp of 
 const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display nickname for the character (UI-only)
 
 // ═══════════════════════════════════════════════════════════════════════
+// Serialized save queue
+// ═══════════════════════════════════════════════════════════════════════
+// All saveChatConditional() calls go through this single promise chain to
+// prevent concurrent writes from racing and corrupting chat_metadata — a real
+// incident we've hit before on remote (tailscale) sessions, where ST's mutex
+// + HTTP RTT lets two callers' writes interleave on the server side.
+//
+// Serializing here lets UI hot-paths fire-and-forget without losing ordering,
+// while callers that need durability before continuing can still await the
+// returned promise.
+
+let _saveQueue = Promise.resolve();
+
+/**
+ * Enqueue a saveChatConditional() call. The returned promise resolves when
+ * THIS save completes (or rejects with its error). Errors are isolated per
+ * task — one failing save will not poison subsequent saves in the queue.
+ *
+ * @returns {Promise<void>}
+ */
+export function queueSaveChat() {
+    const next = _saveQueue
+        .catch(() => {}) // isolate failures of prior tasks from later ones
+        .then(() => saveChatConditional());
+    _saveQueue = next;
+    return next;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Token Estimation (CJK-aware)
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -156,9 +185,31 @@ export function getCharacterDisplayName() {
  *   role: 'user' | 'char',
  *   content: string,
  *   timestamp: string (ISO),
- *   special?: string   // e.g. 'voice', 'transfer', 'image', 'share', 'retract'
+ *   special?: string,    // e.g. 'voice', 'transfer', 'image', 'share', 'retract'
+ *   replyTo?: {          // present when this message quotes another one
+ *       role: 'user' | 'char',
+ *       snippet: string, // frozen text snapshot, <= 60 code points
+ *   }
  * }
  */
+
+// ── Reply snippet helper ──
+// Builds the frozen text preview stored on msg.replyTo. Snippet is captured
+// at the moment of quoting; original content edits/deletes never propagate.
+const REPLY_SNIPPET_MAX = 60;
+
+export function buildReplySnippet(msg) {
+    if (!msg) return '';
+    if (msg.special === 'voice') return '[语音]';
+    if (msg.special === 'image') return '[图片]';
+    if (msg.special === 'call') return '[来电]';
+    const content = msg.content || '';
+    if (content === '[撤回了一条消息]') return '[已撤回]';
+    // Code-point iteration so multi-byte emoji/CJK aren't cut mid-char.
+    const cps = [...content];
+    if (cps.length <= REPLY_SNIPPET_MAX) return content;
+    return cps.slice(0, REPLY_SNIPPET_MAX).join('') + '…';
+}
 
 /**
  * Load chat history from chat_metadata (persisted in .jsonl chat file).
@@ -208,7 +259,7 @@ export async function saveChatHistory(messages) {
     try {
         if (!chat_metadata) return;
         chat_metadata[META_KEY_HISTORY] = trimmed;
-        await saveChatConditional();
+        await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata 保存失败:`, e);
     }
@@ -229,7 +280,7 @@ export async function persistPendingResult(result) {
     try {
         if (!chat_metadata) return;
         chat_metadata[META_KEY_PENDING_RESULT] = result || null;
-        await saveChatConditional();
+        await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} Pending result persistence failed:`, e);
     }
@@ -257,7 +308,7 @@ export function clearPersistedPendingResult() {
     try {
         if (chat_metadata?.[META_KEY_PENDING_RESULT]) {
             delete chat_metadata[META_KEY_PENDING_RESULT];
-            saveChatConditional().catch(e =>
+            queueSaveChat().catch(e =>
                 console.warn(`${CHAT_LOG_PREFIX} Pending result clear flush failed:`, e));
         }
     } catch (e) {
@@ -293,7 +344,7 @@ export async function saveSTSyncMarker(marker) {
         } else {
             delete chat_metadata[META_KEY_ST_SYNC_MARKER];
         }
-        await saveChatConditional();
+        await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} ST sync marker save failed:`, e);
     }
@@ -336,7 +387,7 @@ export async function saveHomeMarker(marker) {
         } else {
             delete chat_metadata[META_KEY_HOME_MARKER];
         }
-        await saveChatConditional();
+        await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} 回家 marker save failed:`, e);
     }
@@ -396,7 +447,7 @@ export async function markMessagesSummarizedUntil(marker) {
                 count++;
             }
         }
-        if (count > 0) await saveChatConditional();
+        if (count > 0) await queueSaveChat();
         return count;
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} markMessagesSummarizedUntil failed:`, e);
@@ -693,7 +744,7 @@ export async function saveChatSummary(summaryText) {
     try {
         if (!chat_metadata) return;
         chat_metadata[META_KEY_SUMMARY] = summaryText;
-        await saveChatConditional();
+        await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary save failed:`, e);
     }
@@ -776,8 +827,10 @@ export async function maybeAutoSummarize() {
             }));
 
             try {
-                const fragments = await generateSummary(summarizerMessages, true);
-                if (fragments && Array.isArray(fragments) && fragments.length > 0) {
+                // generateSummary returns { entries, timelineSegments }, not a bare array
+                const summaryResult = await generateSummary(summarizerMessages, true);
+                const fragments = summaryResult?.entries;
+                if (Array.isArray(fragments) && fragments.length > 0) {
                     await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
                 } else {

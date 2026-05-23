@@ -1,7 +1,7 @@
-// modules/phone/chat/chatReactions.js — Emoji reaction system
-// Extracted from chatApp.js
+// modules/phone/chat/chatReactions.js — Emoji reaction data layer
+// The floating picker UI lives in chatBubbleMenu.js; this file owns the
+// constants, the toggle/badge re-render flow, and AI-generated reactions.
 
-import { escHtml } from './chatApp.js';
 import { loadChatHistory, saveChatHistory } from './chatStorage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -9,37 +9,6 @@ import { loadChatHistory, saveChatHistory } from './chatStorage.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 export const REACTION_EMOJIS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
-
-/**
- * Show a floating emoji picker above a message bubble.
- */
-export function showReactionPicker(msgIndex, rowElement) {
-    dismissReactionPicker(); // Remove any existing picker
-
-    const isUser = rowElement.classList.contains('user');
-    const pickerHtml = `
-    <div class="chat-reaction-picker" data-msg-index="${msgIndex}">
-        ${REACTION_EMOJIS.map(e => `<button class="chat-reaction-emoji" data-emoji="${e}" data-msg-index="${msgIndex}">${e}</button>`).join('')}
-    </div>`;
-
-    // Insert picker above the bubble row
-    rowElement.insertAdjacentHTML('beforebegin', pickerHtml);
-
-    // Position the picker
-    const picker = rowElement.previousElementSibling;
-    if (picker && picker.classList.contains('chat-reaction-picker')) {
-        picker.classList.add(isUser ? 'align-right' : 'align-left');
-        // Add a small animation
-        requestAnimationFrame(() => picker.classList.add('visible'));
-    }
-}
-
-/**
- * Remove all reaction pickers from the DOM.
- */
-export function dismissReactionPicker() {
-    document.querySelectorAll('.chat-reaction-picker').forEach(el => el.remove());
-}
 
 /**
  * Toggle a reaction emoji on a message (add or remove).
@@ -65,20 +34,22 @@ export function toggleReaction(msgIndex, emoji) {
     saveChatHistory(history).catch(e =>
         console.warn('[聊天] reaction flush failed:', e));
 
-    // Re-render just the reaction badge for this message
+    // Re-render just the reaction badge for this message.
+    // The badge lives inside .chat-bubble-anchor so it can absolute-position
+    // against the bubble's actual edges (not the full-width column).
     const row = document.querySelector(`.chat-bubble-row[data-msg-index="${msgIndex}"]`);
     if (row) {
-        const col = row.querySelector('.chat-bubble-column');
-        const existingBadge = col?.querySelector('.chat-reaction-badge');
+        const anchor = row.querySelector('.chat-bubble-anchor');
+        const existingBadge = anchor?.querySelector(':scope > .chat-reaction-badge');
         if (existingBadge) existingBadge.remove();
 
-        if (msg.reactions && Object.keys(msg.reactions).length > 0) {
+        if (anchor && msg.reactions && Object.keys(msg.reactions).length > 0) {
             const badges = Object.entries(msg.reactions)
                 .filter(([, count]) => count > 0)
-                .map(([em, count]) => `<span class="chat-reaction-item">${em}${count > 1 ? ` ${count}` : ''}</span>`)
+                .map(([em, count]) => `<span class="chat-reaction-item" data-emoji="${em}">${em}${count > 1 ? ` ${count}` : ''}</span>`)
                 .join('');
-            if (badges && col) {
-                col.insertAdjacentHTML('beforeend',
+            if (badges) {
+                anchor.insertAdjacentHTML('beforeend',
                     `<div class="chat-reaction-badge" data-msg-index="${msgIndex}">${badges}</div>`);
             }
         }
@@ -101,7 +72,9 @@ export function applyAIReactions(aiReactions, currentHistory) {
 
     for (const reaction of aiReactions) {
         const emoji = reaction.emoji;
-        if (!emoji || !REACTION_EMOJIS.includes(emoji)) continue;
+        // No whitelist — the LLM is trusted to pick any emoji that fits.
+        // Length cap guards against the model dumping a whole string here.
+        if (!emoji || typeof emoji !== 'string' || emoji.length > 16) continue;
 
         let targetIdx;
         if (reaction.targetIndex < 0) {

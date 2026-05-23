@@ -4,6 +4,7 @@
 
 const LOG_PREFIX = '[TtsEngine]';
 import { getPhoneSetting, setPhoneSetting } from '../../phoneSettings.js';
+import { dlog } from '../../../utils.js';
 
 export class TtsEngine {
     constructor() {
@@ -137,7 +138,7 @@ export class TtsEngine {
 
         try {
             const providerSettings = this._buildProviderSettings(emotion);
-            console.log(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
+            dlog(`${LOG_PREFIX} [speak] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
 
             // Retry synthesize with exponential backoff (500ms → 1000ms → 2000ms).
             // Providers now return { buffer, mime } — we only need buffer for playback.
@@ -247,7 +248,7 @@ export class TtsEngine {
 
         try {
             const providerSettings = this._buildProviderSettings(emotion);
-            console.log(`${LOG_PREFIX} [speakAndCapture] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
+            dlog(`${LOG_PREFIX} [speakAndCapture] provider=${this._activeProviderName}, emotion=${providerSettings._emotion || 'none'}`);
 
             const result = await this._retryWithBackoff(
                 () => this._activeProvider.synthesize(text, providerSettings, signal),

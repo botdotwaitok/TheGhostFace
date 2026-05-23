@@ -13,6 +13,7 @@ import { buildVcSystemPrompt, buildVcUserPrompt, generateCallSummary } from './v
 import { saveCallLog, generateCallId } from './vcStorage.js';
 import { uploadAudioToST } from '../chat/voiceMessageService.js';
 import { playRingtone, stopRingtone, getCurrentRingtone } from './ringtoneManager.js';
+import { dlog } from '../../utils.js';
 import { initAmbient, startAmbient, stopAmbient, stopAmbientImmediate, warmUpAmbient } from './ambientManager.js';
 import { initProactive, startProactive, stopProactive, notifyUserSpoke } from './proactiveSpeech.js';
 import { acquireWakeLock, releaseWakeLock } from './wakeLockManager.js';
@@ -312,7 +313,7 @@ async function _preGenerateGreeting(providedText = '') {
             // ── Optimized path: text already provided, skip LLM ──
             if (!isStillCurrent()) return;
             _greetingText = providedText.replace(/^["'「]|["'」]$/g, '').trim();
-            console.log(`${LOG_PREFIX} Greeting text provided: "${_greetingText}"`);
+            dlog(`${LOG_PREFIX} Greeting text provided: "${_greetingText}"`);
         } else {
             // ── Fallback: generate greeting via LLM ──
             const userName = getPhoneUserName();
@@ -326,11 +327,11 @@ async function _preGenerateGreeting(providedText = '') {
 - 只写开场白内容，不要加引号或说明`;
             const userPrompt = `${userName}接了你的电话，说一句开场白吧。`;
 
-            console.log(`${LOG_PREFIX} Pre-generating greeting for ${charName}...`);
+            dlog(`${LOG_PREFIX} Pre-generating greeting for ${charName}...`);
             const greetingResponse = await callPhoneLLM(systemPrompt, userPrompt);
             if (!isStillCurrent()) return;
             _greetingText = greetingResponse.replace(/^["'「]|["'」]$/g, '').trim();
-            console.log(`${LOG_PREFIX} Greeting text: "${_greetingText}"`);
+            dlog(`${LOG_PREFIX} Greeting text: "${_greetingText}"`);
         }
 
         // Synthesize TTS without playing — access provider directly
@@ -344,12 +345,12 @@ async function _preGenerateGreeting(providedText = '') {
             const mime = result?.mime || 'audio/mpeg';
             if (buffer) {
                 _greetingAudioBlob = new Blob([buffer], { type: mime });
-                console.log(`${LOG_PREFIX} Greeting TTS ready: ${_greetingAudioBlob.size} bytes (${mime})`);
+                dlog(`${LOG_PREFIX} Greeting TTS ready: ${_greetingAudioBlob.size} bytes (${mime})`);
             }
         }
     } catch (e) {
         if (e?.name === 'AbortError' || !isStillCurrent()) {
-            console.log(`${LOG_PREFIX} Greeting pre-gen aborted (call ended).`);
+            dlog(`${LOG_PREFIX} Greeting pre-gen aborted (call ended).`);
             return;
         }
         console.warn(`${LOG_PREFIX} Greeting pre-generation failed:`, e);
@@ -363,7 +364,7 @@ async function _preGenerateGreeting(providedText = '') {
  * Stops ringtone, transitions to call UI, plays greeting, starts STT.
  */
 async function _acceptIncomingCall() {
-    console.log(`${LOG_PREFIX} Incoming call accepted!`);
+    dlog(`${LOG_PREFIX} Incoming call accepted!`);
     stopRingtone();
 
     // 🔊 Warm up AudioContext during user gesture (tap) to unlock mobile audio
@@ -456,7 +457,7 @@ async function _acceptIncomingCall() {
  * Stops ringtone, unmounts UI, no call log saved.
  */
 function _declineIncomingCall() {
-    console.log(`${LOG_PREFIX} Incoming call declined.`);
+    dlog(`${LOG_PREFIX} Incoming call declined.`);
     // Abort any in-flight greeting pre-gen (LLM + TTS) before tearing down state
     // so the response doesn't land on the next call's overlay.
     if (_sessionAbortCtrl) {
@@ -490,7 +491,7 @@ function _declineIncomingCall() {
  * @param {string}  [options.greetingText=''] - Pre-generated greeting text (skips LLM call if provided)
  */
 export async function openVoiceCall({ chatContext = false, incoming = false, greetingText = '' } = {}) {
-    console.log(`${LOG_PREFIX} Opening Voice Call... (chatContext: ${chatContext}, incoming: ${incoming}, greeting: ${greetingText ? 'provided' : 'none'})`);
+    dlog(`${LOG_PREFIX} Opening Voice Call... (chatContext: ${chatContext}, incoming: ${incoming}, greeting: ${greetingText ? 'provided' : 'none'})`);
 
     // Reset session state — cancels stale 300ms unmount timeouts / aborts orphaned
     // tasks from a previous call that hasn't fully torn down yet.
@@ -586,12 +587,12 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
     // Reentry guard: rapid clicks, [挂断] auto-hangup colliding with manual hangup,
     // or onCaptureEnded firing during teardown could all call us twice. Bail early.
     if (_isClosing) {
-        console.log(`${LOG_PREFIX} closeVoiceCall already in progress — ignoring re-entry`);
+        dlog(`${LOG_PREFIX} closeVoiceCall already in progress — ignoring re-entry`);
         return;
     }
     _isClosing = true;
 
-    console.log(`${LOG_PREFIX} Closing Voice Call... (skipSummary: ${skipSummary})`);
+    dlog(`${LOG_PREFIX} Closing Voice Call... (skipSummary: ${skipSummary})`);
 
     // Snapshot the session controller — if openVoiceCall replaces it during the
     // long summary await (user re-dials), we must NOT keep tearing down state
@@ -686,14 +687,14 @@ export async function closeVoiceCall({ skipSummary = false } = {}) {
         };
 
         saveCallLog(callLog);
-        console.log(`${LOG_PREFIX} Call log saved: ${messagesSnapshot.length} messages, ${duration}s, summary: ${skipSummary ? 'skipped' : 'generated'}`);
+        dlog(`${LOG_PREFIX} Call log saved: ${messagesSnapshot.length} messages, ${duration}s, summary: ${skipSummary ? 'skipped' : 'generated'}`);
     }
 
     // If the user re-dialed while summary was generating, openVoiceCall already
     // ran _resetSessionState (replacing _sessionAbortCtrl). DO NOT touch any
     // shared module state or the overlay — they belong to the new session now.
     if (_sessionAbortCtrl !== closingCtrl) {
-        console.log(`${LOG_PREFIX} A new session started during summary generation — leaving fresh state alone.`);
+        dlog(`${LOG_PREFIX} A new session started during summary generation — leaving fresh state alone.`);
         return;
     }
 
@@ -1123,12 +1124,12 @@ async function _retryWithBackoff(fn, opts = {}) {
  */
 async function _sendToLLM(text, options = {}) {
     if (_isProcessingLLM) {
-        console.log(`${LOG_PREFIX} LLM already processing, queuing...`);
+        dlog(`${LOG_PREFIX} LLM already processing, queuing...`);
         // Simple approach: skip overlapping requests in voice call context
         return;
     }
     if (_isClosing) {
-        console.log(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
+        dlog(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
         return;
     }
 
@@ -1180,7 +1181,7 @@ async function _sendToLLM(text, options = {}) {
         // entirely. Do NOT push to _callMessages, do NOT touch DOM (the bubble may
         // belong to a different call now).
         if (_isClosing || _callId !== snapshotCallId) {
-            console.log(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
+            dlog(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
             return;
         }
 
@@ -1194,14 +1195,14 @@ async function _sendToLLM(text, options = {}) {
         wantsHangUp = rawClean.includes('[挂断]');
         const cleanResponse = rawClean.replace(/\[挂断\]/g, '').trim();
         if (wantsHangUp) {
-            console.log(`${LOG_PREFIX} [挂断] marker detected — call will end after TTS finishes.`);
+            dlog(`${LOG_PREFIX} [挂断] marker detected — call will end after TTS finishes.`);
         }
 
         // 🎭 Parse <say tone="..."> tags from LLM output
         const parsed = parseSayTags(cleanResponse);
         const displayText = parsed.fullText; // Clean text without tags
         const emotion = parsed.primaryTone;  // First segment's tone for TTS
-        console.log(`${LOG_PREFIX} Tone parsed: emotion="${emotion}", segments=${parsed.segments.length}, text="${displayText.substring(0, 40)}..."`);
+        dlog(`${LOG_PREFIX} Tone parsed: emotion="${emotion}", segments=${parsed.segments.length}, text="${displayText.substring(0, 40)}..."`);
 
         // Record char message with clean text (no tags in history)
         const charMessageEntry = {
@@ -1243,7 +1244,7 @@ async function _sendToLLM(text, options = {}) {
 
                 // Split segment into individual sentences for reliable TTS
                 const sentences = _splitIntoSentences(seg.text);
-                console.log(`${LOG_PREFIX} TTS segment ${i + 1}/${parsed.segments.length}: tone="${seg.tone}", ${sentences.length} sentence(s)`);
+                dlog(`${LOG_PREFIX} TTS segment ${i + 1}/${parsed.segments.length}: tone="${seg.tone}", ${sentences.length} sentence(s)`);
 
                 for (let j = 0; j < sentences.length; j++) {
                     if (_isClosing || _callId !== snapshotCallId) break;
@@ -1274,7 +1275,7 @@ async function _sendToLLM(text, options = {}) {
                     const mergedBlob = new Blob(audioBlobs, { type: 'audio/mpeg' });
                     const audioPath = await uploadAudioToST(mergedBlob, 'voice_call');
                     charMessageEntry.audioPath = audioPath;
-                    console.log(`${LOG_PREFIX} TTS audio saved (${audioBlobs.length} segments merged): ${audioPath}`);
+                    dlog(`${LOG_PREFIX} TTS audio saved (${audioBlobs.length} segments merged): ${audioPath}`);
                 } catch (uploadErr) {
                     console.warn(`${LOG_PREFIX} TTS audio upload failed:`, uploadErr);
                 }
@@ -1305,7 +1306,7 @@ async function _sendToLLM(text, options = {}) {
     } catch (e) {
         // Aborted via session controller (user hung up) — silent bail.
         if (e?.name === 'AbortError' || _isClosing || _callId !== snapshotCallId) {
-            console.log(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
+            dlog(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
             if (charBubble && !_isClosing) charBubble.remove();
             return;
         }

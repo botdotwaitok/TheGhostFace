@@ -7,6 +7,7 @@ import {
     loadChatHistory, clearChatHistory,
     getCharacterInfo,
     getCharacterDisplayName, loadCharacterNickname, saveCharacterNickname,
+    buildReplySnippet,
 } from './chatStorage.js';
 import {
     consumePendingResult, consumeError,
@@ -18,7 +19,7 @@ import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
 import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 
 // ── Sub-module imports ──
-import { buildChatPage, buildMessagesHtml, buildBubbleRow } from './chatHtmlBuilder.js';
+import { buildChatPage, buildMessagesHtml, buildBubbleRow, CHAT_DISPLAY_COUNT, attachBubbleTailObserver } from './chatHtmlBuilder.js';
 import {
     addPendingMessage, sendAllMessages,
     handleResponseReady, handleRetryEvent,
@@ -28,11 +29,10 @@ import {
 import {
     toggleDeleteMode, toggleSelectMessage, updateDeleteToolbar, handleBatchDelete,
     toggleEditMode, openEditOverlay, closeEditOverlay, handleEditSave,
-    rerollLastMessage,
+    rerollLastMessage, selectMessageForDeletion,
 } from './chatEditDelete.js';
-import {
-    showReactionPicker, dismissReactionPicker, toggleReaction,
-} from './chatReactions.js';
+import { toggleReaction } from './chatReactions.js';
+import { attachBubbleLongPress } from './chatBubbleMenu.js';
 import { renderBuffBar, renderChatInventory, handleReturnHome, handleManualSummarize } from './chatInventory.js';
 import { beginRecording } from './chatVoice.js';
 import { handleImageSelection, showImageLightbox } from './chatImage.js';
@@ -45,7 +45,7 @@ import {
 // Shared State
 // ═══════════════════════════════════════════════════════════════════════
 
-let pendingMessages = [];          // Strings queued by the user before sending
+let pendingMessages = [];          // Array of { text, replyTo } payloads queued before sending
 let isGenerating = false;          // Lock to prevent double sends
 let isDeleteMode = false;          // Delete-mode toggle
 let selectedForDeletion = new Set(); // Batch-select indices for deletion
@@ -57,6 +57,10 @@ let _retryHandler = null;          // Stored reference for cleanup
 let _autoMsgHandler = null;        // Stored reference for cleanup
 let _callDeclinedHandler = null;   // Stored reference for cleanup
 let _pendingImageData = null;      // { base64, thumbnail, fileName } | null
+// Reply target for the NEXT message about to be drafted. Cleared after the
+// draft is pushed onto pendingMessages so each draft captures its own snapshot.
+// Shape: { role: 'user'|'char', snippet: string } | null
+let _pendingReplyTo = null;
 
 export const CHAT_LOG_PREFIX = '[聊天]';
 
@@ -75,6 +79,38 @@ export function getSelectedEditIndex() { return selectedEditIndex; }
 export function setSelectedEditIndex(v) { selectedEditIndex = v; }
 export function getPendingImageData() { return _pendingImageData; }
 export function setPendingImageData(v) { _pendingImageData = v; }
+export function getPendingReplyTo() { return _pendingReplyTo; }
+export function setPendingReplyTo(v) { _pendingReplyTo = v; }
+export function clearPendingReplyTo() { _pendingReplyTo = null; }
+
+/**
+ * Begin a reply to a history message. Snippet is captured now and frozen;
+ * later edits/deletes to the original message do not propagate. Stored on
+ * _pendingReplyTo until the next draft is pushed (then transferred onto
+ * the payload object and cleared).
+ */
+export function startReplyTo(msgIndex) {
+    const history = loadChatHistory();
+    const msg = history[msgIndex];
+    if (!msg) return;
+    _pendingReplyTo = {
+        role: msg.role,
+        snippet: buildReplySnippet(msg),
+    };
+    renderDraftArea();
+    const input = document.getElementById('chat_input');
+    if (input) {
+        input.focus();
+    }
+}
+
+/**
+ * Cancel a pending reply (the × on the preview bar). Input text is preserved.
+ */
+export function cancelReplyTo() {
+    _pendingReplyTo = null;
+    renderDraftArea();
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Entry Point
@@ -83,6 +119,7 @@ export function setPendingImageData(v) { _pendingImageData = v; }
 export function openChatApp() {
     const history = loadChatHistory();
     pendingMessages = [];
+    _pendingReplyTo = null;
     const html = buildChatPage(history);
 
     // Build custom header for chat
@@ -101,9 +138,6 @@ export function openChatApp() {
         </div>`;
 
     const actionsHtml = `
-        <button class="chat-nav-btn" id="chat_call_btn" title="语音通话">
-            <i class="fa-solid fa-phone"></i>
-        </button>
         <button class="chat-nav-btn" id="chat_menu_btn" title="更多">
             <i class="fa-solid fa-ellipsis"></i>
         </button>`;
@@ -123,12 +157,17 @@ export function openChatApp() {
 
         bindChatEvents();
 
+        // iMessage bubble tails: assign on initial render and auto-reflow
+        // for every subsequent insert/remove (covers all call sites that
+        // append bubbles into chat_messages_area).
+        attachBubbleTailObserver(document.getElementById('chat_messages_area'));
+
         // ── Consume pending background result if available ──
         if (hasPendingResult()) {
             console.log(`${CHAT_LOG_PREFIX} Pending background result found, rendering...`);
             const result = consumePendingResult();
             if (result) {
-                renderResponseToDom(result.rawResponse, result.messagesToSend);
+                renderResponseToDom(result.rawResponse, result.messagesToSend, result.indexableReplyMap || null);
             }
             updateAppBadge('chat', 0); // Clear red dot
         } else if (hasError()) {
@@ -168,7 +207,6 @@ function bindChatEvents() {
     const kiwiBtn = document.getElementById('chat_kiwi_btn');
     const sendBtn = document.getElementById('chat_send_btn');
     const menuBtn = document.getElementById('chat_menu_btn');
-    const callBtn = document.getElementById('chat_call_btn');
     const menuOverlay = document.getElementById('chat_menu_overlay');
     const menuCancel = document.getElementById('chat_menu_cancel');
     const clearHistoryBtn = document.getElementById('chat_clear_history');
@@ -204,73 +242,16 @@ function bindChatEvents() {
 
     // ─── Thought & Load More & Delete & Reactions (event delegation) ───
     if (messagesArea) {
-        // Long-press / double-click for reaction picker
-        let _longPressTimer = null;
-        let _longPressTarget = null;
-        let _didLongPress = false;
-
-        messagesArea.addEventListener('pointerdown', (e) => {
-            if (isDeleteMode || isEditMode) return;
-            const row = e.target.closest('.chat-bubble-row[data-msg-index]');
-            if (!row) return;
-            if (e.target.closest('button') || e.target.closest('a') ||
-                e.target.closest('.chat-reaction-badge') || e.target.closest('.chat-reaction-picker')) return;
-            _longPressTarget = row;
-            _didLongPress = false;
-            // NOTE: Do NOT call e.preventDefault() here!
-            // On mobile, preventing pointerdown kills the entire touch→click chain,
-            // which breaks delete-mode / edit-mode tap-to-select.
-            // Use CSS user-select instead to prevent text selection during long-press.
-            row.style.userSelect = 'none';
-            row.style.webkitUserSelect = 'none';
-            _longPressTimer = setTimeout(() => {
-                _didLongPress = true;
-                const idx = parseInt(row.dataset.msgIndex, 10);
-                showReactionPicker(idx, row);
-                _longPressTarget = null;
-            }, 500);
-        });
-
-        messagesArea.addEventListener('pointerup', () => {
-            clearTimeout(_longPressTimer);
-            if (_longPressTarget) {
-                _longPressTarget.style.userSelect = '';
-                _longPressTarget.style.webkitUserSelect = '';
-            }
-            _longPressTarget = null;
-        });
-
-        messagesArea.addEventListener('pointerleave', () => {
-            clearTimeout(_longPressTimer);
-            if (_longPressTarget) {
-                _longPressTarget.style.userSelect = '';
-                _longPressTarget.style.webkitUserSelect = '';
-            }
-            _longPressTarget = null;
-        });
-
-        messagesArea.addEventListener('touchmove', () => {
-            clearTimeout(_longPressTimer);
-            _longPressTarget = null;
-        }, { passive: true });
-
-        messagesArea.addEventListener('pointercancel', () => {
-            clearTimeout(_longPressTimer);
-            if (_longPressTarget) {
-                _longPressTarget.style.userSelect = '';
-                _longPressTarget.style.webkitUserSelect = '';
-            }
-            _longPressTarget = null;
-        });
-
-        // Desktop: double-click to open reaction picker
-        messagesArea.addEventListener('dblclick', (e) => {
-            if (isDeleteMode) return;
-            const row = e.target.closest('.chat-bubble-row[data-msg-index]');
-            if (!row) return;
-            if (e.target.closest('.chat-reaction-badge') || e.target.closest('.chat-reaction-picker')) return;
-            const idx = parseInt(row.dataset.msgIndex, 10);
-            showReactionPicker(idx, row);
+        // Long-press → bubble menu (emoji bar). Detection + overlay lives in
+        // chatBubbleMenu.js; the click delegate below only handles taps.
+        // Disable predicate is injected (instead of importing back from this
+        // file) to avoid a circular dependency.
+        attachBubbleLongPress(messagesArea, {
+            isDisabled: () => isDeleteMode || isEditMode,
+            onEdit: (idx) => openEditOverlay(idx),
+            onReroll: () => rerollLastMessage(),
+            onDelete: (idx) => selectMessageForDeletion(idx),
+            onReply: (idx) => startReplyTo(idx),
         });
 
         messagesArea.addEventListener('click', (e) => {
@@ -314,34 +295,27 @@ function bindChatEvents() {
                 return;
             }
 
-            // Reaction picker emoji click
-            const pickerEmoji = e.target.closest('.chat-reaction-emoji');
-            if (pickerEmoji) {
-                const emoji = pickerEmoji.dataset.emoji;
-                const idx = parseInt(pickerEmoji.dataset.msgIndex, 10);
-                toggleReaction(idx, emoji);
-                dismissReactionPicker();
+            // Reaction badge: tap an applied emoji to remove it.
+            // Must run before the thought-toggle branch since badges sit inside
+            // .chat-bubble-column and would otherwise fall through to it.
+            const reactionItem = e.target.closest('.chat-reaction-item');
+            if (reactionItem) {
+                e.stopPropagation();
+                const badge = reactionItem.closest('.chat-reaction-badge');
+                const idx = badge ? parseInt(badge.dataset.msgIndex, 10) : NaN;
+                const emoji = reactionItem.dataset.emoji;
+                if (!Number.isNaN(idx) && emoji) toggleReaction(idx, emoji);
                 return;
             }
 
-            // Dismiss reaction picker on outside click
-            if (document.querySelector('.chat-reaction-picker')) {
-                if (!e.target.closest('.chat-reaction-picker')) {
-                    dismissReactionPicker();
-                }
-            }
-
-            // If a long-press just happened, swallow this click
-            if (_didLongPress) {
-                _didLongPress = false;
-                return;
-            }
-
-            // Thought toggle
+            // Thought toggle — must hit the actual bubble anchor (fit-content),
+            // not the surrounding column which spans the full row width and would
+            // fire on blank space beside the bubble.
             if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.chat-special-card')) return;
-            const col = e.target.closest('.chat-bubble-column');
-            if (col && col.closest('.char')) {
-                const thought = col.querySelector('.chat-thought-bubble');
+            const anchor = e.target.closest('.chat-bubble-anchor');
+            if (anchor && anchor.closest('.chat-bubble-row.char')) {
+                const col = anchor.closest('.chat-bubble-column');
+                const thought = col && col.querySelector('.chat-thought-bubble');
                 if (thought) {
                     thought.classList.toggle('collapsed');
                 }
@@ -350,8 +324,8 @@ function bindChatEvents() {
             // Load more
             if (e.target.id === 'chat_load_more_btn') {
                 const oldScrollHeight = messagesArea.scrollHeight;
-                let currentLimit = parseInt(e.target.dataset.limit || '20', 10);
-                currentLimit += 20;
+                let currentLimit = parseInt(e.target.dataset.limit || String(CHAT_DISPLAY_COUNT), 10);
+                currentLimit += CHAT_DISPLAY_COUNT;
                 const history = loadChatHistory();
                 const displayHistory = history.slice(-currentLimit);
 
@@ -628,9 +602,11 @@ function bindChatEvents() {
         });
     }
 
-    // ─── Phone call button (with chat context) ───
-    if (callBtn) {
-        callBtn.addEventListener('click', () => {
+    // ─── Phone call entry in plus sheet (with chat context) ───
+    const plusCallBtn = document.getElementById('chat_plus_call_btn');
+    if (plusCallBtn) {
+        plusCallBtn.addEventListener('click', () => {
+            plusOverlay?.classList.remove('active');
             openVoiceCall({ chatContext: true });
         });
     }
@@ -822,7 +798,7 @@ export function rerenderMessagesArea(smooth = false) {
     if (!messagesArea) return;
 
     const history = loadChatHistory();
-    const displayHistory = history.slice(-20);
+    const displayHistory = history.slice(-CHAT_DISPLAY_COUNT);
     const startIndex = history.length - displayHistory.length;
 
     let newHtml = displayHistory.length > 0
@@ -832,8 +808,8 @@ export function rerenderMessagesArea(smooth = false) {
                <div class="chat-empty-text">开始聊天吧…</div>
            </div>`;
 
-    if (history.length > 20 && displayHistory.length > 0) {
-        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="20">查看更早的聊天记录</div>` + newHtml;
+    if (history.length > CHAT_DISPLAY_COUNT && displayHistory.length > 0) {
+        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="${CHAT_DISPLAY_COUNT}">查看更早的聊天记录</div>` + newHtml;
     }
 
     messagesArea.innerHTML = newHtml;

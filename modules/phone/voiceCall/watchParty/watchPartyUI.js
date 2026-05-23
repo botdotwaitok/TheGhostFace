@@ -13,6 +13,7 @@ import { buildWatchPartySystemPrompt, buildWatchPartyUserPrompt, generateWatchPa
 import { saveCallLog, generateCallId } from '../vcStorage.js';
 import { uploadAudioToST } from '../../chat/voiceMessageService.js';
 import { startScreenCapture, stopScreenCapture, captureFrame, captureThumbnail, isCapturing, onCaptureEnded } from './screenCapture.js';
+import { dlog } from '../../../utils.js';
 
 const LOG_PREFIX = '[WatchPartyUI]';
 
@@ -167,7 +168,7 @@ function _resetSessionState() {
  * @param {string} [sessionConfig.contentDescription] - Additional context
  */
 export async function openWatchParty(sessionConfig = {}) {
-    console.log(`${LOG_PREFIX} Opening Watch Party...`, sessionConfig);
+    dlog(`${LOG_PREFIX} Opening Watch Party...`, sessionConfig);
 
     // Reset session state — cancel any leftover unmount timer / aborted controller
     // from a prior watch party that's still inside its 300ms fade window.
@@ -209,7 +210,7 @@ export async function openWatchParty(sessionConfig = {}) {
     _isCompressing = false;
     if (sessionConfig.previousSummary) {
         _sessionSummary = sessionConfig.previousSummary;
-        console.log(`${LOG_PREFIX} Resuming with previous summary (${_sessionSummary.length} chars)`);
+        dlog(`${LOG_PREFIX} Resuming with previous summary (${_sessionSummary.length} chars)`);
     } else {
         _sessionSummary = '';
     }
@@ -268,12 +269,12 @@ export async function closeWatchParty({ skipSummary = false } = {}) {
     // Reentry guard — onCaptureEnded firing during teardown, double-clicks on
     // hangup, or hangup colliding with browser "stop sharing" can all reach here twice.
     if (_isClosing) {
-        console.log(`${LOG_PREFIX} closeWatchParty already in progress — ignoring re-entry`);
+        dlog(`${LOG_PREFIX} closeWatchParty already in progress — ignoring re-entry`);
         return;
     }
     _isClosing = true;
 
-    console.log(`${LOG_PREFIX} Closing Watch Party... (skipSummary: ${skipSummary})`);
+    dlog(`${LOG_PREFIX} Closing Watch Party... (skipSummary: ${skipSummary})`);
 
     // Snapshot the controller — if openWatchParty replaces it during the long
     // summary await, we must not destroy the new session's state at the end.
@@ -352,12 +353,12 @@ export async function closeWatchParty({ skipSummary = false } = {}) {
         };
 
         saveCallLog(callLog);
-        console.log(`${LOG_PREFIX} Watch party log saved: ${transcriptSnapshot.length} messages, ${duration}s`);
+        dlog(`${LOG_PREFIX} Watch party log saved: ${transcriptSnapshot.length} messages, ${duration}s`);
     }
 
     // If a new session started during summary generation, leave its state alone.
     if (_sessionAbortCtrl !== closingCtrl) {
-        console.log(`${LOG_PREFIX} A new watch party started during summary generation — leaving fresh state alone.`);
+        dlog(`${LOG_PREFIX} A new watch party started during summary generation — leaving fresh state alone.`);
         return;
     }
 
@@ -543,7 +544,7 @@ function _stopTimer() {
 function _startFrameLoop() {
     const intervalMs = _sessionConfig.frameIntervalMs || DEFAULT_FRAME_INTERVAL_MS;
     const minLlmMs = _sessionConfig.minLlmIntervalMs || DEFAULT_MIN_LLM_INTERVAL_MS;
-    console.log(`${LOG_PREFIX} Starting auto-frame loop (interval: ${intervalMs}ms, minLLM: ${minLlmMs}ms, freq: ${_sessionConfig.talkFrequency || 'default'})`);
+    dlog(`${LOG_PREFIX} Starting auto-frame loop (interval: ${intervalMs}ms, minLLM: ${minLlmMs}ms, freq: ${_sessionConfig.talkFrequency || 'default'})`);
     _frameInterval = setInterval(() => {
         if (_isPaused || _isProcessingLLM || !isCapturing()) return;
 
@@ -556,7 +557,7 @@ function _startFrameLoop() {
 
         _frameCount++;
         _lastFrameDataUrl = frame;
-        console.log(`${LOG_PREFIX} Auto-captured frame #${_frameCount}`);
+        dlog(`${LOG_PREFIX} Auto-captured frame #${_frameCount}`);
 
         // Send to LLM (auto-mode: no spoken text)
         _sendToLLM({ frameDataUrl: frame, spokenText: '' });
@@ -705,7 +706,7 @@ function _addSystemSubtitle(text) {
  */
 async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false, fromQueue = false }) {
     if (_isClosing) {
-        console.log(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
+        dlog(`${LOG_PREFIX} Session is closing, skipping new LLM request.`);
         return;
     }
 
@@ -716,7 +717,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
     if (userTriggered && !fromQueue) {
         const sinceLastSpoken = Date.now() - _lastUserSpokenAt;
         if (_lastUserSpokenAt > 0 && sinceLastSpoken < 500) {
-            console.log(`${LOG_PREFIX} User-trigger dedup (${sinceLastSpoken}ms < 500ms).`);
+            dlog(`${LOG_PREFIX} User-trigger dedup (${sinceLastSpoken}ms < 500ms).`);
             return;
         }
         _lastUserSpokenAt = Date.now();
@@ -728,9 +729,9 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
     if (_isProcessingLLM) {
         if (userTriggered) {
             _pendingUserCall = { frameDataUrl, spokenText };
-            console.log(`${LOG_PREFIX} 🎤 User speech queued — will run after current LLM call.`);
+            dlog(`${LOG_PREFIX} 🎤 User speech queued — will run after current LLM call.`);
         } else {
-            console.log(`${LOG_PREFIX} Auto-frame LLM busy, dropping this tick.`);
+            dlog(`${LOG_PREFIX} Auto-frame LLM busy, dropping this tick.`);
         }
         return;
     }
@@ -740,7 +741,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
         const minLlmMs = _sessionConfig.minLlmIntervalMs || DEFAULT_MIN_LLM_INTERVAL_MS;
         const elapsedSinceLast = Date.now() - _lastLLMCallTime;
         if (_lastLLMCallTime > 0 && elapsedSinceLast < minLlmMs) {
-            console.log(`${LOG_PREFIX} Auto-frame throttled (${elapsedSinceLast}ms < ${minLlmMs}ms).`);
+            dlog(`${LOG_PREFIX} Auto-frame throttled (${elapsedSinceLast}ms < ${minLlmMs}ms).`);
             return;
         }
     }
@@ -789,13 +790,13 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
 
         // Session ended (or was replaced) while LLM was thinking — drop response silently.
         if (_isClosing || _callId !== snapshotCallId) {
-            console.log(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
+            dlog(`${LOG_PREFIX} Session ended during LLM call, dropping response.`);
             if (charBubble && !_isClosing) charBubble.remove();
             return;
         }
 
         if (!response || !response.trim()) {
-            console.log(`${LOG_PREFIX} LLM returned empty response, treating as silence.`);
+            dlog(`${LOG_PREFIX} LLM returned empty response, treating as silence.`);
             if (charBubble) charBubble.remove();
             return;
         }
@@ -815,7 +816,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
                     timestamp: `${mm}:${ss}`,
                     description: sceneDesc,
                 });
-                console.log(`${LOG_PREFIX} 🖼️ Scene memory stored: #${_frameCount} — ${sceneDesc.substring(0, 60)}...`);
+                dlog(`${LOG_PREFIX} 🖼️ Scene memory stored: #${_frameCount} — ${sceneDesc.substring(0, 60)}...`);
             }
         }
 
@@ -832,12 +833,12 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
 
         // ── Check for silence response ──
         if (emotion === 'silent' || !displayText || displayText.trim().length === 0) {
-            console.log(`${LOG_PREFIX} Character chose to stay silent.`);
+            dlog(`${LOG_PREFIX} Character chose to stay silent.`);
             if (charBubble) charBubble.remove();
             return;
         }
 
-        console.log(`${LOG_PREFIX} Response: emotion="${emotion}", text="${displayText.substring(0, 50)}..."`);
+        dlog(`${LOG_PREFIX} Response: emotion="${emotion}", text="${displayText.substring(0, 50)}..."`);
 
         // Record char message
         const charMessageEntry = {
@@ -920,7 +921,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
     } catch (e) {
         // Aborted via session controller — silent bail, no error subtitle.
         if (e?.name === 'AbortError' || _isClosing || _callId !== snapshotCallId) {
-            console.log(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
+            dlog(`${LOG_PREFIX} LLM call aborted, dropping bubble silently.`);
             if (charBubble && !_isClosing) charBubble.remove();
             return;
         }
@@ -945,7 +946,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
         if (_pendingUserCall && !_isClosing && _callId === snapshotCallId) {
             const pending = _pendingUserCall;
             _pendingUserCall = null;
-            console.log(`${LOG_PREFIX} 🎤 Dequeuing user speech triggered during prior LLM call.`);
+            dlog(`${LOG_PREFIX} 🎤 Dequeuing user speech triggered during prior LLM call.`);
             // 让出 microtask：避免在 finally 内递归 await，也让 _isProcessingLLM=false
             // 的状态被同 tick 内别的代码（_restartSttAfterTts 等）观察到。
             queueMicrotask(() => {
@@ -995,7 +996,7 @@ async function _compressSessionHistory(compressionPayload) {
 
     const snapshotCallId = _callId;
     const { dialogCutoff, frameCutoff } = compressionPayload;
-    console.log(`${LOG_PREFIX} 📝 Starting context compression (dialog: ${dialogCutoff} msgs, frames: ${frameCutoff} descs)...`);
+    dlog(`${LOG_PREFIX} 📝 Starting context compression (dialog: ${dialogCutoff} msgs, frames: ${frameCutoff} descs)...`);
 
     try {
         const systemPrompt = buildWatchPartySummarizePrompt();
@@ -1005,7 +1006,7 @@ async function _compressSessionHistory(compressionPayload) {
         // Drop the result if the session ended (or was replaced) mid-compression —
         // otherwise we'd splice arrays that belong to a different watch party.
         if (_isClosing || _callId !== snapshotCallId) {
-            console.log(`${LOG_PREFIX} Compression finished after session ended, dropping result.`);
+            dlog(`${LOG_PREFIX} Compression finished after session ended, dropping result.`);
             return;
         }
 
@@ -1016,13 +1017,13 @@ async function _compressSessionHistory(compressionPayload) {
             _watchMessages.splice(0, dialogCutoff);
             _frameDescriptions.splice(0, frameCutoff);
 
-            console.log(`${LOG_PREFIX} ✅ Context compressed: summary ${_sessionSummary.length} chars, remaining dialog: ${_watchMessages.length}, frames: ${_frameDescriptions.length}`);
+            dlog(`${LOG_PREFIX} ✅ Context compressed: summary ${_sessionSummary.length} chars, remaining dialog: ${_watchMessages.length}, frames: ${_frameDescriptions.length}`);
         } else {
             console.warn(`${LOG_PREFIX} ⚠️ Compression returned empty result, skipping`);
         }
     } catch (e) {
         if (e?.name === 'AbortError' || _isClosing) {
-            console.log(`${LOG_PREFIX} Compression aborted (session ended).`);
+            dlog(`${LOG_PREFIX} Compression aborted (session ended).`);
             return;
         }
         console.error(`${LOG_PREFIX} ❌ Context compression failed:`, e);
