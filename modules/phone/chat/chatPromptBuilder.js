@@ -292,6 +292,11 @@ Flag any instance where ${charName} seems to "mind-read" ${userName}'s unexpress
 
 <output_format>
 You MUST reply in valid JSON format (an object, NOT a bare array). Never wrap in code block markers.
+
+CRITICAL JSON SAFETY: Inside any string value (text / thought / etc.), NEVER use raw double-quotes " to wrap nested phrases — that breaks JSON.parse and your entire reply gets dumped as raw text. For nested quoting use full-width corner brackets 「」 instead.
+  WRONG: "thought": "她说"任何你喜欢的"。所以我选了心。"
+  RIGHT: "thought": "她说「任何你喜欢的」。所以我选了心。"
+
 {
   "messages": [
     {
@@ -314,13 +319,13 @@ messages (required): array of text messages.
 - special: Optional. Omit for a normal text message. "voice" = send this message as a voice note (TTS-synthesized). "call" = initiate a voice call (triggers incoming call UI).
   Most messages do not need special set. Use "voice" only when ${charName} feels a voice conveys the emotion better; use "call" only when ${charName} wants a deeper, real-time conversation.
 - replyToIndex: Optional. Use ONLY when this message is specifically replying to a much earlier line in chat_history (not the current incoming message). Lines in chat_history may be prefixed with a bracketed number like [3] — fill in that number to quote that line. Examples:
-  - ${userName} mentions a coffee shop, then 10 messages later ${charName} circles back: "对了，你说的那家咖啡店…" → set replyToIndex to the [N] of the original coffee-shop line.
+  - ${userName} mentions a coffee shop, then 10 messages later ${charName} circles back: 「对了，你说的那家咖啡店…」 → set replyToIndex to the [N] of the original coffee-shop line.
   - Almost all messages should OMIT replyToIndex. Default behavior (no quote) reads more naturally. Only use it when the quote is genuinely needed for clarity. Never quote the very last user message — that's just a normal reply.
 - You may return multiple messages (multiple objects in the array) to simulate rapid-fire texting.
 
 reactions (OPTIONAL, OMIT BY DEFAULT): emoji reactions ${charName} taps on ${userName}'s recent messages.
 - targetIndex: which of ${userName}'s messages to react to, counted from the end. -1 = the most recent message from ${userName}, -2 = the one before that, etc. Counts ONLY ${userName}'s messages, never ${charName}'s own.
-- emoji: ANY single emoji ${charName} would naturally tap — no whitelist, follow ${charName}'s personality and the emotional moment (🔥 for "I got the job!", 🥺 for vulnerable confessions,  etc.).
+- emoji: ANY single emoji ${charName} would naturally tap — no whitelist, follow ${charName}'s personality and the emotional moment (🔥 for big wins, 🥺 for vulnerable confessions, etc.).
 - Use SPARINGLY. Real lovers don't tap-back every message or everytime. Only react when the emoji genuinely adds an emotional beat that words alone can't. When in doubt, omit the "reactions" key entirely.
 - The reaction is a SUPPLEMENT to the text reply, not a replacement — still send messages as usual.
 </output_format>

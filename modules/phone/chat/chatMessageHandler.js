@@ -3,7 +3,7 @@
 
 import { updateAppBadge } from '../phoneController.js';
 import { callPhoneLLM } from '../../api.js';
-import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
+import { cleanLlmJson, repairUnescapedQuotes } from '../utils/llmJsonCleaner.js';
 import {
     loadChatHistory, saveChatHistory,
     getCharacterInfo, getCharacterDisplayName, getUserName,
@@ -947,9 +947,22 @@ export function parseApiResponse(raw) {
     // Extract clean JSON from the response (handles markdown code fences & garbage text)
     const jsonStr = cleanLlmJson(raw);
 
+    // Try the cleaned string first; if it fails (common case: LLM put raw "
+    // inside a string value), run the unescaped-quote repair pass and retry
+    // once before falling through to the line-split last resort.
+    let parsed = null;
     try {
-        const parsed = JSON.parse(jsonStr);
+        parsed = JSON.parse(jsonStr);
+    } catch (e) {
+        try {
+            parsed = JSON.parse(repairUnescapedQuotes(jsonStr));
+            console.warn(`${CHAT_LOG_PREFIX} JSON parse needed quote-repair fallback.`);
+        } catch (e2) {
+            console.warn(`${CHAT_LOG_PREFIX} JSON parse failed, trying line-split fallback`);
+        }
+    }
 
+    if (parsed) {
         const mapMsg = (m) => ({
             text: m.text.trim(),
             thought: (m.thought && typeof m.thought === 'string') ? m.thought.trim() : '',
@@ -988,8 +1001,6 @@ export function parseApiResponse(raw) {
                 aiReactions: null,
             };
         }
-    } catch (e) {
-        console.warn(`${CHAT_LOG_PREFIX} JSON parse failed, trying line-split fallback`);
     }
 
     // Fallback: split by double newlines or ---, treat each as a message

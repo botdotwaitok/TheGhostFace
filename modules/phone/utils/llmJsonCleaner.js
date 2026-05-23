@@ -84,6 +84,60 @@ export function cleanLlmJson(raw) {
     if (start !== -1 && end !== -1) {
         text = text.substring(start, end + 1);
     }
-    
+
     return text.trim();
+}
+
+/**
+ * Best-effort repair for the single most common way LLMs break our JSON:
+ * unescaped double-quotes inside a string value (e.g. quoting someone's
+ * words with " instead of 「」). Walks the input as a state machine and
+ * escapes any " that appears mid-string — defined as a " that is NOT
+ * followed (past whitespace) by one of , : } ] or end-of-input.
+ *
+ * Use as a fallback AFTER the first JSON.parse fails. The output is not
+ * guaranteed to be valid JSON; try-parse it and fall through on failure.
+ *
+ * @param {string} json
+ * @returns {string}
+ */
+export function repairUnescapedQuotes(json) {
+    if (!json || typeof json !== 'string') return json;
+    const out = [];
+    let inString = false;
+    let i = 0;
+    while (i < json.length) {
+        const ch = json[i];
+        // Inside a string, pass through any backslash escape verbatim so we
+        // do not double-escape \" / \\ / \n etc.
+        if (ch === '\\' && inString && i + 1 < json.length) {
+            out.push(ch, json[i + 1]);
+            i += 2;
+            continue;
+        }
+        if (ch === '"') {
+            if (!inString) {
+                inString = true;
+                out.push(ch);
+            } else {
+                // Peek ahead past whitespace; a real closing quote is
+                // followed by JSON structural chars or EOF.
+                let j = i + 1;
+                while (j < json.length && /\s/.test(json[j])) j++;
+                const next = json[j];
+                if (next === undefined || next === ',' || next === ':' || next === '}' || next === ']') {
+                    inString = false;
+                    out.push(ch);
+                } else {
+                    // Mid-string quote — escape it.
+                    out.push('\\', ch);
+                }
+            }
+            i++;
+            continue;
+        }
+        out.push(ch);
+        i++;
+    }
+    return out.join('');
 }

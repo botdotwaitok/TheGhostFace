@@ -5,7 +5,7 @@
 import { callPhoneLLM } from '../../api.js';
 import { loadChatHistory, saveChatHistory } from './chatStorage.js';
 import { buildAutoMessageSystemPrompt, buildAutoMessageUserPrompt } from './chatPromptBuilder.js';
-import { cleanLlmJson } from '../utils/llmJsonCleaner.js';
+import { cleanLlmJson, repairUnescapedQuotes } from '../utils/llmJsonCleaner.js';
 import { updateAppBadge } from '../phoneController.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -202,12 +202,26 @@ async function _generateAutoMessage(idleMs) {
 
     const rawResponse = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 2000 });
 
-    // Parse JSON response
+    // Parse JSON response — retry once with quote-repair if the LLM put
+    // unescaped " inside a string value (same fallback as chatMessageHandler).
     let charMessages;
     try {
         const cleaned = cleanLlmJson(rawResponse);
-        const parsed = JSON.parse(cleaned);
-        charMessages = Array.isArray(parsed) ? parsed : [parsed];
+        let parsed;
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch (e1) {
+            parsed = JSON.parse(repairUnescapedQuotes(cleaned));
+            console.warn(`${LOG_PREFIX} JSON parse needed quote-repair fallback.`);
+        }
+        // Both shapes are accepted: object with { messages: [...] } OR a
+        // bare array (legacy). Auto-message has no reactions/replyToIndex
+        // semantics, so we just pull out the message array.
+        if (parsed && parsed.messages && Array.isArray(parsed.messages)) {
+            charMessages = parsed.messages;
+        } else {
+            charMessages = Array.isArray(parsed) ? parsed : [parsed];
+        }
     } catch (e) {
         console.error(`${LOG_PREFIX} Failed to parse LLM response:`, e);
         console.error(`${LOG_PREFIX} Raw response:`, rawResponse);
