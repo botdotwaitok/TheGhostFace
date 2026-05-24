@@ -419,20 +419,36 @@ function renderFeed(posts) {
             const replyToId = input.dataset.replyToId || null;
             const replyToName = input.dataset.replyToName || null;
 
+            // Optimistically clear the input + draft BEFORE awaiting send.
+            // addComment fires moments-feed-updated synchronously (via
+            // addLocalComment), which rebuilds the feed DOM and snapshots
+            // input.value into state to restore it after re-render. If we
+            // cleared after the await, the snapshot would still hold the
+            // original text and the new input would be re-populated with it.
+            input.value = '';
+            delete input.dataset.replyToId;
+            delete input.dataset.replyToName;
+            input.placeholder = '写评论...';
+            localStorage.removeItem(_draftKey(`comment_${postId}`));
+
             try {
                 const s = moments.getSettings();
                 await moments.addComment(postId, text, s.customUserName || s.displayName, replyToId, replyToName, s.avatarUrl);
-                input.value = '';
-                // Clear the cache since it was successfully sent
-                localStorage.removeItem(_draftKey(`comment_${postId}`));
-                // clear reply state
-                delete input.dataset.replyToId;
-                delete input.dataset.replyToName;
-                input.placeholder = '写评论...';
-
                 loadCommentsForPost(postId);
                 showToast('评论已发送');
             } catch (e) {
+                // Restore draft so the user doesn't lose what she typed.
+                // Re-query because the feed DOM may have been rebuilt.
+                const liveInput = feedEl.querySelector(`.moments-comment-input[data-post-id="${postId}"]`);
+                if (liveInput) {
+                    liveInput.value = text;
+                    if (replyToId) liveInput.dataset.replyToId = replyToId;
+                    if (replyToName) {
+                        liveInput.dataset.replyToName = replyToName;
+                        liveInput.placeholder = `回复 ${getUIDisplayName(replyToName)}...`;
+                    }
+                }
+                localStorage.setItem(_draftKey(`comment_${postId}`), text);
                 showToast('评论失败: ' + e.message);
             }
         });
@@ -495,7 +511,13 @@ function parseMediaTags(text) {
         '图片': { icon: 'fa-image', class: 'media-image' },
         '视频': { icon: 'fa-video', class: 'media-video' },
         '音乐': { icon: 'fa-music', class: 'media-music' },
-        '新闻': { icon: 'fa-newspaper', class: 'media-news' }
+        '新闻': { icon: 'fa-newspaper', class: 'media-news' },
+        '打卡': { icon: 'fa-bullseye', class: 'media-checkin' },
+        '读书': { icon: 'fa-book-open', class: 'media-book' },
+        '位置': { icon: 'fa-location-dot', class: 'media-location' },
+        '运动': { icon: 'fa-person-running', class: 'media-sport' },
+        '电影': { icon: 'fa-film', class: 'media-movie' },
+        '游戏': { icon: 'fa-gamepad', class: 'media-game' }
     };
 
     let parsedText = text;
@@ -689,32 +711,25 @@ function showCommentContextMenu(commentEl, postId) {
     }, 0);
 }
 
-async function loadCommentsForPost(postId) {
-    const listEl = document.querySelector(`.moments-comments-list[data-post-id="${postId}"]`);
-    if (!listEl) return;
+// Fingerprint a comment list so we can skip re-rendering when revalidate
+// returns the exact same data the user is already looking at.
+function _commentsFingerprint(comments) {
+    if (!comments || comments.length === 0) return '0:';
+    return comments.length + ':' + comments.map(c => c.id).join(',');
+}
 
-    let displayComments = [];
+function _renderCommentsSkeleton(listEl) {
+    listEl.innerHTML = `
+        <div class="moments-comments-skeleton" aria-hidden="true">
+            <div class="moments-skeleton-line"></div>
+            <div class="moments-skeleton-line moments-skeleton-line-short"></div>
+            <div class="moments-skeleton-line"></div>
+        </div>
+    `;
+}
 
-    // Try backend first
-    if (moments.getSettings().backendUrl && moments.getSettings().secretToken) {
-        try {
-            const result = await moments.getComments(postId);
-            if (result.ok && result.comments.length > 0) {
-                displayComments = result.comments;
-            }
-        } catch (e) {
-            // Backend unavailable — fall through to local
-        }
-    }
-
-    if (displayComments.length === 0) {
-        // Fall back to locally-stored comments in feedCache
-        const feed = moments.getFeedCache();
-        const localPost = feed.find(p => p.id === postId);
-        displayComments = localPost?.comments || [];
-    }
-
-    if (displayComments.length === 0) {
+function _renderCommentsList(listEl, postId, displayComments) {
+    if (!displayComments || displayComments.length === 0) {
         listEl.innerHTML = '<div class="moments-no-comments">暂无评论</div>';
         return;
     }
@@ -728,9 +743,8 @@ async function loadCommentsForPost(postId) {
         const replyToUIDisplay = c.replyToName ? getUIDisplayName(c.replyToName) : '';
         const authorUIDisplay = getUIDisplayName(c.authorName);
         const replyPrefix = replyToUIDisplay ? `回复 <b>${escapeHtml(replyToUIDisplay)}</b>: ` : '';
-        // 只按 authorId 判定所有权，避免任何与 displayName 同名的角色能伪造删除权。
-        // 与 addLocalComment 一致：本地我自己的评论 authorId === settings.userId，
-        // 或者未登录时 fallback 到 'guest'。
+        // Only authorId decides ownership — name-based check would let any
+        // character sharing the user's displayName forge delete permission.
         const amICommentOwner = (s.userId && c.authorId === s.userId) || (!s.userId && c.authorId === 'guest');
         const canDelete = amIPostOwner || amICommentOwner;
 
@@ -744,84 +758,136 @@ async function loadCommentsForPost(postId) {
             </div>
         `;
     }).join('');
+}
 
-    // ── 评论交互：单击 = 回复，长按 = 弹出删除菜单（仅可删除的评论） ──
-    // listEl 复用自 DOM（loadCommentsForPost 反复调用只会重写 innerHTML），
-    // 所以用 dataset flag 避免在 listEl 上累积监听器。
-    if (!listEl.dataset.cmtInteractionsBound) {
-        let _cmtPressTimer = null;
-        let _cmtPressTarget = null;
-        const LONG_PRESS_MS = 500;
+function _bindCommentListInteractions(listEl) {
+    // listEl is reused across re-renders (innerHTML rewrites only wipe
+    // children, not the listeners on listEl itself), so guard with a dataset
+    // flag to avoid stacking listeners on repeated loads.
+    if (listEl.dataset.cmtInteractionsBound) return;
 
-        const cancelPress = () => {
-            clearTimeout(_cmtPressTimer);
+    let _cmtPressTimer = null;
+    let _cmtPressTarget = null;
+    const LONG_PRESS_MS = 500;
+
+    const cancelPress = () => {
+        clearTimeout(_cmtPressTimer);
+        if (_cmtPressTarget) {
+            _cmtPressTarget.style.userSelect = '';
+            _cmtPressTarget.style.webkitUserSelect = '';
+        }
+        _cmtPressTarget = null;
+    };
+
+    listEl.addEventListener('pointerdown', (e) => {
+        const item = e.target.closest('.moments-comment-item');
+        if (!item || item.dataset.canDelete !== '1') return;
+        _cmtPressTarget = item;
+        listEl.dataset.didLongPress = '';
+        item.style.userSelect = 'none';
+        item.style.webkitUserSelect = 'none';
+        _cmtPressTimer = setTimeout(() => {
+            listEl.dataset.didLongPress = '1';
+            showCommentContextMenu(item, listEl.dataset.postId);
             if (_cmtPressTarget) {
                 _cmtPressTarget.style.userSelect = '';
                 _cmtPressTarget.style.webkitUserSelect = '';
             }
             _cmtPressTarget = null;
-        };
+        }, LONG_PRESS_MS);
+    });
 
-        listEl.addEventListener('pointerdown', (e) => {
-            const item = e.target.closest('.moments-comment-item');
-            if (!item || item.dataset.canDelete !== '1') return;
-            _cmtPressTarget = item;
+    listEl.addEventListener('pointerup', cancelPress);
+    listEl.addEventListener('pointerleave', cancelPress);
+    listEl.addEventListener('pointercancel', cancelPress);
+    listEl.addEventListener('touchmove', cancelPress, { passive: true });
+
+    listEl.addEventListener('click', (e) => {
+        if (listEl.dataset.didLongPress === '1') {
             listEl.dataset.didLongPress = '';
-            item.style.userSelect = 'none';
-            item.style.webkitUserSelect = 'none';
-            _cmtPressTimer = setTimeout(() => {
-                listEl.dataset.didLongPress = '1';
-                showCommentContextMenu(item, listEl.dataset.postId);
-                if (_cmtPressTarget) {
-                    _cmtPressTarget.style.userSelect = '';
-                    _cmtPressTarget.style.webkitUserSelect = '';
-                }
-                _cmtPressTarget = null;
-            }, LONG_PRESS_MS);
-        });
+            return;
+        }
+        const item = e.target.closest('.moments-comment-item');
+        if (!item) return;
+        const pid = listEl.dataset.postId;
+        const input = document.querySelector(`.moments-comment-input[data-post-id="${pid}"]`);
+        if (input) {
+            const authorName = item.dataset.authorName;
+            const commentId = item.dataset.commentId;
+            const authorUIDisplay = getUIDisplayName(authorName);
+            input.dataset.replyToId = commentId;
+            input.dataset.replyToName = authorName;
+            input.placeholder = `回复 ${authorUIDisplay}...`;
+            input.focus();
+        }
+    });
 
-        listEl.addEventListener('pointerup', cancelPress);
-        listEl.addEventListener('pointerleave', cancelPress);
-        listEl.addEventListener('pointercancel', cancelPress);
-        listEl.addEventListener('touchmove', cancelPress, { passive: true });
+    listEl.dataset.cmtInteractionsBound = '1';
+}
 
-        // 单击 = 回复（长按刚触发过则吞掉本次 click）
-        listEl.addEventListener('click', (e) => {
-            if (listEl.dataset.didLongPress === '1') {
-                listEl.dataset.didLongPress = '';
-                return;
-            }
-            const item = e.target.closest('.moments-comment-item');
-            if (!item) return;
-            const pid = listEl.dataset.postId;
-            const input = document.querySelector(`.moments-comment-input[data-post-id="${pid}"]`);
-            if (input) {
-                const authorName = item.dataset.authorName;
-                const commentId = item.dataset.commentId;
-                const authorUIDisplay = getUIDisplayName(authorName);
-                input.dataset.replyToId = commentId;
-                input.dataset.replyToName = authorName;
-                input.placeholder = `回复 ${authorUIDisplay}...`;
-                input.focus();
-            }
-        });
+function _bindCancelReplyOnInput(postId) {
+    // Input element survives re-renders, so guard against repeated binding.
+    const parentInput = document.querySelector(`.moments-comment-input[data-post-id="${postId}"]`);
+    if (!parentInput || parentInput.dataset.cancelReplyBound) return;
+    parentInput.addEventListener('click', () => {
+        if (parentInput.value.trim() === '' && parentInput.dataset.replyToId) {
+            delete parentInput.dataset.replyToId;
+            delete parentInput.dataset.replyToName;
+            parentInput.placeholder = '写评论...';
+        }
+    });
+    parentInput.dataset.cancelReplyBound = '1';
+}
 
-        listEl.dataset.cmtInteractionsBound = '1';
+// Cache-first + background revalidate (SWR pattern).
+// Paints whatever feedCache already has so the user sees comments instantly,
+// then silently re-fetches from the backend and re-renders only if the
+// server's view actually differs. Skeleton is shown only on the very first
+// open when no cached comments exist for this post.
+async function loadCommentsForPost(postId) {
+    const listEl = document.querySelector(`.moments-comments-list[data-post-id="${postId}"]`);
+    if (!listEl) return;
+
+    const settings = moments.getSettings();
+    const hasBackend = !!(settings.backendUrl && settings.secretToken) && !postId.startsWith('local_');
+
+    const feed = moments.getFeedCache();
+    const localPost = feed.find(p => p.id === postId);
+    const cachedComments = localPost?.comments || [];
+
+    // Step 1: instant paint.
+    let showedSkeleton = false;
+    if (cachedComments.length > 0) {
+        _renderCommentsList(listEl, postId, cachedComments);
+    } else if (hasBackend) {
+        _renderCommentsSkeleton(listEl);
+        showedSkeleton = true;
+    } else {
+        _renderCommentsList(listEl, postId, []);
     }
 
-    // Allow cancelling reply by clicking input when empty.
-    // 用 dataset flag 防止 loadCommentsForPost 反复调用时累积监听器（评论列表
-    // 用 innerHTML 重写会清掉子元素监听，但 parentInput 是外层 input 不会被重建）。
-    const parentInput = document.querySelector(`.moments-comment-input[data-post-id="${postId}"]`);
-    if (parentInput && !parentInput.dataset.cancelReplyBound) {
-        parentInput.addEventListener('click', () => {
-            if (parentInput.value.trim() === '' && parentInput.dataset.replyToId) {
-                delete parentInput.dataset.replyToId;
-                delete parentInput.dataset.replyToName;
-                parentInput.placeholder = '写评论...';
-            }
-        });
-        parentInput.dataset.cancelReplyBound = '1';
+    _bindCommentListInteractions(listEl);
+    _bindCancelReplyOnInput(postId);
+
+    // Step 2: background revalidate. When we showed a skeleton we MUST
+    // replace it no matter what (even with an empty list / on failure),
+    // otherwise the spinner sits there forever. When we already painted
+    // real comments, only re-render on actual content change to avoid
+    // flicker.
+    if (!hasBackend) return;
+    try {
+        const result = await moments.getComments(postId);
+        if (!result?.ok || !Array.isArray(result.comments)) {
+            if (showedSkeleton) _renderCommentsList(listEl, postId, []);
+            return;
+        }
+        const fresh = result.comments;
+        if (localPost) localPost.comments = fresh;
+        if (showedSkeleton || _commentsFingerprint(fresh) !== _commentsFingerprint(cachedComments)) {
+            _renderCommentsList(listEl, postId, fresh);
+        }
+    } catch (e) {
+        if (showedSkeleton) _renderCommentsList(listEl, postId, []);
     }
 }
 

@@ -4,8 +4,8 @@
 
 ## 版本更新
 
-### V4.3.0
-- API调用适配1.18ST
+### V4.3.2
+- gemini NO top_k/moment&chat prompt/moment UI fix
 
 ## 这是什么
 

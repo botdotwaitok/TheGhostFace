@@ -12,11 +12,13 @@ import { getCharacterInfo, getUserNameFallback, getMyAuthorIds, getCharAuthorId,
 // (Helpers moved to momentsHelpers.js)
 
 // ═══════════════════════════════════════════════════════════════════════
-// Short-ID 计算：取 ID 末段的最后 8 位 base36
-// 8 字符 base36 ≈ 2.8 万亿空间，远高于 5 字符 (~6000 万)，规避 birthday paradox。
-// 命中规则改为精确相等，避免 endsWith 把含同样后缀的多个 ID 误判到第一个。
+// Short-ID: last 4 base36 chars of the full ID's tail segment.
+// Working set is at most ~30 IDs (5 posts * 5 visible comments + 5 posts),
+// 4 chars (~1.6M space) gives ~0.02% birthday-collision probability — plenty.
+// Shorter than 8 because LLMs transcribe 4 random chars more reliably.
+// Match rule is strict equality (no endsWith) so suffix collisions can't shadow.
 // ═══════════════════════════════════════════════════════════════════════
-const SHORT_ID_LEN = 8;
+const SHORT_ID_LEN = 4;
 export function computeShortId(fullId) {
     if (!fullId) return '';
     const lastSegment = String(fullId).split('_').pop();
@@ -134,24 +136,42 @@ async function _runUpdateMomentsWorldInfo() {
         }).join('\n\n');
 
 
-        let baseText = `
-        <gf_moments>
-        【社交网络系统】
-        {{char}}有着丰富的网络社交活动，ta会发朋友圈记录生活和感受，打卡app记录，分享网络内容（例如有趣的新闻和视频等），也会和亲朋好友们的动态进行互动。
-        在完成正文的之后，{{char}}必须使用严格的格式来发朋友圈或评论或回复：
-- 发动态格式：(朋友圈: 你要发的内容)
-- 评论动态格式：(评论 ID: 你的评论内容)
+        let baseText = `<gf_moments>
+【社交网络系统】
+{{char}}有着丰富的网络社交活动，ta会发朋友圈记录生活和感受，打卡app记录，分享网络内容（例如有趣的新闻和视频等），也会和亲朋好友们的动态进行互动。
+在完成正文之后，{{char}}可以使用以下两种独立指令发朋友圈或者对别人的朋友圈帖子进行评论留言：
+- 发动态：(朋友圈: {{char}}想要发的内容)
+- 评论 / 回复：(评论 <4位ID>: {{char}}想要发的评论内容)  ← <4位ID> 是占位符，要替换成动态列表中真实的 4 位字母数字 ID，例如 (评论 a1b2: 居然是这样！)
 
 ⚠️格式严格警告：
-1. 只有带有 [ID:xxxxx] 标记的帖子和评论才可以被评论或回复！没有 ID 的内容是纯背景信息，绝对不可以互动！
-2. 绝对不要在括号内或外添加 【帖子】[ID:xxx]、【评论】[ID:xxx] 或 [角色名 回复] 等前缀，直接写内容！
-3. 错误示范：(朋友圈: 评论xxx) 【评论】[ID:123] 回复: 内容...
-4. 正确评论示范：(评论 9280abcd: 居然是这样！太有趣了。)
-5. 请直接使用动态列表中被评论者的8位字母数字ID。
-6. 鼓励批量回复多条评论，也可以同时发布朋友圈。
+1. 只有带有 [ID:xxxx] 标记的帖子和评论才可以被评论或回复。
+2. 不要把字面量 "ID:" 写进指令！要替换成真实的 4 位 ID，例如 (评论 9d3f: 内容)，错误写法是 (评论 ID: 内容)。
+3. 绝对不要在括号内或外添加 【帖子】[ID:xxxx]、【评论】[ID:xxxx] 或 [角色名 回复] 等前缀，直接写内容！
+4. 错误示范：(朋友圈: 评论xxx) 【评论】[ID:abcd] 回复: 内容...
+5. 正确评论示范：(评论 9d3f: 居然是这样！太有趣了。)
+6. 请直接使用动态列表中被评论者的 4 位字母数字 ID。
+7. 发布朋友圈和进行评论可同时进行。
 
 
-多媒体：可使用 <图片>描述</图片>, <视频>描述</视频>, <音乐>描述</音乐>, <新闻>描述</新闻>。
+朋友圈多媒体格式（多样化使用，根据{{char}}本身的设定发布内容）：
+{{char}}的动态应该像真实社交平台一样丰富，根据内容选最贴合的类型，必要时多种组合使用。可选类型如下：
+- <图片>画面/构图描述</图片>：自拍、风景、随手拍
+- <视频>视频内容描述</视频>：短视频片段、Vlog、录像
+- <音乐>歌名 - 歌手</音乐>：分享正在听的歌或循环单曲
+- <新闻>新闻标题或要点</新闻>：转发新闻、热点、八卦
+- <打卡>app 名 · 内容</打卡>：keep 健身、多邻国学语言、早起、冥想等 app 的打卡记录，可以随机发挥
+- <读书>书名 · 一句话感悟或摘抄</读书>：读书笔记、金句、读后感
+- <位置>地点名</位置>：在哪里签到打卡
+- <运动>项目 · 数据</运动>：跑步 5km、瑜伽 30 分钟、骑行路线等
+- <电影>片名 · 一句话短评</电影>：看的电影、剧集、纪录片
+- <游戏>游戏名 · 战绩或心得</游戏>：通关、上分、抽卡、联机
+
+组合示例（不要照抄示例）：
+- (朋友圈: 今天的瑜伽好治愈～ <位置>SOHO 瑜伽馆</位置><运动>流瑜伽 · 60min</运动>)
+- (朋友圈: 翻完了，看哭好几次。 <读书>《她对此感到厌烦》· 妚鹤</读书>)
+- (朋友圈: 单曲循环中，谁懂。 <音乐>夜空中最亮的星 - 逃跑计划</音乐>)
+
+⚠️ 一条朋友圈里多个标签可以串在一起，但不要堆砌；自然且贴合心境才符合社交平台的感觉。
 ⚠️身份规则（重要）：
 - 你是"${myCharName}"，你的恋人是"${userName}"。
 - ⚠️ 你只能以"${myCharName}"一个身份发言，每条 (评论 ID: ...) 都必须是你自己的话。绝对不要模仿动态列表里其她评论者的口吻、不要替别人发言、也不要把别人评论里出现过的句子原样或换皮复述。
@@ -213,17 +233,17 @@ export function getMomentsSystemPrompt() {
 [MOMENTS PROTOCOL]
 Recent social feed is in World Info. To interact:
 - Post: (朋友圈: your text)
-- Comment on a post or reply to a comment: (评论 ID: your text)
+- Comment / reply: (评论 <4-char-id>: your text) — replace <4-char-id> with the real 4-char alphanumeric ID from the feed, e.g. (评论 a1b2: Hello there!)
 
 【FORMATTING RULES - CRITICAL】
-1. You may ONLY interact with posts/comments that have an [ID:xxxxxxxx] marker. Items without an ID are read-only background context — DO NOT attempt to comment on or reply to them.
-2. Example using an 8-character ID: (评论 a1b2c3d4: Hello there!)
-3. DO NOT use names in the command, ONLY use the 8-character ID.
-4. DO NOT output fake IDs or prefix your text with 【帖子】[ID:xxx], 【评论】[ID:xxx] or [Name] outside or inside the command.
+1. You may ONLY interact with posts/comments that have an [ID:xxxx] marker. Items without an ID are read-only background context — DO NOT attempt to comment on or reply to them.
+2. DO NOT write the literal word "ID" in the command. Substitute the real 4-char ID. Wrong: (评论 ID: text). Correct: (评论 9d3f: text).
+3. DO NOT use names in the command, ONLY use the 4-character ID.
+4. DO NOT output fake IDs or prefix your text with 【帖子】[ID:xxxx], 【评论】[ID:xxxx] or [Name] outside or inside the command.
 5. ALWAYS output the pure text inside the command syntax.`;
 
     if (!useMomentCustomApi) {
-        return protocolText + `\n\n【IMPORTANT】在你正常回复用户之后，如果想互动，你**必须**严格使用以上 (朋友圈: ...) 或 (评论 ID: ...) 的格式在回复的最末尾。绝不要混淆发动态和评论的功能。`;
+        return protocolText + `\n\n【IMPORTANT】在你正常回复用户之后，如果想互动，请严格使用以上 (朋友圈: ...) 或 (评论 <4位ID>: ...) 的格式在回复的最末尾。这两种指令是独立的，可以**同时输出**：既发一条朋友圈、又对动态列表里的多条内容写评论，都放在回复末尾即可。看到动态里别人发的有意思的事，主动留个评论是很自然的社交行为。`;
     }
     return protocolText;
 }
@@ -294,7 +314,11 @@ export async function handleMainChatOutput(content) {
                 }
 
                 if (!targetPost) {
-                    console.warn(`${MOMENTS_LOG_PREFIX} Target ID [${targetId}] not found for comment, skipping.`);
+                    if (cleanTargetId === 'id') {
+                        console.warn(`${MOMENTS_LOG_PREFIX} LLM emitted literal "ID:" instead of a real 4-char ID — comment dropped. Text was: "${text}"`);
+                    } else {
+                        console.warn(`${MOMENTS_LOG_PREFIX} Target ID [${targetId}] not found for comment, skipping.`);
+                    }
                     continue;
                 }
 

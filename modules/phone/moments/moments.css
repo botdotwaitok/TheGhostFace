@@ -634,6 +634,36 @@
     box-shadow: 0 4px 10px rgba(246, 211, 101, 0.4);
 }
 
+.media-checkin .moments-media-icon {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    box-shadow: 0 4px 10px rgba(67, 233, 123, 0.4);
+}
+
+.media-book .moments-media-icon {
+    background: linear-gradient(135deg, #d4a574 0%, #8b6f47 100%);
+    box-shadow: 0 4px 10px rgba(139, 111, 71, 0.4);
+}
+
+.media-location .moments-media-icon {
+    background: linear-gradient(135deg, #ff5858 0%, #f09819 100%);
+    box-shadow: 0 4px 10px rgba(255, 88, 88, 0.4);
+}
+
+.media-sport .moments-media-icon {
+    background: linear-gradient(135deg, #00c9a7 0%, #92fe9d 100%);
+    box-shadow: 0 4px 10px rgba(0, 201, 167, 0.4);
+}
+
+.media-movie .moments-media-icon {
+    background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%);
+    box-shadow: 0 4px 10px rgba(95, 44, 130, 0.4);
+}
+
+.media-game .moments-media-icon {
+    background: linear-gradient(135deg, #c471f5 0%, #fa71cd 100%);
+    box-shadow: 0 4px 10px rgba(196, 113, 245, 0.4);
+}
+
 .moments-post-footer {
     display: flex;
     justify-content: space-between;
@@ -765,6 +795,36 @@
     opacity: 0.5;
     text-align: center;
     padding: 4px;
+}
+
+.moments-comments-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 2px;
+}
+
+.moments-skeleton-line {
+    height: 12px;
+    border-radius: 4px;
+    background: linear-gradient(
+        90deg,
+        var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.06)) 0%,
+        var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.14)) 50%,
+        var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.06)) 100%
+    );
+    background-size: 200% 100%;
+    animation: moments-skeleton-shimmer 1.2s ease-in-out infinite;
+    opacity: 0.55;
+}
+
+.moments-skeleton-line-short {
+    width: 60%;
+}
+
+@keyframes moments-skeleton-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
 }
 
 .moments-comment-compose {

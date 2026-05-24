@@ -600,9 +600,13 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         messages,
         temperature: 0.7,
         top_p: 1,
-        top_k: 63,
         stream: false
     };
+    // Gemini's OpenAI-compat endpoint rejects unknown fields (top_k → 400).
+    // Other OpenAI-compat providers either accept it or silently ignore it.
+    if (!apiUrl.includes('generativelanguage.googleapis.com')) {
+        requestBody.top_k = 63;
+    }
     if (maxTokens) {
         requestBody.max_tokens = maxTokens;
     }
