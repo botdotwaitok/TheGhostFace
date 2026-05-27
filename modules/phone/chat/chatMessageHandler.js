@@ -5,7 +5,7 @@ import { updateAppBadge } from '../phoneController.js';
 import { callPhoneLLM } from '../../api.js';
 import { cleanLlmJson, repairUnescapedQuotes } from '../utils/llmJsonCleaner.js';
 import {
-    loadChatHistory, saveChatHistory,
+    loadChatHistory, saveChatHistory, commitHistoryInMemory,
     getCharacterInfo, getCharacterDisplayName, getUserName,
     maybeAutoSummarize,
 } from './chatStorage.js';
@@ -32,7 +32,7 @@ import {
 import { tryAutoStartKeepAlive } from '../keepAlive.js';
 import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer, getPhoneIdleDuration } from './autoMessage.js';
 import { synthesizeToBlob, uploadAudioToST } from './voiceMessageService.js';
-import { buildBubbleRow, buildRecalledPeekBubble, formatChatTime } from './chatHtmlBuilder.js';
+import { buildBubbleRow, buildRecalledPeekBubble, formatChatTime, shiftBubbleMsgIndexes } from './chatHtmlBuilder.js';
 import { applyAIReactions } from './chatReactions.js';
 import { renderBuffBar } from './chatInventory.js';
 import { getPendingVoiceData, clearPendingVoiceData } from './chatVoice.js';
@@ -88,10 +88,19 @@ export async function handleCallDeclined() {
         const emptyState = messagesArea.querySelector('.chat-empty');
         if (emptyState) emptyState.remove();
 
+        // Use the saved (possibly trimmed) length for msgIndex so the bubble's
+        // data-msg-index matches what loadChatHistory() returns. If the save
+        // trimmed entries off the head, shift existing DOM indexes too so old
+        // rows don't collide with the new bubble's index.
+        const loadedLen = loadChatHistory().length;
+        const trimmedOff = history.length - loadedLen;
+        if (trimmedOff > 0) shiftBubbleMsgIndexes(messagesArea, trimmedOff);
+
         messagesArea.insertAdjacentHTML('beforeend',
             `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`);
+        const missedIdx = loadedLen - 1;
         messagesArea.insertAdjacentHTML('beforeend',
-            buildBubbleRow('user', '[用户拒接了来电]'));
+            buildBubbleRow('user', '[用户拒接了来电]', null, missedIdx, null, missedCallEntry));
         scrollToBottom(true);
     }
 
@@ -367,11 +376,25 @@ export async function sendAllMessages() {
             );
         }
 
+        // Sync chat_metadata UPFRONT so the rendered msgIndex values match the
+        // trimmed view loadChatHistory() returns. Without this, long histories
+        // (past MAX_HISTORY_MESSAGES) drift the local index past the trimmed
+        // array's end and the bubble menu / reaction picker silently bail.
+        const storedLen = commitHistoryInMemory(history);
+        // If the commit trimmed entries off the head, shift every existing DOM
+        // bubble's data-msg-index so old rows still point to their messages
+        // and the new batch doesn't collide with stale indexes.
+        const trimmedOff = history.length - storedLen;
+        if (trimmedOff > 0) {
+            shiftBubbleMsgIndexes(messagesArea, trimmedOff);
+        }
+        const startHistIdx = storedLen - messagesToSend.length;
+
         // Render each message — voice/image messages render as special bubbles
         for (let i = 0; i < messagesToSend.length; i++) {
             const msg = messagesToSend[i];
-            const histIdx = history.length - messagesToSend.length + i;
-            const histEntry = history[histIdx];
+            const histIdx = startHistIdx + i;
+            const histEntry = history[history.length - messagesToSend.length + i];
 
             // Pass histEntry through unconditionally so buildBubbleRow can
             // render special (voice/image) bubbles AND the reply quote block
@@ -579,10 +602,19 @@ export function renderAutoMessages(messages) {
         `<div class="chat-time-divider">${formatChatTime(new Date())}</div>`
     );
 
+    // Auto messages were pushed to history before this render runs (see
+    // autoMessage.js). Recover their global indices so the rendered rows
+    // carry data-msg-index — without it the long-press bubble menu skips them.
+    const histAfterSave = loadChatHistory();
+    const nonEmptyCount = messages.filter(m => ((m.text || m.content || '').trim())).length;
+    let nextIdx = histAfterSave.length - nonEmptyCount;
+
     for (const msg of messages) {
         const text = (msg.text || msg.content || '').trim();
         if (!text) continue;
-        messagesArea.insertAdjacentHTML('beforeend', buildBubbleRow('char', text, msg.thought));
+        messagesArea.insertAdjacentHTML('beforeend',
+            buildBubbleRow('char', text, msg.thought, nextIdx, null, histAfterSave[nextIdx]));
+        nextIdx++;
     }
 
     scrollToBottom(true);
@@ -657,26 +689,25 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
 
         let deferredHistoryEntry = null; // Will hold the history entry for the deferred message
 
-        for (let i = 0; i < charMessages.length; i++) {
-            const cmsg = charMessages[i];
-            const isLast = i === charMessages.length - 1;
-            const delay = i === 0 ? 0 : (cmsg.delay || 1) * 300; // Scale delay for UX (not full seconds)
-
-            if (delay > 0) {
-                showTypingIndicator(true);
-                await sleep(Math.min(delay, 2000));
-                showTypingIndicator(false);
-            }
-
-            // Save to history (including thought + recalledContent)
-            const historyEntry = {
+        // ─── Pre-push all char entries + commit ONCE before rendering ───
+        // We push everything upfront (instead of one-per-iteration) so each
+        // bubble gets a unique, final msgIndex relative to the trimmed
+        // chat_metadata view. Per-iteration commits cap storedLen at
+        // MAX_HISTORY_MESSAGES once the history crosses the cap — so every
+        // bubble in the burst ended up with the SAME msgIndex (= last entry's
+        // index). That broke per-bubble reactions (badge always landed on the
+        // first DOM row matching that index) and per-bubble reply targeting
+        // (always quoted the last message). Pre-pushing lets us hand out
+        // distinct indexes (burstBaseIdx + i) for each bubble.
+        const historyEntries = charMessages.map((cmsg) => {
+            const entry = {
                 role: 'char',
                 content: cmsg.text,
                 thought: cmsg.thought || '',
                 timestamp: responseTime,
             };
             if (cmsg.recalledContent) {
-                historyEntry.recalledContent = cmsg.recalledContent;
+                entry.recalledContent = cmsg.recalledContent;
             }
             // Resolve replyToIndex against the prompt-time history snapshot
             // and freeze the {role, snippet} pair onto this char entry. Out
@@ -685,12 +716,42 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
             if (cmsg.replyToIndex != null) {
                 const resolved = resolveReplyToIndex(cmsg.replyToIndex, indexableReplyMap);
                 if (resolved) {
-                    historyEntry.replyTo = resolved;
+                    entry.replyTo = resolved;
                 } else {
                     console.warn(`${CHAT_LOG_PREFIX} replyToIndex=${cmsg.replyToIndex} did not resolve (window=${indexableReplyMap?.length ?? 0}); rendering as plain message.`);
                 }
             }
-            updatedHistory.push(historyEntry);
+            return entry;
+        });
+        const prePushLen = updatedHistory.length;
+        updatedHistory.push(...historyEntries);
+        const storedLenAfterBurst = commitHistoryInMemory(updatedHistory);
+        // If the commit trimmed K entries off the head, every existing DOM
+        // bubble's data-msg-index now points one-past where its message lives.
+        // Shift them down so the new burst's indexes don't collide with stale
+        // old rows (which would land emoji badges / reply targets on the wrong
+        // bubble — querySelector returns the first DOM match).
+        const trimmedOff = (prePushLen + charMessages.length) - storedLenAfterBurst;
+        if (trimmedOff > 0) {
+            shiftBubbleMsgIndexes(messagesArea, trimmedOff);
+        }
+        // Index of charMessages[0] in the trimmed chat_metadata view.
+        // If the burst itself exceeds MAX_HISTORY_MESSAGES (won't happen in
+        // practice — no LLM returns 500+ bubbles), clamp to 0.
+        const burstBaseIdx = Math.max(0, storedLenAfterBurst - charMessages.length);
+
+        for (let i = 0; i < charMessages.length; i++) {
+            const cmsg = charMessages[i];
+            const historyEntry = historyEntries[i];
+            const newMsgIdx = burstBaseIdx + i;
+            const isLast = i === charMessages.length - 1;
+            const delay = i === 0 ? 0 : (cmsg.delay || 1) * 300; // Scale delay for UX (not full seconds)
+
+            if (delay > 0) {
+                showTypingIndicator(true);
+                await sleep(Math.min(delay, 2000));
+                showTypingIndicator(false);
+            }
 
             // ── AI-initiated voice message ──
             if (cmsg.special === 'voice' && cmsg.text) {
@@ -710,7 +771,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
                 showTypingIndicator(false);
                 if (messagesArea) {
                     messagesArea.insertAdjacentHTML('beforeend',
-                        buildBubbleRow('char', cmsg.text, cmsg.thought, undefined, null, historyEntry));
+                        buildBubbleRow('char', cmsg.text, cmsg.thought, newMsgIdx, null, historyEntry));
                 }
                 scrollToBottom(true);
                 continue;
@@ -753,8 +814,10 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
                 } else {
                     // Pass historyEntry through so buildBubbleRow can render
                     // the reply quote block when replyToIndex resolved above.
+                    // msgIndex must be set so long-press / bubble-menu can find
+                    // this row — without data-msg-index the menu silently skips it.
                     messagesArea.insertAdjacentHTML('beforeend',
-                        buildBubbleRow('char', cmsg.text, cmsg.thought, undefined, null, historyEntry));
+                        buildBubbleRow('char', cmsg.text, cmsg.thought, newMsgIdx, null, historyEntry));
                 }
             }
 
@@ -790,12 +853,15 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
                 console.warn(`${CHAT_LOG_PREFIX} Auto-TTS failed, falling back to text bubble:`, e);
             }
 
-            // Render the deferred message (voice bubble if TTS succeeded, text bubble otherwise)
+            // Render the deferred message (voice bubble if TTS succeeded, text bubble otherwise).
+            // The deferred entry is the last one in the burst — its index is
+            // burstBaseIdx + (charMessages.length - 1).
             showTypingIndicator(false);
             if (messagesArea) {
+                const deferredIdx = burstBaseIdx + charMessages.length - 1;
                 messagesArea.insertAdjacentHTML('beforeend',
                     buildBubbleRow('char', lastCharMsg.text, lastCharMsg.thought,
-                                   undefined, null, deferredHistoryEntry));
+                                   deferredIdx, null, deferredHistoryEntry));
             }
             scrollToBottom(true);
         }

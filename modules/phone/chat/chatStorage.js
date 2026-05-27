@@ -239,6 +239,32 @@ export function loadChatHistory() {
 }
 
 /**
+ * Sync the in-memory chat_metadata snapshot of the chat history WITHOUT
+ * queuing a disk write. Use when a hot path needs subsequent loadChatHistory()
+ * calls (e.g. from the bubble long-press menu or toggleReaction) to see new
+ * entries immediately, but the caller will batch the durable save later.
+ *
+ * Specifically needed by renderResponseToDom: each LLM bubble is inserted
+ * into the DOM with its final msgIndex right after the local push, but the
+ * actual saveChatHistory() awaits once at the end of the loop. Without this
+ * sync, a long-press on a freshly-arrived bubble would loadChatHistory(),
+ * find msgIndex out of range, and silently bail.
+ *
+ * Returns the length of what actually got stored (after MAX_HISTORY_MESSAGES
+ * trim), so the caller can derive a correct msgIndex. The local array passed
+ * in may be longer than the stored slice; using its length as msgIndex would
+ * point past the trimmed array's end.
+ *
+ * @returns {number} stored length (0 if chat_metadata missing)
+ */
+export function commitHistoryInMemory(messages) {
+    if (!chat_metadata) return 0;
+    const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+    chat_metadata[META_KEY_HISTORY] = trimmed;
+    return trimmed.length;
+}
+
+/**
  * Save chat history to chat_metadata (persisted in .jsonl chat file).
  * Trims to MAX_HISTORY_MESSAGES to prevent storage bloat.
  *

@@ -4,8 +4,8 @@
 
 ## 版本更新
 
-### V4.3.2
-- gemini NO top_k/moment&chat prompt/moment UI fix
+### V4.3.4
+- many css/UX advance for chat app
 
 ## 这是什么
 

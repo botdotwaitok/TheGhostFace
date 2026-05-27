@@ -56,7 +56,9 @@
 .chat-page.has-chat-bg .chat-time-divider {
     color: #ffffff;
     font-weight: 600;
-    text-shadow: 0 1px 2px rgba(60, 60, 67, 0.65);
+    text-shadow:
+        0 0 2px rgba(0, 0, 0, 0.9),
+        0 0 4px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* ─── Top Navigation Bar (Moved to viewport header) ─── */
@@ -326,6 +328,7 @@
     font-size: 11px;
     color: #8e8e93;
     font-weight: 500;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.55) !important;
 }
 
 /* ─── Load More Button ─── */
@@ -412,6 +415,20 @@
 
 .chat-draft-bubble:hover::after {
     opacity: 1;
+}
+
+/* When a chat background image is set, the page bg goes transparent and the
+   base draft bubble (semi-transparent blue) can disappear over a dark image.
+   Switch to a light translucent fill that's decoupled from the bg image, so
+   text contrast stays stable regardless of the image's colors. */
+.chat-page.has-chat-bg .chat-draft-bubble {
+    background: rgba(255, 255, 255, 0.55);
+    border-color: rgba(0, 122, 255, 0.6);
+}
+
+.chat-page.has-chat-bg .chat-draft-bubble:hover {
+    background: rgba(255, 235, 235, 0.65);
+    border-color: rgba(255, 59, 48, 0.6);
 }
 
 .chat-draft-label {
@@ -1097,8 +1114,10 @@
 
 /* ─── Reply quote on top of a bubble (when msg.replyTo is set) ─── */
 /* Minimal text-only label, same visual language as .chat-time-divider:
-   transparent background, gray text, relies on text-shadow when a chat
-   background is set. Keeps the bubble itself the only colored container. */
+   transparent background, gray text. The text lives in inner spans, and ST
+   core applies `* { text-shadow: var(--SmartThemeShadowColor) }` to every
+   element — so any text-shadow set on the parent flex container never reaches
+   the visible glyphs. Shadow rules below target `> *` directly. */
 .chat-bubble-reply-quote {
     display: inline-flex;
     align-items: center;
@@ -1128,14 +1147,29 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     opacity: 0.85;
+    font-size: 13px;
 }
 
-/* On a chat background image, lift to white + shadow (same pattern as time
-   divider) so the label remains legible regardless of bg colors. */
+/* Base shadow on text-bearing children. Theme-independent so the gray label
+   stays legible even on light themes whose --SmartThemeShadowColor is near
+   transparent. */
+/* !important needed to override custom user themes that may set
+   `* { text-shadow: ... !important }` (ST core itself doesn't, but themes do). */
+.chat-bubble-reply-quote > * {
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* On a chat background image, lift to white + stronger shadow so the label
+   remains legible regardless of bg colors. */
 .chat-page.has-chat-bg .chat-bubble-reply-quote {
     color: #ffffff;
     font-weight: 600;
-    text-shadow: 0 1px 2px rgba(60, 60, 67, 0.65);
+}
+
+.chat-page.has-chat-bg .chat-bubble-reply-quote > * {
+    text-shadow:
+        0 0 2px rgba(0, 0, 0, 0.9),
+        0 0 4px rgba(0, 0, 0, 0.5) !important;
 }
 
 .chat-thought-bubble {
@@ -2164,7 +2198,9 @@ textarea#chat_edit_textarea {
    heavy lifting for contrast. */
 .phone-dark-mode .chat-page.has-chat-bg .chat-time-divider {
     color: #ffffff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+    text-shadow:
+        0 0 2px rgba(0, 0, 0, 0.95),
+        0 0 4px rgba(0, 0, 0, 0.6) !important;
 }
 
 /* Nav bar */
@@ -2229,6 +2265,7 @@ textarea#chat_edit_textarea {
 /* Time divider */
 .phone-dark-mode .chat-time-divider {
     color: #636366;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7) !important;
 }
 
 /* Draft area */
@@ -2246,6 +2283,18 @@ textarea#chat_edit_textarea {
     background: rgba(255, 69, 58, 0.1);
     border-color: rgba(255, 69, 58, 0.35);
     color: #ff453a;
+}
+
+/* Dark mode with chat background image: use a translucent dark fill so the
+   bubble stands off the image without fighting whatever color it has. */
+.phone-dark-mode .chat-page.has-chat-bg .chat-draft-bubble {
+    background: rgba(28, 28, 30, 0.65);
+    border-color: rgba(10, 132, 255, 0.6);
+}
+
+.phone-dark-mode .chat-page.has-chat-bg .chat-draft-bubble:hover {
+    background: rgba(40, 18, 18, 0.7);
+    border-color: rgba(255, 69, 58, 0.6);
 }
 
 /* Reply preview — dark (label + close button; bubble colors inherit) */
@@ -2266,11 +2315,18 @@ textarea#chat_edit_textarea {
     color: #636366;
 }
 
-/* Bubble reply quote — dark with bg image: white + shadow */
+/* Bubble reply quote — dark with bg image: white + shadow.
+   Shadow must land on the inner spans (not the flex container) to beat
+   ST core's universal `* { text-shadow: ... }` rule. */
 .phone-dark-mode .chat-page.has-chat-bg .chat-bubble-reply-quote {
     color: #ffffff;
     font-weight: 600;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.phone-dark-mode .chat-page.has-chat-bg .chat-bubble-reply-quote > * {
+    text-shadow:
+        0 0 2px rgba(0, 0, 0, 0.95),
+        0 0 4px rgba(0, 0, 0, 0.6) !important;
 }
 
 .phone-dark-mode .chat-input-wrap {

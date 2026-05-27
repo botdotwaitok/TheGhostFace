@@ -645,6 +645,36 @@ export function attachBubbleTailObserver(container) {
     _bubbleTailObserver.observe(container, { childList: true });
 }
 
+/**
+ * Shift every data-msg-index attribute under the messages container down by N.
+ * Use right after a commit/save trimmed N entries off the head of
+ * chat_metadata: every previously-rendered DOM row now points one-past where
+ * its message actually lives. Without this shift, the next burst's freshly
+ * inserted bubbles share msgIndex values with stale older rows, and
+ * querySelector lookups (reaction badge re-render, etc.) hit the older row
+ * first — emoji "applied" to the right bubble visually lands on the wrong one.
+ *
+ * Elements whose shifted index would go negative are now beyond the trim
+ * window — the underlying entry was dropped. We strip their data-msg-index so
+ * long-press / reactions silently skip them rather than mis-target.
+ *
+ * @param {HTMLElement} container
+ * @param {number} shift  positive number of entries trimmed off the head
+ */
+export function shiftBubbleMsgIndexes(container, shift) {
+    if (!container || !(shift > 0)) return;
+    container.querySelectorAll('[data-msg-index]').forEach((el) => {
+        const old = parseInt(el.dataset.msgIndex, 10);
+        if (Number.isNaN(old)) return;
+        const next = old - shift;
+        if (next < 0) {
+            delete el.dataset.msgIndex;
+        } else {
+            el.dataset.msgIndex = String(next);
+        }
+    });
+}
+
 /** Build a "peeked" recalled message bubble (translucent + strikethrough) */
 export function buildRecalledPeekBubble(content) {
     return `
