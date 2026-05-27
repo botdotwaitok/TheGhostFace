@@ -70,6 +70,44 @@ export async function uploadFile(name, content) {
 }
 
 /**
+ * Upload a Blob (binary payload, e.g. an image) to /user/files/<name>.
+ * Same-name overwrites. Internally reads the blob as data URL then strips the
+ * prefix to extract the pure base64 the upload endpoint expects.
+ * @param {string} name - flat filename matching [a-zA-Z0-9_-]+ . [a-zA-Z0-9]+
+ * @param {Blob} blob
+ * @returns {Promise<string>} the absolute server path
+ */
+export async function uploadBlob(name, blob) {
+    assertValidName(name);
+    const base64 = await _blobToBase64(blob);
+    const resp = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ name, data: base64 }),
+    });
+    if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        throw new Error(`uploadBlob ${name} failed: ${resp.status} ${body.slice(0, 200)}`);
+    }
+    const result = await resp.json().catch(() => ({}));
+    const path = (result.path || `user/files/${name}`).replace(/\\/g, '/');
+    return path.startsWith('/') ? path : `/${path}`;
+}
+
+function _blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result || '';
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
  * Fetch a file as a UTF-8 string. Returns null on 404 (file not present),
  * throws on other errors.
  * @param {string} pathOrName

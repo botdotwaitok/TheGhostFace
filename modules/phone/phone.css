@@ -420,7 +420,14 @@
     inset: 0;
     z-index: 0;
     background: radial-gradient(120% 120% at 20% 10%, #ffe9a0 0%, #ff9a8b 40%, #2b8496 75%, #0d2738 100%);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     pointer-events: none;
+}
+
+.phone-wallpaper.has-custom-wallpaper {
+    background-image: var(--phone-wallpaper-bg);
 }
 
 /* Ensure content above wallpaper */

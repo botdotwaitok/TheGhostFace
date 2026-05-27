@@ -24,6 +24,10 @@ import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbook
 import { loadCallLogs } from '../voiceCall/vcStorage.js';
 import { loadChatHistory } from '../chat/chatStorage.js';
 import {
+    uploadWallpaper, clearWallpaper, applyWallpaper as applyWallpaperManaged,
+    migrateLegacyBase64 as migrateLegacyWallpaperBase64, getWallpaperValue,
+} from '../wallpaperManager.js';
+import {
     isBookBlockedInScope, isEntryBlockedInScope,
     toggleBookBlock, toggleEntryBlock
 } from './wbBlacklist.js';
@@ -1320,46 +1324,47 @@ export function openSettingsApp() {
         const wallpaperPreview = document.getElementById(`${P}_wallpaper_preview`);
         const wallpaperInput = document.getElementById(`${P}_wallpaper_input`);
 
-        const savedWallpaper = getPhoneSetting('wallpaper');
+        const savedWallpaper = getWallpaperValue();
         if (savedWallpaper && wallpaperPreview) {
-            wallpaperPreview.style.backgroundImage = `url(${savedWallpaper})`;
+            wallpaperPreview.style.backgroundImage = `url("${savedWallpaper}")`;
             wallpaperPreview.querySelector('i')?.remove();
         }
 
         if (wallpaperInput) {
-            wallpaperInput.addEventListener('change', (e) => {
+            wallpaperInput.addEventListener('change', async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 if (file.size > 5 * 1024 * 1024) {
                     showToast('图片大小不能超过 5MB');
                     return;
                 }
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const base64 = ev.target.result;
-                    setPhoneSetting('wallpaper', base64);
-                    applyWallpaper(base64);
+                try {
+                    const newPath = await uploadWallpaper(file);
                     if (wallpaperPreview) {
-                        wallpaperPreview.style.backgroundImage = `url(${base64})`;
-                        const icon = wallpaperPreview.querySelector('i');
-                        if (icon) icon.remove();
+                        wallpaperPreview.style.backgroundImage = `url("${newPath}")`;
+                        wallpaperPreview.querySelector('i')?.remove();
                     }
                     showToast('壁纸已更换');
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    console.warn('[Settings] wallpaper upload failed:', err);
+                    showToast('壁纸上传失败，请重试');
+                }
             });
         }
 
-        onClick(`${P}_wallpaper_reset_btn`, () => {
-            removePhoneSetting('wallpaper');
-            applyWallpaper(null);
-            if (wallpaperPreview) {
-                wallpaperPreview.style.backgroundImage = '';
-                if (!wallpaperPreview.querySelector('i')) {
-                    wallpaperPreview.innerHTML = '<i class="fa-solid fa-image"></i>';
+        onClick(`${P}_wallpaper_reset_btn`, async () => {
+            try {
+                await clearWallpaper();
+                if (wallpaperPreview) {
+                    wallpaperPreview.style.backgroundImage = '';
+                    if (!wallpaperPreview.querySelector('i')) {
+                        wallpaperPreview.innerHTML = '<i class="fa-solid fa-image"></i>';
+                    }
                 }
+                showToast('已恢复默认壁纸');
+            } catch (err) {
+                console.warn('[Settings] wallpaper reset failed:', err);
             }
-            showToast('已恢复默认壁纸');
         });
 
         // ═══ Appearance: Dark Mode Toggle ═══
@@ -2685,16 +2690,6 @@ function _renderRingtoneCard(P) {
 // Appearance Helpers (exported for phoneController to call on open)
 // ═══════════════════════════════════════════════════════════════════════
 
-export function applyWallpaper(base64Url) {
-    const wallpaperEl = document.querySelector('.phone-wallpaper');
-    if (!wallpaperEl) return;
-    if (base64Url) {
-        wallpaperEl.style.background = `url(${base64Url}) center/cover no-repeat`;
-    } else {
-        wallpaperEl.style.background = '';
-    }
-}
-
 export function applyDarkMode(enabled) {
     const container = document.querySelector('.phone-container');
     if (!container) return;
@@ -2702,8 +2697,20 @@ export function applyDarkMode(enabled) {
 }
 
 export function applySavedAppearance() {
-    const wallpaper = getPhoneSetting('wallpaper');
-    if (wallpaper) applyWallpaper(wallpaper);
+    // Phase 1.5 — paint immediately with whatever's currently saved (base64 or
+    // path), so the user sees a wallpaper without waiting on the migration.
+    applyWallpaperManaged().catch((err) =>
+        console.warn('[Settings] applyWallpaper failed:', err));
+
+    // Then kick off one-shot legacy base64 → self-managed-file migration. If a
+    // migration actually ran (setting was base64), re-apply so the next paint
+    // uses the resilient path-based pipeline. Fire-and-forget — the immediate
+    // paint above already covered the visual.
+    migrateLegacyWallpaperBase64().then((migrated) => {
+        if (migrated) {
+            applyWallpaperManaged().catch(() => {});
+        }
+    }).catch((err) => console.warn('[Settings] wallpaper migration threw:', err));
 
     const isDark = getPhoneSetting('darkMode', false);
     applyDarkMode(isDark);
