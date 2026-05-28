@@ -22,7 +22,11 @@ import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbookManager.js';
 import { loadCallLogs } from '../voiceCall/vcStorage.js';
-import { loadChatHistory } from '../chat/chatStorage.js';
+import { loadChatHistory, purgeExternalChatHistory } from '../chat/chatStorage.js';
+import {
+    uploadWallpaper, clearWallpaper, applyWallpaper as applyWallpaperManaged,
+    migrateLegacyBase64 as migrateLegacyWallpaperBase64, getWallpaperValue,
+} from '../wallpaperManager.js';
 import {
     isBookBlockedInScope, isEntryBlockedInScope,
     toggleBookBlock, toggleEntryBlock
@@ -1297,6 +1301,49 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ 存储（实验性 / Experimental Storage） ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #6366F1, #4338CA);"><i class="ph ph-database"></i></span>
+                <span>存储</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+
+                <div class="phone-settings-row">
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">
+                            独立文件存储手机聊天历史
+                            <span style="display:inline-block; font-size: 10px; padding: 2px 6px; border-radius: 10px; background: rgba(255,140,66,0.15); color: #FF8C42; font-weight: 600; margin-left: 6px; vertical-align: middle;">实验性</span>
+                        </span>
+                        <button id="${P}_ext_chat_storage_toggle" class="phone-settings-ios-toggle" aria-checked="false">
+                            <span class="phone-settings-ios-toggle-knob"></span>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 14px; color: #8e8e93; line-height: 1.6;">
+                    开启后，手机的聊天记录会从酒馆的本体聊天文件里搬出来，独立存放到 <code style="font-size:11px;background:rgba(99,102,241,0.12);padding:1px 5px;border-radius:4px;color:#6366F1;">/user/files/ghostface_chat_*.json</code>。这样每发一条新消息就不再触发酒馆全量重写聊天文件。
+                    <br><br>
+                    <strong>可能从中受益的情况：</strong>
+                    <br>· 远程访问酒馆（tailscale / 公网穿透），发消息明显卡顿
+                    <br>· chat文件过大
+                    <br>· 偶尔出现 metadata 错乱 / 消息丢失
+                    <br><br>
+                    <strong>注意：</strong>切换该开关需要<strong>刷新页面</strong>才会生效。关掉后自管文件仍保留在原处，重新开启可继续读到；切换期间不做数据回流，两边会从切换点开始各自独立。
+                </div>
+
+                <div class="phone-settings-row" style="justify-content: center; padding-top: 4px;">
+                    <button id="${P}_ext_chat_purge_btn" class="phone-settings-btn" style="width:100%; font-size: 13px;">
+                        <i class="ph ph-trash"></i> 删除当前聊天的自管文件
+                    </button>
+                </div>
+                <div style="padding: 0 16px 14px; font-size: 11px; color: #8e8e93; line-height: 1.5;">
+                    紧急回滚入口：将当前聊天的自管文件删除并关闭上方开关。删除后这条聊天的手机历史会退回到酒馆聊天文件里的旧版本（如果还存在），刷新页面后生效。
+                </div>
+
+            </div>
+        </details>
+
     </div>
     `;
 
@@ -1320,46 +1367,47 @@ export function openSettingsApp() {
         const wallpaperPreview = document.getElementById(`${P}_wallpaper_preview`);
         const wallpaperInput = document.getElementById(`${P}_wallpaper_input`);
 
-        const savedWallpaper = getPhoneSetting('wallpaper');
+        const savedWallpaper = getWallpaperValue();
         if (savedWallpaper && wallpaperPreview) {
-            wallpaperPreview.style.backgroundImage = `url(${savedWallpaper})`;
+            wallpaperPreview.style.backgroundImage = `url("${savedWallpaper}")`;
             wallpaperPreview.querySelector('i')?.remove();
         }
 
         if (wallpaperInput) {
-            wallpaperInput.addEventListener('change', (e) => {
+            wallpaperInput.addEventListener('change', async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 if (file.size > 5 * 1024 * 1024) {
                     showToast('图片大小不能超过 5MB');
                     return;
                 }
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const base64 = ev.target.result;
-                    setPhoneSetting('wallpaper', base64);
-                    applyWallpaper(base64);
+                try {
+                    const newPath = await uploadWallpaper(file);
                     if (wallpaperPreview) {
-                        wallpaperPreview.style.backgroundImage = `url(${base64})`;
-                        const icon = wallpaperPreview.querySelector('i');
-                        if (icon) icon.remove();
+                        wallpaperPreview.style.backgroundImage = `url("${newPath}")`;
+                        wallpaperPreview.querySelector('i')?.remove();
                     }
                     showToast('壁纸已更换');
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                    console.warn('[Settings] wallpaper upload failed:', err);
+                    showToast('壁纸上传失败，请重试');
+                }
             });
         }
 
-        onClick(`${P}_wallpaper_reset_btn`, () => {
-            removePhoneSetting('wallpaper');
-            applyWallpaper(null);
-            if (wallpaperPreview) {
-                wallpaperPreview.style.backgroundImage = '';
-                if (!wallpaperPreview.querySelector('i')) {
-                    wallpaperPreview.innerHTML = '<i class="fa-solid fa-image"></i>';
+        onClick(`${P}_wallpaper_reset_btn`, async () => {
+            try {
+                await clearWallpaper();
+                if (wallpaperPreview) {
+                    wallpaperPreview.style.backgroundImage = '';
+                    if (!wallpaperPreview.querySelector('i')) {
+                        wallpaperPreview.innerHTML = '<i class="fa-solid fa-image"></i>';
+                    }
                 }
+                showToast('已恢复默认壁纸');
+            } catch (err) {
+                console.warn('[Settings] wallpaper reset failed:', err);
             }
-            showToast('已恢复默认壁纸');
         });
 
         // ═══ Appearance: Dark Mode Toggle ═══
@@ -1625,6 +1673,54 @@ export function openSettingsApp() {
         onClick(`${P}_screentime_btn`, () => {
             openScreenTimePage();
         });
+
+        // ═══ External Chat Storage (Experimental — Phase 2 Step 2 opt-in) ═══
+        {
+            const extStoreToggle = document.getElementById(`${P}_ext_chat_storage_toggle`);
+            const extStoreOn = getPhoneSetting('useExternalChatStorage', false);
+            if (extStoreToggle) {
+                extStoreToggle.setAttribute('aria-checked', String(extStoreOn));
+                if (extStoreOn) extStoreToggle.classList.add('active');
+
+                extStoreToggle.addEventListener('click', () => {
+                    const wasOn = extStoreToggle.getAttribute('aria-checked') === 'true';
+                    const newState = !wasOn;
+                    extStoreToggle.setAttribute('aria-checked', String(newState));
+                    extStoreToggle.classList.toggle('active', newState);
+                    setPhoneSetting('useExternalChatStorage', newState);
+                    showToast(newState
+                        ? '已开启独立文件存储 · 刷新页面后生效'
+                        : '已关闭独立文件存储 · 刷新页面后生效');
+                });
+            }
+
+            onClick(`${P}_ext_chat_purge_btn`, async () => {
+                const confirmed = confirm(
+                    '将删除当前聊天的自管文件并关闭独立文件存储开关。\n\n'
+                    + '· 仅存在于自管文件里的手机历史将无法找回\n'
+                    + '· 酒馆聊天文件里的旧版本（如果还在）会重新生效\n'
+                    + '· 操作完成后需要刷新页面\n\n'
+                    + '确定要继续吗？'
+                );
+                if (!confirmed) return;
+                try {
+                    const result = await purgeExternalChatHistory();
+                    setPhoneSetting('useExternalChatStorage', false);
+                    if (extStoreToggle) {
+                        extStoreToggle.setAttribute('aria-checked', 'false');
+                        extStoreToggle.classList.remove('active');
+                    }
+                    if (result?.ok) {
+                        showToast('已删除并关闭 · 刷新页面后生效');
+                    } else {
+                        showToast(`删除失败：${result?.error || '未知错误'}`);
+                    }
+                } catch (e) {
+                    console.warn('[Settings] purgeExternalChatHistory failed:', e);
+                    showToast('操作失败，请查看控制台');
+                }
+            });
+        }
 
         // ═══ Dev Tools ═══
         {
@@ -2685,16 +2781,6 @@ function _renderRingtoneCard(P) {
 // Appearance Helpers (exported for phoneController to call on open)
 // ═══════════════════════════════════════════════════════════════════════
 
-export function applyWallpaper(base64Url) {
-    const wallpaperEl = document.querySelector('.phone-wallpaper');
-    if (!wallpaperEl) return;
-    if (base64Url) {
-        wallpaperEl.style.background = `url(${base64Url}) center/cover no-repeat`;
-    } else {
-        wallpaperEl.style.background = '';
-    }
-}
-
 export function applyDarkMode(enabled) {
     const container = document.querySelector('.phone-container');
     if (!container) return;
@@ -2702,8 +2788,20 @@ export function applyDarkMode(enabled) {
 }
 
 export function applySavedAppearance() {
-    const wallpaper = getPhoneSetting('wallpaper');
-    if (wallpaper) applyWallpaper(wallpaper);
+    // Phase 1.5 — paint immediately with whatever's currently saved (base64 or
+    // path), so the user sees a wallpaper without waiting on the migration.
+    applyWallpaperManaged().catch((err) =>
+        console.warn('[Settings] applyWallpaper failed:', err));
+
+    // Then kick off one-shot legacy base64 → self-managed-file migration. If a
+    // migration actually ran (setting was base64), re-apply so the next paint
+    // uses the resilient path-based pipeline. Fire-and-forget — the immediate
+    // paint above already covered the visual.
+    migrateLegacyWallpaperBase64().then((migrated) => {
+        if (migrated) {
+            applyWallpaperManaged().catch(() => {});
+        }
+    }).catch((err) => console.warn('[Settings] wallpaper migration threw:', err));
 
     const isDark = getPhoneSetting('darkMode', false);
     applyDarkMode(isDark);

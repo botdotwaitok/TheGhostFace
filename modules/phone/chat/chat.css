@@ -3226,3 +3226,38 @@ textarea#chat_edit_textarea {
         opacity: 0;
     }
 }
+
+/* ─── Retry-able toast variant (asset load failures, etc.) ─── */
+/* Used by assetLoader so the user can manually re-trigger a failed load.
+   Re-enables pointer-events (base .chat-toast disables them) and overrides
+   the auto-out animation; dismiss is explicit (button click) or JS-driven
+   timeout in the helper. */
+.chat-toast-retry {
+    pointer-events: auto;
+    animation: chatToastIn 0.3s ease-out !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 16px;
+    white-space: nowrap;
+}
+
+.chat-toast-retry-btn {
+    background: rgba(255, 255, 255, 0.18);
+    color: inherit;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.chat-toast-retry-btn:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.chat-toast-retry-btn:active {
+    background: rgba(255, 255, 255, 0.38);
+}

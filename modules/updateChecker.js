@@ -5,10 +5,24 @@
 // Result is cached in localStorage to throttle the check to once per day.
 
 import { getRequestHeaders } from '../../../../../script.js';
+import { extensionTypes } from '../../../../extensions.js';
 
 const EXTENSION_NAME = '/TheGhostFace';
 const STORAGE_KEY = 'ghostface_update_nag_v1';
 const BANNER_ID = 'ghostface_update_banner';
+
+// Mirror ST's logic: extensionTypes is keyed by `third-party/<folder>`. The
+// stored value ('global' | 'local' | 'system') tells the /version endpoint
+// which base directory to look in. Defaulting to 'global' matches the install
+// shipped in public/scripts/extensions/third-party/.
+function isGlobalInstall() {
+    const trimmed = EXTENSION_NAME.replace(/^\//, '');
+    const key = Object.keys(extensionTypes).find(k =>
+        k === EXTENSION_NAME || k === `third-party/${trimmed}`,
+    );
+    if (!key) return true;
+    return extensionTypes[key] === 'global';
+}
 
 function readCache() {
     try {
@@ -43,7 +57,7 @@ async function fetchStVersion() {
             headers: getRequestHeaders(),
             body: JSON.stringify({
                 extensionName: EXTENSION_NAME,
-                global: false,
+                global: isGlobalInstall(),
             }),
         });
         if (!resp.ok) return null;

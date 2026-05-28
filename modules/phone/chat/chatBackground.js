@@ -5,6 +5,7 @@
 
 import { getRequestHeaders } from '../../../../../../../script.js';
 import { getPhoneSetting, setPhoneSetting, removePhoneSetting } from '../phoneSettings.js';
+import { applyImageAsBackground } from '../../storage/assetLoader.js';
 
 const LOG = '[ChatBackground]';
 const SETTING_KEY = 'chatAppBackground';
@@ -31,20 +32,36 @@ export function getChatBackgroundPath() {
  * The CSS var is set on the phone viewport (not the chat page) so it cascades
  * to both the header and the body — without that, a transparent header would
  * reveal the viewport's solid gray instead of the chat background.
+ *
+ * Resilient: routes through assetLoader.applyImageAsBackground which preloads
+ * with timeout + retry. On final failure both the CSS var AND .has-chat-bg
+ * class are stripped, so the UI cleanly falls back to "no background" instead
+ * of half-applying bg-mode styling (transparent bubbles, etc.) over a blank
+ * background. A retry toast lets the user re-trigger manually.
+ *
+ * @returns {Promise<void>} resolves after the load attempt; safe to ignore
  */
-export function applyChatBackground() {
+export async function applyChatBackground() {
     const root = document.getElementById('chat_page_root');
     if (!root) return;
     const viewport = document.getElementById('phone_app_viewport');
+    if (!viewport) return;
     const path = getChatBackgroundPath();
-    if (path) {
-        const url = path.startsWith('/') ? path : `/${path}`;
-        if (viewport) viewport.style.setProperty('--chat-app-bg', `url("${url}")`);
-        root.classList.add('has-chat-bg');
-    } else {
-        if (viewport) viewport.style.removeProperty('--chat-app-bg');
+
+    if (!path) {
+        viewport.style.removeProperty('--chat-app-bg');
         root.classList.remove('has-chat-bg');
+        return;
     }
+
+    const url = path.startsWith('/') ? path : `/${path}`;
+    await applyImageAsBackground(viewport, '--chat-app-bg', url, {
+        onSuccess: () => root.classList.add('has-chat-bg'),
+        onError: () => {
+            root.classList.remove('has-chat-bg');
+            _showRetryToast('背景加载失败，点击重试', () => applyChatBackground());
+        },
+    });
 }
 
 /**
@@ -109,6 +126,45 @@ export async function clearChatBackground() {
 // ═══════════════════════════════════════════════════════════════════════
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Show a toast with a retry button anchored to the chat page. Deduplicates:
+ * any existing retry toast is removed first. Auto-dismisses after 8 s if the
+ * user does not click. Click clears the toast and invokes onRetry().
+ *
+ * Uses the base .chat-toast class for positioning/animation, plus the
+ * .chat-toast-retry modifier to re-enable pointer events and host the button.
+ */
+function _showRetryToast(message, onRetry) {
+    const root = document.getElementById('chat_page_root');
+    if (!root) return;
+    root.querySelector('.chat-toast-retry')?.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'chat-toast chat-toast-retry';
+
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'chat-toast-retry-msg';
+    msgSpan.textContent = message;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-toast-retry-btn';
+    btn.textContent = '重试';
+
+    toast.appendChild(msgSpan);
+    toast.appendChild(btn);
+
+    let timer;
+    btn.addEventListener('click', () => {
+        clearTimeout(timer);
+        toast.remove();
+        try { onRetry(); } catch (e) { console.warn(`${LOG} retry handler threw:`, e); }
+    });
+    timer = setTimeout(() => toast.remove(), 8000);
+
+    root.appendChild(toast);
+}
 
 /**
  * If the file is large or oversized, resize to MAX_DIMENSION and re-encode as JPEG.

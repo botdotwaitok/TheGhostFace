@@ -10,6 +10,9 @@ import { saveToWorldBook } from '../../worldbook.js';
 import { callPhoneLLM } from '../../api.js';
 import { getPhoneCharInfo, getPhoneUserName, getPhoneUserPersona } from '../phoneContext.js';
 import { getPhoneSetting } from '../phoneSettings.js';
+import * as chatHistoryStore from '../../storage/chatHistoryStore.js';
+import { atomicWriteJSON, readJSON, deleteFile } from '../../storage/fileStore.js';
+import { eventSource, event_types } from '../../../../../../../script.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
@@ -35,6 +38,12 @@ const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
 const META_KEY_ST_SYNC_MARKER = 'gf_phoneChatLastSTMarker'; // send_date of last ST msg absorbed into summary
 const META_KEY_HOME_MARKER = 'gf_phoneChatLastHomeMarker';  // ISO timestamp of last phone msg already 回家'd
 const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display nickname for the character (UI-only)
+// Note: an earlier Phase 2 prototype also wrote gf_storageMigrated into
+// chat_metadata as a "已迁移" marker. That approach forced a queueSaveChat
+// during every migrate and could race with ST's chat load to blank the .jsonl.
+// The current design (Phase 2.5) uses the existence of the self-managed file
+// itself as the source of truth, so no per-chat marker is needed. Legacy
+// gf_storageMigrated values left on old chats are silently ignored.
 
 // ═══════════════════════════════════════════════════════════════════════
 // Serialized save queue
@@ -229,6 +238,16 @@ export function buildReplySnippet(msg) {
  * @returns {Array} messages (caller-owned copy)
  */
 export function loadChatHistory() {
+    if (_useExternalStorage()) {
+        try {
+            return chatHistoryStore.loadHistory();
+        } catch (e) {
+            // Cache not ready (e.g. prewarm still in-flight). Fall through to
+            // chat_metadata — once migration succeeds the legacy key is deleted,
+            // so this fallback safely returns [] for already-migrated chats.
+            console.warn(`${CHAT_LOG_PREFIX} chatHistoryStore not ready, fallback to chat_metadata:`, e.message);
+        }
+    }
     try {
         const data = chat_metadata?.[META_KEY_HISTORY];
         if (Array.isArray(data) && data.length > 0) return data.slice();
@@ -258,6 +277,9 @@ export function loadChatHistory() {
  * @returns {number} stored length (0 if chat_metadata missing)
  */
 export function commitHistoryInMemory(messages) {
+    if (_useExternalStorage()) {
+        return chatHistoryStore.commitInMemory(messages);
+    }
     if (!chat_metadata) return 0;
     const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
     chat_metadata[META_KEY_HISTORY] = trimmed;
@@ -281,6 +303,21 @@ export function commitHistoryInMemory(messages) {
  * @returns {Promise<void>}
  */
 export async function saveChatHistory(messages) {
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            await chatHistoryStore.saveHistory(messages);
+            return;
+        } catch (e) {
+            // Critical: do NOT fall back to chat_metadata here. Falling back
+            // would split data between two backends and the next prewarm would
+            // overwrite the file with the stale cached state. Better to surface
+            // the failure to the caller (chatMessageHandler etc.) and let it
+            // decide whether to toast / retry.
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore save failed (NOT falling back):`, e);
+            throw e;
+        }
+    }
     const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
     try {
         if (!chat_metadata) return;
@@ -461,6 +498,26 @@ export function getMessagesSinceHome(history) {
  */
 export async function markMessagesSummarizedUntil(marker) {
     if (!marker) return 0;
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            let count = 0;
+            await chatHistoryStore.mutateInPlace((live) => {
+                if (!Array.isArray(live) || live.length === 0) return;
+                for (const msg of live) {
+                    if (msg.summarized) continue;
+                    if (msg.timestamp && msg.timestamp <= marker) {
+                        msg.summarized = true;
+                        count++;
+                    }
+                }
+            });
+            return count;
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} markMessagesSummarizedUntil (external) failed:`, e);
+            return 0;
+        }
+    }
     try {
         if (!chat_metadata) return 0;
         const live = chat_metadata[META_KEY_HISTORY];
@@ -944,5 +1001,218 @@ export async function maybeAutoSummarize() {
         _showSummarizeToast('记录压缩失败');
     } finally {
         _isSummarizing = false;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// External Storage (Phase 2 — chatHistoryStore backed by /user/files/)
+// ═══════════════════════════════════════════════════════════════════════
+// _useExternalStorage() only checks the user opt-in setting. The single
+// source of truth for "is this chat migrated" is the self-managed file's
+// existence on disk (probed by _ensureSelfManagedFile). META_KEY_MIGRATED
+// is no longer used — relying on it forced us to queueSaveChat() during
+// every migrate, which could race with ST's chat load and blank the .jsonl
+// (Phase 2 事故 B). Old chats may still carry the residual key in chat_metadata;
+// it is silently ignored, never read, never re-written.
+//
+// LEGACY cleanup (deleting chat_metadata.gf_phoneChatHistory and triggering
+// queueSaveChat) is decoupled from the migrate-write step and gated on
+// ST's chat array being populated. If the chat array is empty, we skip the
+// cleanup and let the next CHAT_CHANGED handle it — safer to leave the LEGACY
+// key untouched than to risk overwriting the .jsonl with [].
+
+function _useExternalStorage() {
+    try {
+        return !!getPhoneSetting('useExternalChatStorage', false);
+    } catch {
+        return false;
+    }
+}
+
+function _getCurrentKey() {
+    try {
+        const ctx = getContext();
+        return {
+            chatId: ctx?.chatId || ctx?.chat_id || 'no_chat',
+            charId: ctx?.characterId != null ? String(ctx.characterId) : 'no_char',
+        };
+    } catch {
+        return { chatId: 'no_chat', charId: 'no_char' };
+    }
+}
+
+/**
+ * True iff ST's runtime chat array currently holds at least one message.
+ * Used as a gate before any queueSaveChat() we trigger, because saveChat()
+ * unconditionally writes `chat.slice()` — calling it when chat is [] blanks
+ * the .jsonl (Phase 2 事故 B). When this returns false we defer whatever
+ * chat_metadata cleanup we wanted to do until the next CHAT_CHANGED.
+ */
+function _isSTChatReady() {
+    try {
+        const ctx = getContext();
+        return Array.isArray(ctx?.chat) && ctx.chat.length > 0;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Best-effort cleanup of the legacy chat_metadata.gf_phoneChatHistory key
+ * once the self-managed file is confirmed to hold the truth. Only flushes
+ * if ST's chat array is populated — otherwise the queueSaveChat would write
+ * an empty chat slice to disk. Idempotent: callable any number of times.
+ */
+async function _maybeCleanupLegacyKey(reason) {
+    if (!chat_metadata) return;
+    if (!Array.isArray(chat_metadata[META_KEY_HISTORY])) return;
+    if (!_isSTChatReady()) {
+        console.warn(`${CHAT_LOG_PREFIX} skipping LEGACY cleanup (${reason}) — ST chat array empty; will retry on next CHAT_CHANGED`);
+        return;
+    }
+    delete chat_metadata[META_KEY_HISTORY];
+    await queueSaveChat();
+    console.log(`${CHAT_LOG_PREFIX} cleared LEGACY chat_metadata key (${reason})`);
+}
+
+/**
+ * Ensure a self-managed file exists for (chatId, charId). Three branches:
+ *
+ *   A. Self-managed file already exists  → it IS the truth, never overwrite.
+ *                                          Try to clean stale LEGACY (gated).
+ *   B. File missing + LEGACY has data    → migrate (atomicWrite + verify),
+ *                                          then try to clean LEGACY (gated).
+ *   C. File missing + no LEGACY          → create empty file. Does not touch
+ *                                          chat_metadata at all → no jsonl risk.
+ *
+ * Every branch is idempotent — re-running on the same key is a no-op (A) or
+ * a verified re-write (B never repeats once file exists) or a re-create of
+ * an empty file (C, the file is overwritten with [] which it already was).
+ *
+ * Critically: this function never overwrites an existing self-managed file
+ * from chat_metadata, so restoring an older .jsonl backup that still carries
+ * LEGACY data cannot resurrect stale chat history over newer data on disk.
+ *
+ * @returns {Promise<{branch: 'exists'|'migrated'|'fresh', filename: string, migratedCount?: number}>}
+ */
+async function _ensureSelfManagedFile(chatId, charId) {
+    const filename = await chatHistoryStore.filenameForKey(chatId, charId);
+
+    const existing = await readJSON(filename);
+    if (existing !== null) {
+        // Branch A — file is truth. Don't touch it.
+        await _maybeCleanupLegacyKey('self-managed file already present');
+        return { branch: 'exists', filename };
+    }
+
+    const legacy = chat_metadata?.[META_KEY_HISTORY];
+    if (Array.isArray(legacy) && legacy.length > 0) {
+        // Branch B — first-time migration.
+        console.log(`${CHAT_LOG_PREFIX} migrating ${legacy.length} messages → ${filename}`);
+        await atomicWriteJSON(filename, legacy);
+
+        const readback = await readJSON(filename);
+        if (!Array.isArray(readback) || readback.length !== legacy.length) {
+            throw new Error(`migrate verify: length mismatch (legacy=${legacy.length} readback=${readback?.length ?? 'null'})`);
+        }
+        const last = legacy.length - 1;
+        const firstOk = readback[0]?.content === legacy[0]?.content
+            && readback[0]?.timestamp === legacy[0]?.timestamp;
+        const lastOk = readback[last]?.content === legacy[last]?.content
+            && readback[last]?.timestamp === legacy[last]?.timestamp;
+        if (!firstOk || !lastOk) {
+            throw new Error(`migrate verify: first/last content mismatch`);
+        }
+        console.log(`${CHAT_LOG_PREFIX} ✅ migration verified: ${legacy.length} messages → ${filename}`);
+
+        await _maybeCleanupLegacyKey('migration just completed');
+        return { branch: 'migrated', filename, migratedCount: legacy.length };
+    }
+
+    // Branch C — fresh start. Create an empty self-managed file so future
+    // reads have something to find. atomicWriteJSON([]) only touches /user/files/,
+    // never ST's jsonl, so there is no chance of blanking the chat.
+    await atomicWriteJSON(filename, []);
+    console.log(`${CHAT_LOG_PREFIX} created empty self-managed file ${filename}`);
+    return { branch: 'fresh', filename };
+}
+
+/**
+ * Called on CHAT_CHANGED. Always invalidates the cache (key changed). If the
+ * external-storage switch is on, also ensures the self-managed file exists
+ * (creating it / migrating from LEGACY if needed) and prewarms the cache.
+ * Failure in either step is logged but never propagated — the user must not
+ * see the chat app crash because of a storage hiccup.
+ *
+ * @returns {Promise<void>}
+ */
+export async function handleChatChanged() {
+    chatHistoryStore.invalidate();
+
+    if (!_useExternalStorage()) return;
+
+    const { chatId, charId } = _getCurrentKey();
+    try {
+        await _ensureSelfManagedFile(chatId, charId);
+    } catch (e) {
+        console.error(`${CHAT_LOG_PREFIX} _ensureSelfManagedFile failed for ${chatId}/${charId}:`, e);
+        return;
+    }
+
+    try {
+        await chatHistoryStore.prewarm(chatId, charId);
+    } catch (e) {
+        console.error(`${CHAT_LOG_PREFIX} prewarm failed for ${chatId}/${charId}:`, e);
+    }
+}
+
+/**
+ * Register the CHAT_CHANGED listener. Idempotent guard via a module flag so
+ * repeated init calls don't stack listeners. Driven purely by ST events — we
+ * never trigger handleChatChanged() ourselves, because doing so during plugin
+ * init (when ST's chat array may not be filled yet) would let _tryMigrate's
+ * downstream queueSaveChat() rewrite the .jsonl with an empty chat. ST's
+ * own CHAT_CHANGED emit happens at the end of getChatResult, by which point
+ * chat is guaranteed populated.
+ */
+let _hooksRegistered = false;
+export function initChatStorageHooks() {
+    if (_hooksRegistered) return;
+    try {
+        if (eventSource && event_types?.CHAT_CHANGED) {
+            eventSource.on(event_types.CHAT_CHANGED, () => {
+                handleChatChanged().catch(e =>
+                    console.error(`${CHAT_LOG_PREFIX} handleChatChanged threw:`, e));
+            });
+            _hooksRegistered = true;
+            console.log(`${CHAT_LOG_PREFIX} chat storage hooks registered`);
+        } else {
+            console.warn(`${CHAT_LOG_PREFIX} eventSource unavailable; hooks NOT registered`);
+        }
+    } catch (e) {
+        console.error(`${CHAT_LOG_PREFIX} initChatStorageHooks failed:`, e);
+    }
+}
+
+/**
+ * Escape hatch (plan D6 "彻底回到 chat_metadata"): delete this chat's
+ * self-managed file and invalidate the in-memory cache. The caller MUST also
+ * flip the useExternalChatStorage setting OFF (and refresh), otherwise the
+ * next CHAT_CHANGED will just recreate an empty self-managed file. We do not
+ * touch chat_metadata here — the legacy gf_storageMigrated key is harmless
+ * residual data and removing it would require a queueSaveChat that could
+ * race with ST chat load (Phase 2 事故 B).
+ *
+ * @returns {Promise<{ok: boolean, deletedFile?: string, error?: string}>}
+ */
+export async function purgeExternalChatHistory() {
+    try {
+        const { chatId, charId } = _getCurrentKey();
+        const filename = await chatHistoryStore.filenameForKey(chatId, charId);
+        await deleteFile(filename);
+        chatHistoryStore.invalidate();
+        return { ok: true, deletedFile: filename };
+    } catch (e) {
+        return { ok: false, error: e.message };
     }
 }

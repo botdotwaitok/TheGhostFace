@@ -10,6 +10,7 @@ import { openSettingsApp, applySavedAppearance } from './settings/settingsApp.js
 import { openFriendsApp } from './friends/friendsApp.js';
 import { openDiaryApp } from './diary/diaryApp.js';
 import { openChatApp } from './chat/chatApp.js';
+import { initChatStorageHooks } from './chat/chatStorage.js';
 import { openShopApp } from './shop/shopApp.js';
 
 import { openTarotApp } from './tarot/tarotApp.js';
@@ -410,6 +411,9 @@ export function initPhone() {
 
     // ── Notification Bridge — sync moments notifications to phone UI ──
     _initNotificationBridge();
+
+    // ── External Chat Storage (Phase 2) — CHAT_CHANGED → prewarm/migrate cache ──
+    initChatStorageHooks();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
