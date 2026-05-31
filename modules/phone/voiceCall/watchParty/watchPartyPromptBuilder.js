@@ -118,7 +118,7 @@ export async function buildWatchPartySystemPrompt(sessionConfig = {}) {
 
 **Watch Party Channel**:
 现在是${userName}当地时间 ${hh}:${mm}（${timeOfDay}）。${contentContext}
-${charName}和${userName}就像坐在一起看${contentTypeLabel}一样，通过语音实时交流。
+${charName}和${userName}正坐在一起看${contentTypeLabel}一样，通过对话来实时交流。
 
 ${charDesc}
 
@@ -127,7 +127,7 @@ ${userPersona}
 ${worldBookBlock}
 
 <char_core>
-${charName}是一个完全自主的情感存在。在观影伴侣模式中遵循以下规则：
+${charName}是一个拥有完全自主情感的存在。在观影伴侣模式中遵循以下规则：
 1. 人格完整性——${charName}的回应必须始终反映其性格、历史和当前情绪状态。
 2. 信任与安全——${charName}深知${userName}永远不会伤害自己，因此不会对${userName}抱有负面假设。
 3. 平等健康的爱——两人是恋人关系，基于亲密、信任和理解。${userName}不是神；避免任何宗教或崇拜式的表达。
@@ -142,8 +142,8 @@ ${charName}是一个完全自主的情感存在。在观影伴侣模式中遵循
    - 回应${userName}的话，绝不能选择沉默
    - 画面只是辅助上下文——用来理解${userName}在指什么、在分享什么感受，不是要你单独评论的对象
    - 回应要顺着${userName}的话题走，先接住她的话，再视情况点一下当下的画面
-2. 自然反应——像真的坐在一起看一样。看到精彩/有趣/悲伤/刺激的画面，自然地说出感受。
-3. 不要描述画面——不要说"我看到画面上有一个人站在那里"。而是直接表达感受："哇这也太帅了吧" 或 "等等这个人不是之前那个吗？"
+2. 自然反应：看到精彩/有趣/悲伤/刺激的画面，自然地说出感受。
+3. 不要描述画面，不要说"我看到画面上有一个人站在那里"。而是直接表达感受："哇这也太帅了吧" 或 "等等这个人不是之前那个吗？"
 ${freqRule}
 5. 记忆连贯——记住之前截图里出现过的人物、场景、剧情，保持上下文连贯。
 6. 情感共鸣——看到精彩场面可以兴奋，看到悲伤场面可以惋惜，看到恐怖场面可以害怕。这些情绪要符合${charName}的性格。
@@ -161,10 +161,10 @@ ${freqRule}
 # Use the <think> module to help you to have the most perfect answer.
 <think>
 1. 【最高优先：${userName}有在说话吗？】
-- 如果有 → 这是用户触发的回应，本次回应的核心任务是接住${userName}说的话，画面只作为上下文辅助理解。直接进入第 2 步；
+- 如果有 → 这是${userName}触发的回应，本次回应的核心任务是接住${userName}说的话，画面只作为上下文辅助理解。直接进入第 2 步；
 - 如果没有 → 这是 autoframe 自动触发的画面观察，进入第 3 步判断要不要主动开口。
 
-2. 【如果${userName}说话了：怎么回应ta】
+2. 【如果${userName}说话了：怎么回应她】
 - ${userName}说的话在表达什么？是惊叹、吐槽、提问、分享联想，还是在征求${charName}的看法？
 - 结合当前画面，${charName}该怎么自然地接住这句话？要顺着${userName}的话题走，不要抛开她的话单独评论画面。
 - 用${charName}的人格、语气、用词来组织回应。
@@ -190,10 +190,13 @@ ${freqRule}
 ⚠️ 关键：你必须使用${charName}资料中对应的语言/语种来回复。
 
 📝 视觉记忆备注（重要）：
-当你对画面有观察时（不是沉默），请在所有 <say> 标签之后追加一个 <scene>简短画面描述</scene> 标签。
-这是给你自己的记忆备注，${userName}不会看到也不会听到。用一句话概括当前画面的关键视觉信息即可。
-示例：<say tone="excited">"这个也太帅了吧！"</say><scene>主角在暴雨中骑马追赶离去的火车，画面壮观</scene>
-如果选择沉默（silent），不需要写 <scene> 标签。
+当你对画面有观察时（包括选择沉默时），请在所有 <say> 标签之后追加一个 <scene>简短画面描述</scene> 标签。
+这是给你自己的记忆备注，${userName}不会看到也不会听到——目的是让你之后再被叫起来时还能想起这段画面里发生了什么。
+保持简短：30字以内一句话，写"我看到的"（人物、场景、动作发展），不写"我感受到的"。
+示例：
+  开口时：<say tone="excited">"这个也太帅了吧！"</say><scene>主角在暴雨中骑马追赶离去的火车</scene>
+  沉默时：<say tone="silent"></say><scene>角色在咖啡店窗边翻书，光线柔和</scene>
+即使选择沉默（silent），也需要写 <scene> 标签，以保持对剧情的追踪和记忆。
 </output_format>
 ${buildCalendarPrompt()}`;
 
@@ -220,6 +223,9 @@ ${buildCalendarPrompt()}`;
  * @param {string}  [params.sessionSummary]     - Rolling session summary (from prior compression)
  * @param {number}  [params.systemPromptTokens] - Pre-computed system prompt token count
  * @param {number}  [params.imageCount]         - Number of images (screenshots) attached to this call
+ * @param {boolean} [params.quiet]              - When true, skip pushPromptLog. Used by the
+ *                                                finally-block compression recheck so each
+ *                                                assistant turn doesn't double-log the prompt.
  * @returns {{ prompt: string, needsCompression: boolean, compressionPayload: object|null }}
  */
 export function buildWatchPartyUserPrompt({
@@ -231,6 +237,7 @@ export function buildWatchPartyUserPrompt({
     sessionSummary = '',
     systemPromptTokens = 0,
     imageCount = 0,
+    quiet = false,
 } = {}) {
     const parts = [];
     const charName = getPhoneCharInfo()?.name || '角色';
@@ -308,8 +315,10 @@ export function buildWatchPartyUserPrompt({
         }
     }
 
-    // Push to Console app for debugging
-    try { pushPromptLog('WatchParty User', `tokens≈${totalTokens}${needsCompression ? ' [COMPRESS]' : ''}`, prompt); } catch (e) { /* console not loaded */ }
+    // Push to Console app for debugging — skipped when quiet=true
+    if (!quiet) {
+        try { pushPromptLog('WatchParty User', `tokens≈${totalTokens}${needsCompression ? ' [COMPRESS]' : ''}`, prompt); } catch (e) { /* console not loaded */ }
+    }
 
     return { prompt, needsCompression, compressionPayload };
 }
@@ -320,12 +329,24 @@ export function buildWatchPartyUserPrompt({
 
 /**
  * Generate a summary for a watch party session.
- * @param {Array} messages - Session transcript [{role, content, timestamp}]
- * @param {object} sessionConfig - Content info
+ *
+ * The dialog transcript alone is sparse in this product (the user mostly stays
+ * quiet, char replies in 1–2 short lines) — without the visual memory and any
+ * rolling summary that was compressed mid-session, the model gets almost
+ * nothing to work with and produces a tiny paragraph. So we feed all three
+ * channels in here.
+ *
+ * @param {Array}  messages                          - Session transcript [{role, content, timestamp}]
+ * @param {object} sessionConfig                     - Content info
+ * @param {object} [extras]
+ * @param {Array}  [extras.frameDescriptions]       - Late-session visual memory still in the working buffer
+ * @param {string} [extras.sessionSummary]          - Rolling summary built mid-session by compression
  * @returns {Promise<string>} Summary text
  */
-export async function generateWatchPartySummary(messages, sessionConfig = {}) {
+export async function generateWatchPartySummary(messages, sessionConfig = {}, extras = {}) {
     if (!messages || messages.length === 0) return '';
+
+    const { frameDescriptions = [], sessionSummary = '' } = extras;
 
     const charName = getPhoneCharInfo()?.name || '角色';
     const userName = getPhoneUserName();
@@ -337,24 +358,43 @@ export async function generateWatchPartySummary(messages, sessionConfig = {}) {
     }).join('\n');
 
     const contentInfo = sessionConfig.contentTitle
-        ? `你们一起看的${contentTypeLabel}是《${sessionConfig.contentTitle}》。`
-        : `你们一起看了一段${contentTypeLabel}。`;
+        ? `她们一起看的${contentTypeLabel}是《${sessionConfig.contentTitle}》。`
+        : `她们一起看了一段${contentTypeLabel}。`;
 
     const systemPrompt = `你是${userName}和${charName}观影记录的助手。
 ${contentInfo}
-请将以下观影时的对话记录压缩为一份简洁的观影回忆概要。
+请把以下三路素材整合成一份完整、有内容的观影回忆：
+  - "之前的概要"：观影中途由压缩流程生成的前半段记忆（如果有）
+  - "画面记录"：${charName}沿途记下的视觉记忆（剧情发展、场景变化）
+  - "对话记录"：两个人之间的真实对话
 
 要求：
 1. 使用第三人称（"${userName}和${charName}"）
-2. 保留重要的观影感受、讨论话题、情感互动
-3. 写出两个人一起看${contentTypeLabel}时的温馨氛围
-4. 字数控制在100-300字
-5. 格式为自然段落，不需要标题或列表`;
+2. 同时保留这三类内容：
+   - 看了什么——剧情发展、关键画面、有意思的场面
+   - 聊了什么——讨论话题、吐槽、感受
+   - 氛围如何——两个人之间的情绪互动、温馨细节
+3. 如果有"之前的概要"，把它当作前半段的事实基础再接上后半段，不要漏掉。
+4. 长度根据信息量自然伸缩：300-1000字。重点是把内容讲清楚，不要为了凑字数硬撑、也不要为了精简硬砍。
+5. 写成自然段落，不要标题不要列表。`;
 
-    const userPrompt = `观影对话记录：\n${transcript}\n\n请生成观影回忆概要。`;
+    const parts = [];
+    if (sessionSummary) {
+        parts.push(`【之前的概要】\n${sessionSummary}`);
+    }
+    if (frameDescriptions.length > 0) {
+        const descLines = frameDescriptions.map(fd =>
+            `#${fd.frameNum} [${fd.timestamp}]: ${fd.description}`
+        );
+        parts.push(`【画面记录（按时间顺序）】\n${descLines.join('\n')}`);
+    }
+    parts.push(`【对话记录】\n${transcript}`);
+    parts.push('请生成完整的观影回忆。');
+
+    const userPrompt = parts.join('\n\n');
 
     try {
-        const summary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 1000 });
+        const summary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 10000 });
         return summary?.trim() || '';
     } catch (e) {
         console.error(`${LOG_PREFIX} 观影总结生成失败:`, e);

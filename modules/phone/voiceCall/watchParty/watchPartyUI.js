@@ -329,7 +329,14 @@ export async function closeWatchParty({ skipSummary = false } = {}) {
         if (!skipSummary && transcriptSnapshot.length >= 2) {
             _addSystemSubtitle('正在生成观影回忆...');
             try {
-                summary = await generateWatchPartySummary(transcriptSnapshot, sessionConfigSnapshot);
+                summary = await generateWatchPartySummary(
+                    transcriptSnapshot,
+                    sessionConfigSnapshot,
+                    {
+                        frameDescriptions: frameDescriptionsSnapshot,
+                        sessionSummary: sessionSummarySnapshot,
+                    },
+                );
             } catch (e) {
                 console.warn(`${LOG_PREFIX} Summary generation failed:`, e);
             }
@@ -607,13 +614,16 @@ function _onSttTranscript(text) {
     }
     _scrollToBottom();
 
-    // Record user message
+    // Record user message into fullTranscript (wall-clock order for the saved call
+    // log). The working-history push into _watchMessages is deferred to _sendToLLM
+    // so that when an autoframe call is mid-flight, its <recent_dialog> doesn't
+    // contain a user line the model hasn't been asked to respond to yet — that
+    // ordering bug made the model look like it was forgetting / repeating itself.
     const userMsg = {
         role: 'user',
         content: text,
         timestamp: new Date().toISOString(),
     };
-    _watchMessages.push(userMsg);
     _fullTranscript.push(userMsg);
 
     // Capture a fresh frame to pair with the user's speech
@@ -748,6 +758,19 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
 
     _isProcessingLLM = true;
     _lastLLMCallTime = Date.now();
+
+    // Now that we're actually about to run the LLM for this user turn, commit the
+    // user line to the working history. Doing it here (not in _onSttTranscript)
+    // keeps <recent_dialog> causally ordered: if an autoframe call was mid-flight
+    // when the user spoke, the autoframe's char response lands in _watchMessages
+    // first, and the user line shows up paired with the response it actually gets.
+    if (userTriggered && spokenText && spokenText.trim()) {
+        _watchMessages.push({
+            role: 'user',
+            content: spokenText,
+            timestamp: new Date().toISOString(),
+        });
+    }
 
     // Snapshot session id so post-await continuations can detect that the
     // session ended (or was replaced) and bail before mutating shared state.
@@ -939,16 +962,10 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
             if (!_isClosing) _restartSttAfterTts();
         }
 
-        // ── 排队的用户语音：autoframe 调用全部播完后立刻接上跑掉它 ──
-        // 这是华华的核心诉求：autoframe 不被打断（不浪费 token），但用户开口
-        // 不能被 silently 丢掉。两次回应自然依序 TTS（autoframe TTS 真的 await
-        // 完了，finally 才到这里）。dequeue 优先于压缩 —— 用户感知 > token 优化。
         if (_pendingUserCall && !_isClosing && _callId === snapshotCallId) {
             const pending = _pendingUserCall;
             _pendingUserCall = null;
             dlog(`${LOG_PREFIX} 🎤 Dequeuing user speech triggered during prior LLM call.`);
-            // 让出 microtask：避免在 finally 内递归 await，也让 _isProcessingLLM=false
-            // 的状态被同 tick 内别的代码（_restartSttAfterTts 等）观察到。
             queueMicrotask(() => {
                 if (!_isClosing) {
                     _sendToLLM({ ...pending, userTriggered: true, fromQueue: true });
@@ -959,6 +976,8 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
 
         // ── Trigger async compression if needed (non-blocking) ──
         // Re-check after LLM call since we may have added new frame descriptions.
+        // quiet:true keeps this recheck from doubling the Console prompt log — it
+        // would otherwise emit a near-identical entry right after every assistant turn.
         // Skip if session has ended.
         if (!_isCompressing && !_isClosing && _callId === snapshotCallId) {
             const elapsedMinutes = Math.floor((Date.now() - _startTime) / 60000);
@@ -973,6 +992,7 @@ async function _sendToLLM({ frameDataUrl, spokenText = '', userTriggered = false
                 sessionSummary: _sessionSummary,
                 systemPromptTokens: _systemPromptTokens,
                 imageCount: 1,
+                quiet: true,
             });
             if (checkResult.needsCompression && checkResult.compressionPayload) {
                 _compressSessionHistory(checkResult.compressionPayload);
@@ -995,13 +1015,14 @@ async function _compressSessionHistory(compressionPayload) {
     _isCompressing = true;
 
     const snapshotCallId = _callId;
+    const signal = _sessionAbortCtrl?.signal;
     const { dialogCutoff, frameCutoff } = compressionPayload;
     dlog(`${LOG_PREFIX} 📝 Starting context compression (dialog: ${dialogCutoff} msgs, frames: ${frameCutoff} descs)...`);
 
     try {
         const systemPrompt = buildWatchPartySummarizePrompt();
         const userPrompt = buildCompressionUserPrompt(compressionPayload);
-        const newSummary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 1500 });
+        const newSummary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 1500, signal });
 
         // Drop the result if the session ended (or was replaced) mid-compression —
         // otherwise we'd splice arrays that belong to a different watch party.
