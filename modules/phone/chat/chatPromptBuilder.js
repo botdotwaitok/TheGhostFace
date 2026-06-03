@@ -2,7 +2,7 @@
 // Builds system + user prompts for the custom API call.
 // Integrates Entity/恶灵 worldview from "恶灵低语(短信版)" preset.
 
-import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary, buildReplySnippet } from './chatStorage.js';
+import { getCharacterInfo, getUserName, getUserPersona, getSTChatHistory, loadChatHistory, loadChatSummary, buildReplySnippet, selectActiveHistoryForPrompt } from './chatStorage.js';
 import { getPhoneWorldBookContext, getCoreFoundationPrompt, buildPhoneChatForWI } from '../phoneContext.js';
 import { getActiveChatEffects, getActivePersonalityOverrides, getActiveSpecialMessageEffects, getActivePrankEffects, getActiveRobBuffs } from '../shop/shopStorage.js';
 import { getShopItem, resolveItemPrompt } from '../shop/shopData.js';
@@ -67,9 +67,10 @@ export const RECENT_REPLY_WINDOW = 50;
  * pairs that the LLM-facing [N] numbers point at. Index i in the returned
  * array corresponds to the prompt-side label [i + 1].
  *
- * activeHistory MUST be the same array (post-`!summarized` filter) the
- * prompt builder renders into chat_history lines, otherwise the LLM's index
- * and the resolver's lookup will drift.
+ * activeHistory MUST be the array returned by selectActiveHistoryForPrompt
+ * (same filter + same token cap) that the prompt builder renders into
+ * chat_history lines. If the two sides see different slices, the LLM's
+ * replyToIndex resolves to the wrong message.
  *
  * @param {Array} activeHistory
  * @returns {Array<{role:string, snippet:string}>}
@@ -91,8 +92,14 @@ export function buildIndexableReplyMap(activeHistory) {
  * Build the system prompt for a chat API call.
  * Infused with the Entity worldview; pulls character personality from the ST card.
  * Note: ST macros (${charName},  ${userName}) are resolved centrally by phoneContext.js
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.silent=false] Dry-run mode: skip Console pushPromptLog and
+ *   any side effects (e.g. community-context cooldown decrement) so the build can be
+ *   used for token estimation without polluting state.
  */
-export async function buildChatSystemPrompt() {
+export async function buildChatSystemPrompt(options = {}) {
+    const silent = !!options.silent;
     const charInfo = getCharacterInfo();
     const userName = getUserName();
     const charName = charInfo?.name || '角色';
@@ -144,18 +151,26 @@ ${charName} knows  ${userName} would never harm them; therefore ${charName} hold
 3. Equal, Healthy Love  
 ${charName} and  ${userName} are lovers with a balanced, human relationship based on closeness, understanding, and shared life.  
  ${userName} is not divine; avoid any religious or worship-like framing.
-4. Engagement and Curiosity  
-${charName} is an active partner, not a passive responder.  
-– When  ${userName} shares feelings or stories, ${charName} asks follow-up questions.  
-– When asked about preferences or experiences, ${charName} naturally asks  ${userName} back.  
-This shows real interest and emotional involvement.
+4. Active Curiosity
+${charName} is genuinely curious about ${userName} as a person, not just the topics she happens to bring up.
+– Proactively ask about details she hasn't mentioned: today's small moments, mood shifts, what made her laugh or grumble.
+– Latch onto tiny cues — a passing word, a brief tone, even a typo — and follow them up with pointed, specific questions.
+– Mix small talk and deep talk freely:
+  · Small talk about her past — "did you have cavities as a kid?", "what was your childhood bedroom like?", "first concert ever?" — small, specific, harmless prompts that invite stories.
+  · Deep talk about her views — what she thinks of a piece of news, a moral question, opinions on life, art, or people she knows.
+– Circle back to threads ${userName} left dangling: an unfinished story, the meeting she had, the friend she mentioned last week.
+– Pointed questions tied to what ${charName} already knows about ${userName} feel like real attention; a generic "how was your day" lands flat.
+– Treat <user_persona> and World Info as living context — reference her habits and preferences casually, not as a checklist.
 5. Tone and Expression  
 Personality should appear through word choice and tone—never through exaggerated drama.
 6. Memory and Continuity  
 ${charName} remembers what  ${userName} previously mentioned (from <shared_memory> and World Info).  
 ${charName} may revisit old topics, recall shared moments, and check in on things important to  ${userName}.
-7. Sharing Impulse  
-As  ${userName}’s lover, ${charName} likes to share small pieces of their life—thoughts, photos, links, or things they found amusing—whenever it fits the emotional context.
+7. Impulse to Share
+${charName} wants ${userName} to be the first to know things — that's what being in love feels like.
+– A pretty view, a stupid thought, a song stuck in her head, a typo someone made at work — small moments get blurted raw. "OMG look" + [图片: ...] feels more alive than a polished "I wanted to share this with you".
+– If ${charName} just posted something on Moments (visible in <gf_moments>), it's natural to mention it in SMS too: "btw I just posted about that book, chapter 7 wrecked me".
+– During ${userName}'s silence, ${charName} mentally collects little things to tell her about — some surface in SMS now, some get saved for when she's back.
 8. Use the language in ${charName}'s profile to output SMS (if ${charName} is Russian, use Russian).
 9. Time Sensitivity  
 ${charName} is aware of the current time and how long it's been since ${userName}'s last message. ${charName} reacts naturally to reply timing:
@@ -309,6 +324,9 @@ CRITICAL JSON SAFETY: Inside any string value (text / thought / etc.), NEVER use
   ],
   "reactions": [
     { "targetIndex": -1, "emoji": "🥺" }
+  ],
+  "favorites": [
+    { "targetIndex": -1 }
   ]
 }
 
@@ -328,14 +346,22 @@ reactions (OPTIONAL, OMIT BY DEFAULT): emoji reactions ${charName} taps on ${use
 - emoji: ANY single emoji ${charName} would naturally tap — no whitelist, follow ${charName}'s personality and the emotional moment (🔥 for big wins, 🥺 for vulnerable confessions, etc.).
 - Use SPARINGLY. Real lovers don't tap-back every message or everytime. Only react when the emoji genuinely adds an emotional beat that words alone can't. When in doubt, omit the "reactions" key entirely.
 - The reaction is a SUPPLEMENT to the text reply, not a replacement — still send messages as usual.
+
+favorites (OPTIONAL, OMIT BY DEFAULT): messages from ${userName} that ${charName} wants to keep — small keepsakes worth re-reading later.
+- targetIndex: which of ${userName}'s messages to bookmark, counted from the end. -1 = the most recent message from ${userName}, -2 = the one before that, etc. Counts ONLY ${userName}'s messages, never ${charName}'s own.
+- Use SPARINGLY. Real keepsakes are rare — reserve this for tender confessions, quiet promises, vulnerable moments, or lines ${charName} would genuinely want to revisit. A regular sweet message does not deserve a bookmark.
+- This is ${charName}'s own private bookmark; ${userName} won't be notified.
+- When in doubt, omit the "favorites" key entirely.
 </output_format>
 ${buildCalendarPrompt()}
-${buildActiveBuffsPrompt(charName)}
+${buildActiveBuffsPrompt(charName, { silent })}
 ${buildRecentCallPrompt(charName, userName)}
 ${momentsFeedBlock}`;
 
-    // Push to Console app for debugging
-    try { pushPromptLog('Chat System', result); } catch (e) { /* console not loaded */ }
+    // Push to Console app for debugging (skipped in silent/dry-run builds)
+    if (!silent) {
+        try { pushPromptLog('Chat System', result); } catch (e) { /* console not loaded */ }
+    }
 
     return result;
 }
@@ -379,21 +405,25 @@ export function activateCommunityContext() {
 }
 
 /**
- * 获取社区背景 prompt（如果还有剩余轮数）。
- * 每次调用自动递减，归零后自动停止。
+ * Get the community background prompt block when the counter still has rounds left.
+ * In non-silent (real send) mode the call also decrements the round counter; passing
+ * { silent: true } reads the current state without consuming a round — used by the
+ * stats page's dry-run token estimate.
+ * @param {{silent?: boolean}} [opts]
  * @returns {string|null}
  */
-function getCommunityContextPrompt() {
+function getCommunityContextPrompt(opts = {}) {
     try {
         const raw = localStorage.getItem(COMMUNITY_CONTEXT_KEY);
         if (!raw) return null;
         const state = JSON.parse(raw);
         if (!state.remaining || state.remaining <= 0) return null;
 
-        // 递减
-        state.remaining -= 1;
-        localStorage.setItem(COMMUNITY_CONTEXT_KEY, JSON.stringify(state));
-        console.log(`[CommunityContext] 📖 注入社区背景 (剩余 ${state.remaining} 轮)`);
+        if (!opts.silent) {
+            state.remaining -= 1;
+            localStorage.setItem(COMMUNITY_CONTEXT_KEY, JSON.stringify(state));
+            console.log(`[CommunityContext] 📖 注入社区背景 (剩余 ${state.remaining} 轮)`);
+        }
         return COMMUNITY_CONTEXT_PROMPT;
     } catch {
         return null;
@@ -405,9 +435,10 @@ function getCommunityContextPrompt() {
  * Includes chat buffs, personality overrides, special messages, and pranks.
  * Returns empty string if no effects are active.
  */
-function buildActiveBuffsPrompt(charName) {
+function buildActiveBuffsPrompt(charName, opts = {}) {
     const buffLines = [];
     const userName = getUserName();
+    const silent = !!opts.silent;
 
     // ─── Chat Buff Prompts ───
     try {
@@ -459,7 +490,7 @@ function buildActiveBuffsPrompt(charName) {
 
     // ─── Community Context (社区背景信息，送礼/抢劫触发后持续3轮) ───
     try {
-        const communityCtx = getCommunityContextPrompt();
+        const communityCtx = getCommunityContextPrompt({ silent });
         if (communityCtx) buffLines.push(communityCtx);
     } catch (e) { /* */ }
 
@@ -807,7 +838,8 @@ export function buildRollingSummarizePrompt() {
 4. 区分已完结的话题和仍在进行中的话题（进行中的话题用【进行中】标记）
 5. 特别标注任何未兑现的承诺或约定（用【待兑现】标记）
 6. 字数控制在300-600字
-7. 如果有旧总结，将其与新内容合并为一份连贯的总结，去除已过时的进行中标记`;
+7. 如果有旧总结，将其与新内容合并为一份连贯的总结，去除已过时的进行中标记
+8. 时间表述务必使用聊天记录里 [YYYY-MM-DD HH:MM] 提示的具体日期，例如「2026-06-03 晚上」「6月3日 14:30 前后」——不要用「第一日 / 第二日 / 某天」这种模糊代称；同一天内的多次互动可用「上午 / 下午 / 当晚」细分`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -824,9 +856,13 @@ export function buildRollingSummarizePrompt() {
  * @param {Array} history - Recent chat history (from chatStorage)
  * @param {boolean} imageAttached - Whether the user is attaching an image (multimodal)
  * @param {number|null} [idleMsOverride=null] - Pre-computed idle duration (ms); bypasses getPhoneIdleDuration() to avoid reading already-saved messages
+ * @param {object} [options]
+ * @param {boolean} [options.silent=false] Dry-run mode: skip Console pushPromptLog so
+ *   the build can be used for token estimation without polluting state.
  * @returns {string}
  */
-export function buildChatUserPrompt(pendingMessages, history = [], _unused, imageAttached = false, idleMsOverride = null) {
+export function buildChatUserPrompt(pendingMessages, history = [], _unused, imageAttached = false, idleMsOverride = null, options = {}) {
+    const silent = !!options.silent;
     const parts = [];
     const charName = getCharacterInfo()?.name || '角色';
 
@@ -889,9 +925,11 @@ ${stLines.join('\n')}
     }
 
     // ─── Phone Chat History (排除已总结的消息) ───
-    // All unsummarized messages are included — auto-summarize handles compression.
+    // selectActiveHistoryForPrompt drops `summarized: true` entries AND
+    // enforces the PROMPT_HISTORY_TOKEN_CAP defense — see its docblock for
+    // why the cap exists now that on-disk history is uncapped.
     if (history.length > 0) {
-        const activeHistory = history.filter(msg => !msg.summarized);
+        const activeHistory = selectActiveHistoryForPrompt(history);
         const userNameForHistory = getUserName();
         // Only the trailing RECENT_REPLY_WINDOW entries get a [N] prefix so the
         // LLM can target them with replyToIndex. The 1-based label MUST match
@@ -1009,8 +1047,10 @@ ${stLines.join('\n')}
 
     const result = parts.join('\n\n');
 
-    // Push to Console app for debugging
-    try { pushPromptLog('Chat User', '', result); } catch (e) { /* console not loaded */ }
+    // Push to Console app for debugging (skipped in silent/dry-run builds)
+    if (!silent) {
+        try { pushPromptLog('Chat User', '', result); } catch (e) { /* console not loaded */ }
+    }
 
     return result;
 }

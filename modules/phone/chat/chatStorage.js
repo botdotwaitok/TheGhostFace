@@ -13,17 +13,60 @@ import { getPhoneSetting } from '../phoneSettings.js';
 import * as chatHistoryStore from '../../storage/chatHistoryStore.js';
 import { atomicWriteJSON, readJSON, deleteFile } from '../../storage/fileStore.js';
 import { eventSource, event_types } from '../../../../../../../script.js';
+import { openProgressCard, getCurrentProgressCard } from './chatProgressCard.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
 // ═══════════════════════════════════════════════════════════════════════
 
 const CHAT_LOG_PREFIX = '[聊天]';
-const MAX_HISTORY_MESSAGES = 500; // Raise cap — summarize handles compression
+// No message-count cap on either storage backend. Legacy chat_metadata path
+// originally trimmed to 500 to protect ST's .jsonl autosave; self-managed
+// files have no such constraint and the two backends are kept symmetric so
+// behavior doesn't diverge based on a hidden setting. Summarize-for-prompt
+// handles LLM token pressure separately from on-disk storage.
 
 // ─── Auto-summarize constants ───
-const SUMMARIZE_TOKEN_THRESHOLD = 40000; // Trigger when unsummarized tokens reach 40k
-const KEEP_RECENT = 60;                  // Keep the most recent N messages unsummarized
+// Threshold is measured against the FULL next-round prompt (system + history +
+// world info + ST main chat injection + …), counted with ST's real tokenizer —
+// the same number the "数据统计" page surfaces as "总 Token 数". Earlier
+// versions used a cheap CJK/ASCII heuristic over phone-chat-only unsummarized
+// messages, which understated the real LLM context pressure dramatically and
+// let prompts sail past 100k+ without ever folding. Reusing the precise
+// estimator means the trigger fires when context actually matters.
+export const SUMMARIZE_PROMPT_TOKEN_THRESHOLD = 50000;
+const KEEP_RECENT = 30;                  // Keep the most recent N messages unsummarized
+// Per-round upper bound on how many messages a single summarize cycle folds.
+// Without this, a long-deferred chat (or a救援操作 that wiped all summarized
+// marks) can force one LLM call to digest thousands of messages — guaranteed
+// to blow past the model's context window and return empty. Cap at 200 so
+// recovery happens incrementally over several sends instead of failing
+// loudly once.
+const MAX_MESSAGES_PER_SUMMARIZE = 200;
+const SUMMARIZE_LLM_TIMEOUT_MS = 300_000; // Abort the rolling-summary LLM call after 300s
+//
+// Without this timeout, a stalled remote LLM call (tailscale latency, dead
+// connection, provider hang) leaves `_isSummarizing` stuck at true and every
+// subsequent send short-circuits at the "already running" guard — auto-summarize
+// effectively dies until page refresh. The timer abort surfaces to the outer
+// catch, which runs the finally block and clears the flag.
+//
+// 300s budget covers slow remote models + long transcripts. Earlier 60s value
+// was too aggressive — anything past a moderately-sized chat with a non-local
+// model would trip it. NOTE: this guards the *rolling summary's own LLM call*
+// only. Memory-fragment extraction goes through summarizer.js, which has its
+// own internal per-chunk timeouts (80s single chunk / 180s big-summary /
+// 240s unified), so we don't double-wrap that path.
+
+// Hard token cap on what selectActiveHistoryForPrompt() will hand to the
+// prompt builder. Operates on the cheap CJK/ASCII heuristic over phone-chat
+// messages only — it's a last-resort guard against the prompt-history block
+// alone blowing up, NOT the full-prompt trigger that drives summarize.
+// Auto-summarize is gated on SUMMARIZE_PROMPT_TOKEN_THRESHOLD, which counts
+// the whole next-round prompt with ST's real tokenizer; this cap just makes
+// sure that when summarize is stalled / disabled / pre-migration, the prompt
+// still has a hard ceiling.
+const PROMPT_HISTORY_TOKEN_CAP = 50000;
 
 // ─── ST main-chat injection ───
 // Cap the raw ST history token budget per call. Once auto-summarize fires,
@@ -34,16 +77,11 @@ const ST_HISTORY_TOKEN_LIMIT = 20000;
 // ─── chat_metadata keys ───
 const META_KEY_HISTORY = 'gf_phoneChatHistory';
 const META_KEY_SUMMARY = 'gf_phoneChatSummary';
+const META_KEY_SUMMARY_HISTORY = 'gf_phoneChatSummaryHistory'; // snapshots of prior rolling summaries, newest pushed at tail
 const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
 const META_KEY_ST_SYNC_MARKER = 'gf_phoneChatLastSTMarker'; // send_date of last ST msg absorbed into summary
 const META_KEY_HOME_MARKER = 'gf_phoneChatLastHomeMarker';  // ISO timestamp of last phone msg already 回家'd
 const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display nickname for the character (UI-only)
-// Note: an earlier Phase 2 prototype also wrote gf_storageMigrated into
-// chat_metadata as a "已迁移" marker. That approach forced a queueSaveChat
-// during every migrate and could race with ST's chat load to blank the .jsonl.
-// The current design (Phase 2.5) uses the existence of the self-managed file
-// itself as the source of truth, so no per-chat marker is needed. Legacy
-// gf_storageMigrated values left on old chats are silently ignored.
 
 // ═══════════════════════════════════════════════════════════════════════
 // Serialized save queue
@@ -59,13 +97,8 @@ const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display 
 
 let _saveQueue = Promise.resolve();
 
-/**
- * Enqueue a saveChatConditional() call. The returned promise resolves when
- * THIS save completes (or rejects with its error). Errors are isolated per
- * task — one failing save will not poison subsequent saves in the queue.
- *
- * @returns {Promise<void>}
- */
+// Returned promise resolves when THIS save completes. Errors are isolated per
+// task — one failing save will not poison subsequent saves in the queue.
 export function queueSaveChat() {
     const next = _saveQueue
         .catch(() => {}) // isolate failures of prior tasks from later ones
@@ -78,12 +111,7 @@ export function queueSaveChat() {
 // Token Estimation (CJK-aware)
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Estimate token count for a string.
- * CJK characters ≈ 1.5 tokens each, ASCII/Latin ≈ 0.25 tokens per char.
- * @param {string} text
- * @returns {number}
- */
+// CJK characters ≈ 1.5 tokens each, ASCII/Latin ≈ 0.25 tokens per char.
 function estimateTokenCount(text) {
     if (!text) return 0;
     let tokens = 0;
@@ -94,17 +122,91 @@ function estimateTokenCount(text) {
 }
 
 /**
- * Estimate total token count for an array of chat messages.
- * @param {Array} messages - [{content, role, ...}]
+ * Estimate how many tokens one message will consume inside the prompt
+ * <chat_history> block. Mirrors the line shape from buildChatUserPrompt:
+ * content + thought + reply hint + wrapper (timestamp / role / [N] index /
+ * reaction suffix). Counting content alone undercounts thought-heavy chats
+ * by 3-5x, which lets the prompt-history cap silently miss its budget and
+ * makes the manual-hide UI's "after hide" preview meaningless.
+ *
+ * @param {{content?:string, thought?:string, replyTo?:{snippet?:string}}} msg
  * @returns {number}
  */
-function estimateMessagesTokens(messages) {
-    let total = 0;
-    for (const msg of messages) {
-        total += estimateTokenCount(msg.content || '');
-        total += 10; // overhead: role label, timestamp, separators
+export function estimateMessagePromptCost(msg) {
+    if (!msg) return 0;
+    return estimateTokenCount(msg.content || '')
+         + estimateTokenCount(msg.thought || '')
+         + estimateTokenCount(msg.replyTo?.snippet || '')
+         + 20;
+}
+
+
+// Module-level dedup guard — the cap warning is loud but should only print
+// once per truncation event, not once per call site (prompt builder + indexable
+// reply map both invoke selectActiveHistoryForPrompt on the same history,
+// which would otherwise log twice for one logical send).
+let _lastCapWarnSignature = null;
+
+/**
+ * Project a full history array down to the slice that goes into LLM prompts.
+ * Mirrors how ST's hidden-floor mechanism filters out `is_system: true`
+ * messages — here `summarized: true` plays the same role (set by rolling
+ * summary, persisted on disk, never resurfaced in prompts).
+ *
+ * Now that the on-disk 500-message cap is gone, this helper is the only
+ * thing standing between an LLM call and a pathologically long unsummarized
+ * tail (auto-summarize disabled, pre-migration data with no `summarized`
+ * marker, or a long network stall that prevented summary from finishing).
+ * Walks newest→oldest accumulating token cost; once the budget would be
+ * exceeded, drops everything older. Cuts are temporary (in-memory only,
+ * not persisted to disk) — the next send re-evaluates from scratch, so as
+ * soon as auto-summarize catches up the older context comes back through
+ * the summary path.
+ *
+ * Must be called from every place that feeds the prompt's chat_history
+ * block AND from every place that builds the [N] reply index, otherwise
+ * those two would disagree on what counts as "the last RECENT_REPLY_WINDOW
+ * entries" and the LLM's replyToIndex would resolve to the wrong message.
+ *
+ * @param {Array} history - full chat history (cache or disk snapshot)
+ * @param {number} [tokenBudget=PROMPT_HISTORY_TOKEN_CAP]
+ * @returns {Array} contiguous tail slice of unsummarized messages, in order
+ */
+export function selectActiveHistoryForPrompt(history, tokenBudget = PROMPT_HISTORY_TOKEN_CAP) {
+    if (!Array.isArray(history) || history.length === 0) return [];
+    const unsummarized = history.filter(m => !m.summarized);
+    if (unsummarized.length === 0) return [];
+    if (tokenBudget <= 0) return unsummarized;
+
+    let acc = 0;
+    let cutIdx = 0; // 0 = keep everything
+    let cutFired = false;
+    for (let i = unsummarized.length - 1; i >= 0; i--) {
+        const cost = estimateMessagePromptCost(unsummarized[i]);
+        if (acc + cost > tokenBudget) {
+            cutIdx = i + 1;
+            cutFired = true;
+            break;
+        }
+        acc += cost;
     }
-    return total;
+    if (!cutFired) return unsummarized;
+
+    const kept = unsummarized.slice(cutIdx);
+    const dropped = unsummarized.length - kept.length;
+    // Dedup the warn by (dropped, kept.length, total) signature — adjacent
+    // calls within one send loop will collapse to a single log line.
+    const sig = `${dropped}|${kept.length}|${unsummarized.length}`;
+    if (sig !== _lastCapWarnSignature) {
+        _lastCapWarnSignature = sig;
+        console.warn(
+            `${CHAT_LOG_PREFIX} prompt history token-capped at ${tokenBudget}: ` +
+            `dropped ${dropped} of ${unsummarized.length} unsummarized message(s), ` +
+            `kept newest ${kept.length}. ` +
+            `Auto-summarize likely stalled or disabled — older context is missing from this turn.`
+        );
+    }
+    return kept;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -120,31 +222,22 @@ export function getCharacterId() {
     }
 }
 
-// (removed: _getStorageKey — no longer needed with chat_metadata)
-
-/** @see phoneContext.getPhoneCharInfo — 向后兼容包装 */
 export function getCharacterInfo() {
     return getPhoneCharInfo();
 }
 
-/** @see phoneContext.getPhoneUserName — 向后兼容包装 */
 export function getUserName() {
     return getPhoneUserName();
 }
 
-/** @see phoneContext.getPhoneUserPersona — 向后兼容包装 */
 export function getUserPersona() {
     return getPhoneUserPersona();
 }
 
 // ─── Character Nickname (UI-only, persisted in chat_metadata) ───
 
-/**
- * Load the user-set nickname for the current character. UI-only — never
- * appears in prompts/summaries sent to the LLM, so the model still sees the
- * character by their canonical name.
- * @returns {string} nickname, or '' if none set
- */
+// UI-only — never appears in prompts/summaries sent to the LLM, so the model
+// still sees the character by their canonical name.
 export function loadCharacterNickname() {
     try {
         return chat_metadata?.[META_KEY_NICKNAME] || '';
@@ -153,10 +246,7 @@ export function loadCharacterNickname() {
     }
 }
 
-/**
- * Persist (or clear) the character nickname. Empty/whitespace clears it.
- * @param {string} nickname
- */
+// Empty/whitespace nickname clears the stored value.
 export function saveCharacterNickname(nickname) {
     try {
         if (!chat_metadata) return;
@@ -172,12 +262,8 @@ export function saveCharacterNickname(nickname) {
     }
 }
 
-/**
- * Get the name to show in the chat UI: nickname if set, otherwise the
- * character's canonical name. Use this anywhere the user reads the name;
- * use getCharacterInfo().name for prompts / cross-platform calls.
- * @returns {string}
- */
+// Use this anywhere the user reads the name; use getCharacterInfo().name for
+// prompts / cross-platform calls.
 export function getCharacterDisplayName() {
     const nickname = loadCharacterNickname();
     if (nickname) return nickname;
@@ -194,11 +280,14 @@ export function getCharacterDisplayName() {
  *   role: 'user' | 'char',
  *   content: string,
  *   timestamp: string (ISO),
- *   special?: string,    // e.g. 'voice', 'transfer', 'image', 'share', 'retract'
- *   replyTo?: {          // present when this message quotes another one
+ *   special?: string,        // e.g. 'voice', 'transfer', 'image', 'share', 'retract'
+ *   replyTo?: {              // present when this message quotes another one
  *       role: 'user' | 'char',
- *       snippet: string, // frozen text snapshot, <= 60 code points
- *   }
+ *       snippet: string,     // frozen text snapshot, <= 60 code points
+ *   },
+ *   favoritedByUser?: boolean, // user long-pressed → 收藏
+ *   favoritedByChar?: boolean, // LLM returned favorites: [...] pointing at this user msg
+ *   favoritedAt?: string,    // ISO timestamp of last toggle (kept on untoggle; debug only)
  * }
  */
 
@@ -240,11 +329,20 @@ export function buildReplySnippet(msg) {
 export function loadChatHistory() {
     if (_useExternalStorage()) {
         try {
-            return chatHistoryStore.loadHistory();
+            // allowStale lets a same-chat race window (invalidate fired but
+            // prewarm not yet finished) serve the last successful snapshot
+            // instead of throwing — without this, the UI would paint an
+            // empty conversation during the gap and the user would think
+            // their messages were wiped. Fresh data lands the moment prewarm
+            // completes; stale data is read-only (saveHistory has its own
+            // _currentKey guard and is never tricked into writing it back).
+            return chatHistoryStore.loadHistory({ allowStale: true });
         } catch (e) {
-            // Cache not ready (e.g. prewarm still in-flight). Fall through to
-            // chat_metadata — once migration succeeds the legacy key is deleted,
-            // so this fallback safely returns [] for already-migrated chats.
+            // Cache truly empty (no prior prewarm ever succeeded for ANY
+            // key, e.g. plugin just loaded and CHAT_CHANGED hasn't fired).
+            // Fall through to chat_metadata — once migration succeeds the
+            // legacy key is deleted, so for already-migrated chats this
+            // safely returns []. Pre-migration chats still find their data.
             console.warn(`${CHAT_LOG_PREFIX} chatHistoryStore not ready, fallback to chat_metadata:`, e.message);
         }
     }
@@ -269,10 +367,10 @@ export function loadChatHistory() {
  * sync, a long-press on a freshly-arrived bubble would loadChatHistory(),
  * find msgIndex out of range, and silently bail.
  *
- * Returns the length of what actually got stored (after MAX_HISTORY_MESSAGES
- * trim), so the caller can derive a correct msgIndex. The local array passed
- * in may be longer than the stored slice; using its length as msgIndex would
- * point past the trimmed array's end.
+ * Returns the stored length so the caller can derive a correct msgIndex.
+ * History is never trimmed, so this currently equals messages.length, but
+ * the return-shape is preserved so future re-introductions of a cap (e.g.
+ * via a user setting) would not require call-site changes.
  *
  * @returns {number} stored length (0 if chat_metadata missing)
  */
@@ -281,14 +379,14 @@ export function commitHistoryInMemory(messages) {
         return chatHistoryStore.commitInMemory(messages);
     }
     if (!chat_metadata) return 0;
-    const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
-    chat_metadata[META_KEY_HISTORY] = trimmed;
-    return trimmed.length;
+    const snapshot = messages.slice();
+    chat_metadata[META_KEY_HISTORY] = snapshot;
+    return snapshot.length;
 }
 
 /**
  * Save chat history to chat_metadata (persisted in .jsonl chat file).
- * Trims to MAX_HISTORY_MESSAGES to prevent storage bloat.
+ * No message-count cap — full history is written as-is.
  *
  * NOTE: This is async and uses saveChatConditional (immediate, mutex-protected)
  * rather than saveMetadataDebounced (1s debounce). The debounce variant could
@@ -309,19 +407,41 @@ export async function saveChatHistory(messages) {
             await chatHistoryStore.saveHistory(messages);
             return;
         } catch (e) {
-            // Critical: do NOT fall back to chat_metadata here. Falling back
-            // would split data between two backends and the next prewarm would
-            // overwrite the file with the stale cached state. Better to surface
-            // the failure to the caller (chatMessageHandler etc.) and let it
-            // decide whether to toast / retry.
+            // Self-heal a prewarm race: if ST dispatched CHAT_CHANGED while
+            // an LLM call was in flight, handleChatChanged() may have called
+            // invalidate() but not yet finished _ensureSelfManagedFile /
+            // prewarm. The cache state is then (_currentKey=null,
+            // _cacheReady=false, _pendingPrewarm=null) — ensureReady() is a
+            // no-op against that state, so saveHistory throws "no active key".
+            // Re-running handleChatChanged is idempotent (it always invalidates
+            // first then rebuilds), so we can safely re-prime the cache here
+            // and retry the save once.
+            const racey = /no active key|cache not ready/i.test(e?.message || '');
+            if (racey) {
+                console.warn(`${CHAT_LOG_PREFIX} prewarm race detected during save; re-running handleChatChanged + retry...`);
+                try {
+                    await handleChatChanged();
+                    await chatHistoryStore.saveHistory(messages);
+                    console.log(`${CHAT_LOG_PREFIX} ✅ save retry succeeded after handleChatChanged`);
+                    return;
+                } catch (retryErr) {
+                    console.error(`${CHAT_LOG_PREFIX} retry also failed (NOT falling back):`, retryErr);
+                    throw retryErr;
+                }
+            }
+            // Non-race failure: do NOT fall back to chat_metadata. Falling
+            // back would split data between two backends and the next prewarm
+            // would overwrite the file with the stale cached state. Better
+            // to surface the failure to the caller (chatMessageHandler etc.)
+            // and let it decide whether to toast / retry.
             console.error(`${CHAT_LOG_PREFIX} chatHistoryStore save failed (NOT falling back):`, e);
             throw e;
         }
     }
-    const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+    const snapshot = messages.slice();
     try {
         if (!chat_metadata) return;
-        chat_metadata[META_KEY_HISTORY] = trimmed;
+        chat_metadata[META_KEY_HISTORY] = snapshot;
         await queueSaveChat();
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata 保存失败:`, e);
@@ -332,13 +452,8 @@ export async function saveChatHistory(messages) {
 // Pending Result Persistence (survives page refresh)
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Persist a pending LLM result to chat_metadata so it survives page refresh.
- * Async + immediate save: the whole point of this helper is "survive refresh",
- * so we cannot tolerate a debounce that might be canceled before flush.
- * @param {{ rawResponse: string, messagesToSend: string[] } | null} result
- * @returns {Promise<void>}
- */
+// Async + immediate save: the whole point of this helper is "survive refresh",
+// so we cannot tolerate a debounce that might be canceled before flush.
 export async function persistPendingResult(result) {
     try {
         if (!chat_metadata) return;
@@ -349,10 +464,6 @@ export async function persistPendingResult(result) {
     }
 }
 
-/**
- * Load a previously persisted pending result from chat_metadata.
- * @returns {{ rawResponse: string, messagesToSend: string[] } | null}
- */
 export function loadPersistedPendingResult() {
     try {
         return chat_metadata?.[META_KEY_PENDING_RESULT] || null;
@@ -361,12 +472,9 @@ export function loadPersistedPendingResult() {
     }
 }
 
-/**
- * Clear the persisted pending result from chat_metadata.
- * Fire-and-forget: a missed clear is harmless — the stale entry on disk will
- * just be re-consumed on next load. Keeping this sync so the synchronous
- * consumePendingResult() caller doesn't need to thread async through.
- */
+// Fire-and-forget: a missed clear is harmless — the stale entry on disk will
+// just be re-consumed on next load. Sync so the synchronous
+// consumePendingResult() caller doesn't need to thread async through.
 export function clearPersistedPendingResult() {
     try {
         if (chat_metadata?.[META_KEY_PENDING_RESULT]) {
@@ -379,11 +487,6 @@ export function clearPersistedPendingResult() {
     }
 }
 
-/**
- * Load the ST sync marker — send_date of the last ST main-chat message that
- * was absorbed into the rolling phone summary.
- * @returns {string} send_date string, or '' if not set
- */
 export function loadSTSyncMarker() {
     try {
         return chat_metadata?.[META_KEY_ST_SYNC_MARKER] || '';
@@ -392,13 +495,8 @@ export function loadSTSyncMarker() {
     }
 }
 
-/**
- * Save the ST sync marker.
- * Immediate save: a dropped marker would cause auto-summarize to re-absorb
- * already-summarized ST history on the next round, ballooning the prompt.
- * @param {string} marker - send_date string of the last absorbed ST message
- * @returns {Promise<void>}
- */
+// Immediate save: a dropped marker would cause auto-summarize to re-absorb
+// already-summarized ST history on the next round, ballooning the prompt.
 export async function saveSTSyncMarker(marker) {
     try {
         if (!chat_metadata) return;
@@ -413,20 +511,12 @@ export async function saveSTSyncMarker(marker) {
     }
 }
 
-/**
- * Reset the ST sync marker — next getSTChatHistory call will see all ST history again.
- * @returns {Promise<void>}
- */
 export async function clearSTSyncMarker() {
     await saveSTSyncMarker('');
 }
 
-/**
- * Load the 回家 marker — ISO timestamp of the last phone message that was
- * already folded into a previous 回家 summary. Messages with timestamp <= marker
- * have already been "sent home" and must not be re-sent on subsequent 回家.
- * @returns {string} ISO timestamp string, or '' if not set
- */
+// Messages with timestamp <= marker have already been "sent home" and must
+// not be re-sent on subsequent 回家.
 export function loadHomeMarker() {
     try {
         return chat_metadata?.[META_KEY_HOME_MARKER] || '';
@@ -435,13 +525,8 @@ export function loadHomeMarker() {
     }
 }
 
-/**
- * Save the 回家 marker (ISO timestamp of the newest message included in the 回家 summary).
- * Immediate save: a dropped marker would resend the entire phone transcript
- * on the next 回家, which is very visible to the user.
- * @param {string} marker
- * @returns {Promise<void>}
- */
+// Immediate save: a dropped marker would resend the entire phone transcript
+// on the next 回家, which is very visible to the user.
 export async function saveHomeMarker(marker) {
     try {
         if (!chat_metadata) return;
@@ -456,23 +541,14 @@ export async function saveHomeMarker(marker) {
     }
 }
 
-/**
- * Reset the 回家 marker — next 回家 will treat all phone history as new.
- * @returns {Promise<void>}
- */
 export async function clearHomeMarker() {
     await saveHomeMarker('');
 }
 
-/**
- * Get phone messages that have NOT yet been included in a previous 回家 summary.
- * Compares ISO timestamps lexicographically (safe because ISO strings sort chronologically).
- * Messages without a timestamp can't be ordered against the marker, so once a
- * marker exists we conservatively SKIP them — they would otherwise be re-sent
- * on every 回家 forever.
- * @param {Array} history - Full phone chat history
- * @returns {Array} Slice of messages strictly newer than the home marker
- */
+// ISO timestamps compare lexicographically (sort chronologically). Messages
+// without a timestamp can't be ordered against the marker, so once a marker
+// exists we conservatively SKIP them — otherwise they'd be re-sent on every
+// 回家 forever.
 export function getMessagesSinceHome(history) {
     if (!Array.isArray(history) || history.length === 0) return [];
     const marker = loadHomeMarker();
@@ -538,10 +614,6 @@ export async function markMessagesSummarizedUntil(marker) {
     }
 }
 
-/**
- * Clear all chat history for the current character.
- * @returns {Promise<void>}
- */
 export async function clearChatHistory() {
     await saveChatHistory([]);
     await saveChatSummary('');       // also clear rolling summary so no stale context lingers
@@ -549,11 +621,6 @@ export async function clearChatHistory() {
     await clearHomeMarker();         // reset home progress; next 回家 starts fresh
 }
 
-/**
- * Delete a single message by its index in the history array.
- * @param {number} index - 0-based index into the full history array
- * @returns {Promise<boolean>} true if deleted successfully
- */
 export async function deleteMessageByIndex(index) {
     const history = loadChatHistory();
     if (index < 0 || index >= history.length) return false;
@@ -562,11 +629,6 @@ export async function deleteMessageByIndex(index) {
     return true;
 }
 
-/**
- * Delete multiple messages by their indices in one pass.
- * @param {number[]} indices - Array of 0-based indices to delete
- * @returns {Promise<number>} Number of messages actually deleted
- */
 export async function deleteMessagesByIndices(indices) {
     if (!indices || indices.length === 0) return 0;
     const history = loadChatHistory();
@@ -583,12 +645,6 @@ export async function deleteMessagesByIndices(indices) {
     return deleted;
 }
 
-/**
- * Update the content of a single message by its index.
- * @param {number} index - 0-based index into the full history array
- * @param {string} newContent - New message text to set
- * @returns {Promise<boolean>} true if updated successfully
- */
 export async function updateMessageByIndex(index, newContent) {
     const history = loadChatHistory();
     if (index < 0 || index >= history.length) return false;
@@ -686,32 +742,97 @@ export function getSTChatHistory({ sinceMarker = true, tokenLimit = ST_HISTORY_T
     }
 }
 
-/**
- * Build the summary message text wrapped in 恶灵QR tags.
- * @param {string} summary - The raw summary text
- * @returns {string} The wrapped message
- */
-function buildSyncMessage(summary) {
+// Format a Date as 24h HH:MM, optionally prefixed with M月D日 when the chat
+// spans midnight so the model can still tell start vs end apart.
+function formatChatTime(date, includeDate = false) {
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const timeStr = `${hh}:${mm}`;
+    if (!includeDate) return timeStr;
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+}
+
+// Pull the in-story timespan covered by a phone chat history slice, so the
+// ST sync prompt can explicitly tell the main story how much offline time
+// has advanced. Returns { hasTime: false } when no usable timestamps exist.
+function extractChatTimespan(history) {
+    if (!Array.isArray(history) || history.length === 0) return { hasTime: false };
+
+    let firstTs = null;
+    let lastTs = null;
+    for (const msg of history) {
+        if (msg?.timestamp) {
+            if (firstTs === null) firstTs = msg.timestamp;
+            lastTs = msg.timestamp;
+        }
+    }
+    if (firstTs === null || lastTs === null) return { hasTime: false };
+
+    const startDate = new Date(firstTs);
+    const endDate = new Date(lastTs);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return { hasTime: false };
+
+    const crossDay = startDate.toDateString() !== endDate.toDateString();
+    const startStr = formatChatTime(startDate, crossDay);
+    const endStr = formatChatTime(endDate, crossDay);
+
+    const diffMs = endDate.getTime() - startDate.getTime();
+    const totalMinutes = Math.max(0, Math.round(diffMs / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    let durationStr;
+    if (totalMinutes < 1) durationStr = '不到 1 分钟';
+    else if (hours === 0) durationStr = `${minutes} 分钟`;
+    else if (minutes === 0) durationStr = `${hours} 小时`;
+    else durationStr = `${hours} 小时 ${minutes} 分钟`;
+
+    return { hasTime: true, startStr, endStr, durationStr };
+}
+
+// Render the "scene clock has advanced" block. Without this, the main story
+// model defaults to continuing at the last ST timestamp it remembers (e.g.
+// staying at "morning 8AM" after an 8-hour phone interlude).
+function buildTimeAdvanceBlock(timespan, userName, charName) {
+    if (!timespan.hasTime) return '';
+    return `【线下场景时间推进】
+- ${userName}和${charName}的手机聊天发生在线下互动暂停期间
+- 时间已从 ${timespan.startStr} 推进到 ${timespan.endStr}（持续约 ${timespan.durationStr}）
+- 手机聊天里的时间戳标示的就是线下场景同步推进的时间，不是另一个时空
+- 线下场景现在从 ${timespan.endStr} 继续，不要把时间倒回到手机聊天开始之前
+
+`;
+}
+
+// Wraps the summary in 恶灵QR tags and injects the "scene time has advanced"
+// block when the history slice carries usable timestamps.
+function buildSyncMessage(summary, history) {
     const charName = getCharacterInfo()?.name || '角色';
     const userName = getUserName();
+    const timespan = extractChatTimespan(history);
+
+    if (timespan.hasTime) {
+        return `<恶灵QR>[手机聊天记录同步]
+${buildTimeAdvanceBlock(timespan, userName, charName)}以下是这段时间的完整手机聊天内容总结：
+
+${summary}
+
+请${charName}基于当前已推进到 ${timespan.endStr} 的时间，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
+    }
 
     return `<恶灵QR>[手机聊天记录同步]
-在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天记录原文：
+在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天内容总结：
 
 ${summary}
 
 ${userName}现在已经和${charName}结束了异地。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
 }
 
-/**
- * Send the phone chat summary as a visible user message in ST's main chat,
- * wrapped in <恶灵QR></恶灵QR> tags, then trigger LLM generation.
- * This replaces the old invisible setExtensionPrompt injection.
- * @param {string} summary - The summary text to send
- */
-export async function sendSummaryAsUserMessage(summary) {
+// Replaces the old invisible setExtensionPrompt injection — the summary now
+// goes through ST's regular send path so it shows up in the chat log.
+export async function sendSummaryAsUserMessage(summary, history) {
     try {
-        const messageText = buildSyncMessage(summary);
+        const messageText = buildSyncMessage(summary, history);
 
         // Write into ST's main textarea
         const textarea = document.getElementById('send_textarea');
@@ -745,24 +866,26 @@ export async function sendSummaryAsUserMessage(summary) {
     }
 }
 
-/**
- * Send the raw phone chat transcript as a visible user message in ST's main chat.
- * Used by the "原文灌入" return-home mode.
- * @param {Array} history - Phone chat history array [{role, content, timestamp}]
- */
+// Used by the "原文灌入" return-home mode (raw transcript instead of summary).
 export async function sendRawTranscriptAsUserMessage(history) {
     const charName = getCharacterInfo()?.name || '角色';
     const userName = getUserName();
+    const timespan = extractChatTimespan(history);
 
     const transcript = history.map(msg => {
         const role = msg.role === 'user' ? userName : charName;
-        const timeStr = msg.timestamp
-            ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : '';
+        const timeStr = msg.timestamp ? formatChatTime(new Date(msg.timestamp), false) : '';
         return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
     }).join('\n');
 
-    const messageText = `<恶灵QR>[手机聊天记录同步 — 原文]
+    const messageText = timespan.hasTime
+        ? `<恶灵QR>[手机聊天记录同步 — 原文]
+${buildTimeAdvanceBlock(timespan, userName, charName)}以下是这段时间的完整手机聊天记录原文：
+
+${transcript}
+
+请${charName}基于当前已推进到 ${timespan.endStr} 的时间，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`
+        : `<恶灵QR>[手机聊天记录同步 — 原文]
 在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天记录原文：
 
 ${transcript}
@@ -804,10 +927,6 @@ ${userName}现在已经和${charName}结束了异地。请${charName}根据手�
 // Rolling Chat Summary (per-character)
 // ═══════════════════════════════════════════════════════════════════════
 
-/**
- * Load the rolling summary text from chat_metadata.
- * @returns {string}
- */
 export function loadChatSummary() {
     try {
         return chat_metadata?.[META_KEY_SUMMARY] || '';
@@ -816,13 +935,8 @@ export function loadChatSummary() {
     }
 }
 
-/**
- * Save rolling summary text to chat_metadata.
- * Immediate save: the rolling summary represents 40k+ tokens of folded
- * history; losing it forces re-summarization on the next round.
- * @param {string} summaryText
- * @returns {Promise<void>}
- */
+// Immediate save: the rolling summary represents 40k+ tokens of folded
+// history; losing it forces re-summarization on the next round.
 export async function saveChatSummary(summaryText) {
     try {
         if (!chat_metadata) return;
@@ -833,52 +947,363 @@ export async function saveChatSummary(summaryText) {
     }
 }
 
+// Entries are stored in chronological order — oldest first, newest at tail.
+export function loadChatSummaryHistory() {
+    try {
+        const arr = chat_metadata?.[META_KEY_SUMMARY_HISTORY];
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+
+// Called by maybeAutoSummarize (source='auto') and by the 查看总结 edit page
+// (source='manual') before the live summary is overwritten. Empty/whitespace
+// summaries are silently skipped so we don't pollute history with placeholders.
+export async function pushChatSummaryHistory(entry) {
+    try {
+        if (!chat_metadata) return;
+        const text = (entry?.summary || '').trim();
+        if (!text) return; // never archive an empty/placeholder summary
+
+        const history = loadChatSummaryHistory();
+        history.push({
+            savedAt: new Date().toISOString(),
+            summary: text,
+            source: entry.source === 'manual' ? 'manual' : 'auto',
+            ...(typeof entry.msgCount === 'number' ? { msgCount: entry.msgCount } : {}),
+        });
+        chat_metadata[META_KEY_SUMMARY_HISTORY] = history;
+        await queueSaveChat();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary history push failed:`, e);
+    }
+}
+
+/**
+ * Strip the `.summarized = true` marker from every message in the active
+ * history. Recovery path for the earlier auto-summarize bug where messages got
+ * marked as summarized even though the LLM returned an empty summary —
+ * those messages then disappeared from prompts without their content being
+ * captured anywhere, permanently losing context. Calling this re-exposes them
+ * to the next prompt build; the next auto-summarize cycle will then re-fold
+ * them properly.
+ *
+ * @returns {Promise<number>} count of messages whose marker was removed
+ */
+export async function clearAllSummarizedMarks() {
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            let count = 0;
+            await chatHistoryStore.mutateInPlace((live) => {
+                if (!Array.isArray(live)) return;
+                for (const msg of live) {
+                    if (msg.summarized) {
+                        delete msg.summarized;
+                        count++;
+                    }
+                }
+            });
+            console.log(`${CHAT_LOG_PREFIX} 清除了 ${count} 条消息的 summarized 标记 (external storage)`);
+            return count;
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} clearAllSummarizedMarks (external) failed:`, e);
+            return 0;
+        }
+    }
+    try {
+        if (!chat_metadata) return 0;
+        const live = chat_metadata[META_KEY_HISTORY];
+        if (!Array.isArray(live) || live.length === 0) return 0;
+        let count = 0;
+        for (const msg of live) {
+            if (msg.summarized) {
+                delete msg.summarized;
+                count++;
+            }
+        }
+        if (count > 0) await queueSaveChat();
+        console.log(`${CHAT_LOG_PREFIX} 清除了 ${count} 条消息的 summarized 标记 (chat_metadata)`);
+        return count;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} clearAllSummarizedMarks failed:`, e);
+        return 0;
+    }
+}
+
+/**
+ * Mark the oldest N currently-unsummarized messages as summarized. Used by
+ * the manual-hide UI to fold off a prefix of in-prompt history without running
+ * an LLM summarize cycle — the bubbles stay visible in the chat list but stop
+ * appearing in the prompt <chat_history> block.
+ *
+ * Walks the live array in order and counts only the messages that are NOT
+ * already summarized, so the wall already-folded prefix is skipped. Returns
+ * the count actually marked (may be less than n if there were fewer
+ * unsummarized messages available).
+ *
+ * @param {number} n
+ * @returns {Promise<number>}
+ */
+export async function markOldestNAsSummarized(n) {
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const target = Math.floor(n);
+
+    const apply = (live) => {
+        if (!Array.isArray(live)) return 0;
+        let count = 0;
+        for (let i = 0; i < live.length && count < target; i++) {
+            const msg = live[i];
+            if (msg && !msg.summarized) {
+                msg.summarized = true;
+                count++;
+            }
+        }
+        return count;
+    };
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            let count = 0;
+            await chatHistoryStore.mutateInPlace((live) => {
+                count = apply(live);
+            });
+            console.log(`${CHAT_LOG_PREFIX} markOldestNAsSummarized(${target}): marked ${count} (external storage)`);
+            return count;
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} markOldestNAsSummarized (external) failed:`, e);
+            return 0;
+        }
+    }
+    try {
+        if (!chat_metadata) return 0;
+        const live = chat_metadata[META_KEY_HISTORY];
+        if (!Array.isArray(live) || live.length === 0) return 0;
+        const count = apply(live);
+        if (count > 0) await queueSaveChat();
+        console.log(`${CHAT_LOG_PREFIX} markOldestNAsSummarized(${target}): marked ${count} (chat_metadata)`);
+        return count;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} markOldestNAsSummarized failed:`, e);
+        return 0;
+    }
+}
+
+// Indices reference the on-disk chronological order (oldest-first).
+// Out-of-range / duplicate indices are tolerated and skipped.
+export async function removeChatSummaryHistoryByIndices(indices) {
+    try {
+        if (!chat_metadata) return 0;
+        if (!Array.isArray(indices) || indices.length === 0) return 0;
+        const history = loadChatSummaryHistory();
+        if (history.length === 0) return 0;
+        // Splice from the tail so earlier indices stay valid.
+        const sorted = [...new Set(indices)].sort((a, b) => b - a);
+        let removed = 0;
+        for (const idx of sorted) {
+            if (Number.isInteger(idx) && idx >= 0 && idx < history.length) {
+                history.splice(idx, 1);
+                removed++;
+            }
+        }
+        if (removed === 0) return 0;
+        chat_metadata[META_KEY_SUMMARY_HISTORY] = history;
+        await queueSaveChat();
+        return removed;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary history remove failed:`, e);
+        return 0;
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Auto-Summarize Logic
 // ═══════════════════════════════════════════════════════════════════════
 
-let _isSummarizing = false; // Guard against concurrent runs
-
-/** Show a brief toast in the chat UI (non-blocking, auto-dismiss) */
-function _showSummarizeToast(text, durationMs = 3000) {
-    const root = document.getElementById('chat_page_root');
-    if (!root) return; // User not in chat app
-    const existing = root.querySelector('.chat-summarize-toast');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.className = 'chat-toast chat-summarize-toast';
-    toast.textContent = text;
-    root.appendChild(toast);
-    setTimeout(() => toast.remove(), durationMs);
+// Aborts via AbortController once the timer fires; the race rejects so the
+// caller's finally can release any in-flight guards (e.g. _isSummarizing) even
+// when the underlying network call would otherwise hang forever.
+// Caller must NOT pass `signal` in opts — we own it.
+export async function callPhoneLLMWithTimeout(systemPrompt, userPrompt, opts = {}, timeoutMs = SUMMARIZE_LLM_TIMEOUT_MS) {
+    const ctrl = new AbortController();
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            ctrl.abort();
+            reject(new Error(`LLM 调用超时（${Math.round(timeoutMs / 1000)}s）`));
+        }, timeoutMs);
+    });
+    try {
+        return await Promise.race([
+            callPhoneLLM(systemPrompt, userPrompt, { ...opts, signal: ctrl.signal }),
+            timeoutPromise,
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
-/**
- * Check if auto-summarize should trigger, and if so, run it.
- * Called after every saveChatHistory in sendAllMessages.
- * Runs asynchronously — does NOT block the chat UI.
- */
+// ─── Summary transcript formatting ───
+// Shared by maybeAutoSummarize and handleManualSummarize so both feed the LLM
+// the same shape (full date + time prefix per line). Without an absolute date
+// the model can only describe events as "第一日 / 第二日"; with [YYYY-MM-DD HH:MM]
+// it can write "2026-06-03 14:30 双方约定..."  See chatPromptBuilder's rolling
+// summarize prompt for the wording requirement.
+export function formatTranscriptLine(role, msg) {
+    const ts = msg?.timestamp;
+    if (!ts) return `${role}: ${msg?.content || ''}`;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return `${role}: ${msg?.content || ''}`;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `[${yyyy}-${mm}-${dd} ${hh}:${mi}] ${role}: ${msg.content || ''}`;
+}
+
+let _isSummarizing = false; // Guard against concurrent auto runs
+
+// Set/cleared by chatInventory.handleManualSummarize so the auto path can
+// skip while a manual run is in flight. We don't reuse _isSummarizing because
+// the watchdog and progress-card lifecycle in maybeAutoSummarize would
+// conflict with the manual path's own try/finally.
+let _isManualSummarizing = false;
+export function setManualSummarizingFlag(value) {
+    _isManualSummarizing = !!value;
+}
+/** Returns true if either auto or manual summarize is currently running. */
+export function isAnySummarizing() {
+    return _isSummarizing || _isManualSummarizing;
+}
+
+// Watchdog: if _isSummarizing was set true but the call site failed to clear
+// it (uncaught throw outside the try/finally, page navigation while await is
+// pending, etc.), reset after a generous window so the next send isn't
+// permanently short-circuited. Pure safety net — the in-call timeout above
+// is the primary mechanism.
+//
+// Budget accounts for the worst case: step 1 (generateSummary — bounded by
+// summarizer.js's own internal timeouts) + step 2 (callPhoneLLMWithTimeout,
+// SUMMARIZE_LLM_TIMEOUT_MS) + step 3 disk writes + retry backoffs inside
+// callPhoneLLM. Formula `timeout * 2 + 60s` keeps the watchdog proportional
+// without ballooning: at 300s timeout this gives 11min, plenty of headroom
+// over the LLM call itself but short enough that a real hang clears the
+// _isSummarizing flag before the user gives up and refreshes.
+const SUMMARIZE_FLAG_WATCHDOG_MS = SUMMARIZE_LLM_TIMEOUT_MS * 2 + 60_000;
+let _summarizeWatchdog = null;
+function _armSummarizeWatchdog() {
+    if (_summarizeWatchdog) clearTimeout(_summarizeWatchdog);
+    _summarizeWatchdog = setTimeout(() => {
+        if (_isSummarizing) {
+            console.warn(`${CHAT_LOG_PREFIX} ⚠️ summarize watchdog firing — _isSummarizing stuck true, forcing reset`);
+            _isSummarizing = false;
+            // If a progress card is still showing, the LLM never returned and
+            // the try/finally never ran. Tell the user the operation gave up
+            // so the card doesn't spin forever.
+            const orphanCard = getCurrentProgressCard();
+            if (orphanCard) orphanCard.fail('压缩超时，已放弃本轮');
+        }
+        _summarizeWatchdog = null;
+    }, SUMMARIZE_FLAG_WATCHDOG_MS);
+}
+function _disarmSummarizeWatchdog() {
+    if (_summarizeWatchdog) {
+        clearTimeout(_summarizeWatchdog);
+        _summarizeWatchdog = null;
+    }
+}
+
+// Called after every saveChatHistory in sendAllMessages. Runs asynchronously —
+// does NOT block the chat UI.
 export async function maybeAutoSummarize() {
     if (_isSummarizing) {
         console.log(`${CHAT_LOG_PREFIX} 自动总结已在运行中，跳过`);
         return;
     }
+    if (_isManualSummarizing) {
+        console.log(`${CHAT_LOG_PREFIX} 手动总结正在运行中，自动跳过本轮`);
+        return;
+    }
 
     const history = loadChatHistory();
-
-    // Estimate tokens of unsummarized messages
     const unsummarized = history.filter(m => !m.summarized);
-    const unsummarizedTokens = estimateMessagesTokens(unsummarized);
-    if (unsummarizedTokens < SUMMARIZE_TOKEN_THRESHOLD) return;
+    const summarizedCount = history.length - unsummarized.length;
+
+    // ── Cheap pre-filter ──
+    // KEEP_RECENT acts as the floor regardless of prompt size: if there are
+    // fewer than (KEEP_RECENT + 1) unsummarized messages, even a successful
+    // summarize would have nothing to fold. Skip the expensive estimate.
+    if (unsummarized.length <= KEEP_RECENT) {
+        console.log(
+            `${CHAT_LOG_PREFIX} 自动总结诊断: history=${history.length} ` +
+            `(已总结 ${summarizedCount} / 未总结 ${unsummarized.length}), ` +
+            `unsummarized ≤ KEEP_RECENT=${KEEP_RECENT}，本轮跳过（无可折叠片段）`
+        );
+        return;
+    }
+
+    // ── Real prompt-token estimate ──
+    // Reuse the same dry-run path chatStats' "总 Token 数" uses so the trigger
+    // matches what the user sees. silent:true skips Console pushPromptLog +
+    // community-context cooldown but keeps WorldInfo / moments / time context
+    // active so the count tracks reality.
+    let promptTokens = 0;
+    try {
+        const { buildChatSystemPrompt, buildChatUserPrompt } = await import('./chatPromptBuilder.js');
+        const { countTokensFromPromptData } = await import('../../core.js');
+        const systemPrompt = await buildChatSystemPrompt({ silent: true });
+        const userPrompt = buildChatUserPrompt([], history, undefined, false, null, { silent: true });
+        promptTokens = countTokensFromPromptData(`${systemPrompt}\n${userPrompt}`);
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} 自动总结估算 prompt token 失败:`, e);
+        return;
+    }
+
+    console.log(
+        `${CHAT_LOG_PREFIX} 自动总结诊断: history=${history.length} ` +
+        `(已总结 ${summarizedCount} / 未总结 ${unsummarized.length}), ` +
+        `prompt≈${promptTokens} tokens, 阈值=${SUMMARIZE_PROMPT_TOKEN_THRESHOLD}, KEEP_RECENT=${KEEP_RECENT}`
+    );
+
+    if (promptTokens < SUMMARIZE_PROMPT_TOKEN_THRESHOLD) {
+        console.log(`${CHAT_LOG_PREFIX} 未达阈值（${promptTokens} < ${SUMMARIZE_PROMPT_TOKEN_THRESHOLD}），不触发`);
+        return;
+    }
 
     _isSummarizing = true;
-    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条消息, ~${unsummarizedTokens} tokens (阈值 ${SUMMARIZE_TOKEN_THRESHOLD})`);
-    _showSummarizeToast('正在压缩聊天记录…');
+    _armSummarizeWatchdog();
+    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条未总结消息, prompt≈${promptTokens} tokens (阈值 ${SUMMARIZE_PROMPT_TOKEN_THRESHOLD})`);
+
+    const card = openProgressCard({ title: '后台压缩聊天记忆' });
 
     try {
         // ─── Determine slice to summarize ───
-        // We summarize all unsummarized messages EXCEPT the most recent KEEP_RECENT
-        const toSummarizeCount = unsummarized.length - KEEP_RECENT;
-        if (toSummarizeCount <= 0) return;
+        // Take the oldest unsummarized chunk, capped both ways:
+        //   - leave KEEP_RECENT newest untouched (so the model still has the
+        //     immediate context in raw form)
+        //   - never send more than MAX_MESSAGES_PER_SUMMARIZE in a single
+        //     LLM call (an unbounded slice can easily exceed the context
+        //     window and return empty — see MAX_MESSAGES_PER_SUMMARIZE comment)
+        const eligibleCount = unsummarized.length - KEEP_RECENT;
+        if (eligibleCount <= 0) {
+            console.log(
+                `${CHAT_LOG_PREFIX} 阈值过了但 unsummarized=${unsummarized.length} ≤ ` +
+                `KEEP_RECENT=${KEEP_RECENT}，无可折叠片段，本轮跳过`
+            );
+            card.close();
+            return;
+        }
+        const toSummarizeCount = Math.min(eligibleCount, MAX_MESSAGES_PER_SUMMARIZE);
+        if (toSummarizeCount < eligibleCount) {
+            console.log(
+                `${CHAT_LOG_PREFIX} ⚠️ 本轮折叠 ${toSummarizeCount} 条（上限 ` +
+                `${MAX_MESSAGES_PER_SUMMARIZE}），剩余 ${eligibleCount - toSummarizeCount} ` +
+                `条留待下一轮自动总结处理`
+            );
+        }
 
         // Collect messages to summarize (oldest unsummarized, excluding KEEP_RECENT newest)
         const messagesToSummarize = unsummarized.slice(0, toSummarizeCount);
@@ -898,6 +1323,7 @@ export async function maybeAutoSummarize() {
 
         const doMemoryInAutoSummarize = getPhoneSetting('autoSummarizeMemory', true);
         if (doMemoryInAutoSummarize) {
+            card.setStage('正在整理重要片段 …');
 
             // Convert phone messages to the format generateSummary() expects:
             // { parsedContent, parsedDate, is_user, name }
@@ -910,7 +1336,12 @@ export async function maybeAutoSummarize() {
             }));
 
             try {
-                // generateSummary returns { entries, timelineSegments }, not a bare array
+                // generateSummary returns { entries, timelineSegments }, not a bare array.
+                // summarizer.js handles its own timeouts internally — per-chunk
+                // (80s), big-summary (180s), unified (240s) — and each chunk gets
+                // independent timing so one slow chunk doesn't fail the rest.
+                // No outer wrapper here: it would just race the inner deadlines
+                // and abort prematurely on long transcripts.
                 const summaryResult = await generateSummary(summarizerMessages, true);
                 const fragments = summaryResult?.entries;
                 if (Array.isArray(fragments) && fragments.length > 0) {
@@ -930,20 +1361,33 @@ export async function maybeAutoSummarize() {
         // ─── Step 2: Rolling summary via LLM ───
         // Also fold in the ST main-chat increment so future prompts can stop
         // re-injecting raw ST history every turn.
+        //
+        // CRITICAL: Step 3 (marking messages summarized) MUST be gated on
+        // step 2 actually landing the new summary on disk. An earlier version
+        // used a try/catch around step 2 and unconditionally ran step 3 —
+        // when the LLM returned a falsy/empty response the `if (newSummary…)`
+        // block was silently skipped, summary stayed stale, and step 3 still
+        // marked the messages as `.summarized = true`. Those messages then
+        // disappeared from future prompts WITHOUT being represented in the
+        // summary, permanently losing the chunk of context. Now: empty LLM
+        // output → throw → bail out before any marking happens. Step 3 lives
+        // strictly downstream of a confirmed successful summary write.
+        card.setStage('鬼面正在奋笔疾书 …');
+        const existingSummary = loadChatSummary();
+        let newSummaryText = null;
+        let stIncrementSnapshot = [];
         try {
-            const existingSummary = loadChatSummary();
-
             const transcript = messagesToSummarize.map(msg => {
                 const role = msg.role === 'user' ? userName : charName;
-                return `${role}: ${msg.content}`;
+                return formatTranscriptLine(role, msg);
             }).join('\n');
 
             // Snapshot ST increment BEFORE the LLM call. Any ST messages that
             // arrive during the call will be picked up next round (marker only
             // advances to this snapshot's tail, not to "current end of chat").
-            const stIncrement = getSTChatHistory({ sinceMarker: true, tokenLimit: ST_HISTORY_TOKEN_LIMIT });
-            const stTranscript = stIncrement.length > 0
-                ? stIncrement.map(m => `${m.role === 'user' ? userName : charName}: ${m.content}`).join('\n')
+            stIncrementSnapshot = getSTChatHistory({ sinceMarker: true, tokenLimit: ST_HISTORY_TOKEN_LIMIT });
+            const stTranscript = stIncrementSnapshot.length > 0
+                ? stIncrementSnapshot.map(m => formatTranscriptLine(m.role === 'user' ? userName : charName, { content: m.content, timestamp: m.send_date })).join('\n')
                 : '';
 
             const summarySystemPrompt = buildRollingSummarizePrompt();
@@ -959,29 +1403,49 @@ export async function maybeAutoSummarize() {
                 summaryUserPrompt = `聊天记录：\n${transcript}\n\n请生成总结。`;
             }
 
-            const newSummary = await callPhoneLLM(summarySystemPrompt, summaryUserPrompt, { maxTokens: 2000 });
+            const newSummary = await callPhoneLLMWithTimeout(
+                summarySystemPrompt,
+                summaryUserPrompt,
+                { maxTokens: 2000 },
+            );
 
-            if (newSummary && newSummary.trim()) {
-                await saveChatSummary(newSummary.trim());
-
-                // Advance marker only after a successful summary. Walk from end
-                // to grab the newest non-empty send_date — defensively skips
-                // any (rare) message lacking the field.
-                let newMarker = '';
-                for (let i = stIncrement.length - 1; i >= 0; i--) {
-                    if (stIncrement[i].send_date) { newMarker = stIncrement[i].send_date; break; }
-                }
-                if (newMarker) await saveSTSyncMarker(newMarker);
-
-                console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummary.trim().length} 字), ST marker → ${newMarker || '(unchanged)'}`);
+            if (!newSummary || !newSummary.trim()) {
+                // Promote falsy/empty to a real throw so the outer catch path
+                // runs the "leave messages unmarked" branch — see the comment
+                // above this block for why this is load-bearing.
+                throw new Error('LLM 返回空总结，未写入新版本');
             }
+            newSummaryText = newSummary.trim();
         } catch (e) {
-            console.error(`${CHAT_LOG_PREFIX} ❌ 滚动总结生成失败:`, e);
+            console.error(`${CHAT_LOG_PREFIX} ❌ 滚动总结生成失败，保留旧总结，跳过消息标记:`, e);
+            card.fail('记录压缩失败：保留原状');
+            return; // bail out before step 3 — finally still runs (_isSummarizing reset)
         }
 
-        // ─── Step 3: Mark old messages as summarized ───
-        // Re-load the live history and match by identity stamp (not index)
-        // to safely handle messages added during the async LLM calls above
+        // ─── Step 3 (only on confirmed Step 2 success) ───
+        // Archive the old summary, persist the new one, advance the ST sync
+        // marker, then mark the folded messages as summarized. Each await is
+        // ordered so an interruption mid-sequence leaves at most one of these
+        // unwritten — never a state where messages are marked but the summary
+        // is stale.
+        card.setStage('收尾归档 …');
+        await pushChatSummaryHistory({
+            summary: existingSummary,
+            source: 'auto',
+            msgCount: messagesToSummarize.length,
+        });
+        await saveChatSummary(newSummaryText);
+
+        let newMarker = '';
+        for (let i = stIncrementSnapshot.length - 1; i >= 0; i--) {
+            if (stIncrementSnapshot[i].send_date) { newMarker = stIncrementSnapshot[i].send_date; break; }
+        }
+        if (newMarker) await saveSTSyncMarker(newMarker);
+
+        console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummaryText.length} 字), ST marker → ${newMarker || '(unchanged)'}`);
+
+        // Re-load the live history and match by identity stamp (not index) to
+        // safely handle messages added during the async LLM call above.
         const freshHistory = loadChatHistory();
         let markedCount = 0;
         for (const msg of freshHistory) {
@@ -994,32 +1458,33 @@ export async function maybeAutoSummarize() {
         }
         await saveChatHistory(freshHistory);
         console.log(`${CHAT_LOG_PREFIX} ✅ 已标记 ${markedCount} 条消息为已总结`);
-        _showSummarizeToast('聊天记录已压缩');
+        card.complete('压缩完成');
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} ❌ 自动总结流程失败:`, error);
-        _showSummarizeToast('记录压缩失败');
+        card.fail('压缩失败');
     } finally {
         _isSummarizing = false;
+        _disarmSummarizeWatchdog();
+        // No explicit card.close() here: complete/fail already schedule their
+        // own delayed close so the terminal state has time to read. The early
+        // "nothing to fold" short-circuit closes the card before its return.
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// External Storage (Phase 2 — chatHistoryStore backed by /user/files/)
+// External Storage (chatHistoryStore backed by /user/files/)
 // ═══════════════════════════════════════════════════════════════════════
-// _useExternalStorage() only checks the user opt-in setting. The single
-// source of truth for "is this chat migrated" is the self-managed file's
-// existence on disk (probed by _ensureSelfManagedFile). META_KEY_MIGRATED
-// is no longer used — relying on it forced us to queueSaveChat() during
-// every migrate, which could race with ST's chat load and blank the .jsonl
-// (Phase 2 事故 B). Old chats may still carry the residual key in chat_metadata;
-// it is silently ignored, never read, never re-written.
+// Source of truth for "is this chat migrated" is the self-managed file's
+// existence on disk (probed by _ensureSelfManagedFile). We never write a
+// per-chat marker into chat_metadata — doing so forced a queueSaveChat()
+// during every migrate, which could race with ST's chat load and blank
+// the .jsonl (事故 B).
 //
 // LEGACY cleanup (deleting chat_metadata.gf_phoneChatHistory and triggering
 // queueSaveChat) is decoupled from the migrate-write step and gated on
-// ST's chat array being populated. If the chat array is empty, we skip the
-// cleanup and let the next CHAT_CHANGED handle it — safer to leave the LEGACY
-// key untouched than to risk overwriting the .jsonl with [].
+// ST's chat array being populated — if it's empty, we defer cleanup to the
+// next CHAT_CHANGED rather than risk overwriting the .jsonl with [].
 
 function _useExternalStorage() {
     try {
@@ -1041,13 +1506,10 @@ function _getCurrentKey() {
     }
 }
 
-/**
- * True iff ST's runtime chat array currently holds at least one message.
- * Used as a gate before any queueSaveChat() we trigger, because saveChat()
- * unconditionally writes `chat.slice()` — calling it when chat is [] blanks
- * the .jsonl (Phase 2 事故 B). When this returns false we defer whatever
- * chat_metadata cleanup we wanted to do until the next CHAT_CHANGED.
- */
+// Gate before any queueSaveChat() we trigger: saveChat() unconditionally
+// writes `chat.slice()`, so calling it when chat is [] blanks the .jsonl
+// (事故 B). When this returns false we defer chat_metadata cleanup to the
+// next CHAT_CHANGED.
 function _isSTChatReady() {
     try {
         const ctx = getContext();
@@ -1057,12 +1519,8 @@ function _isSTChatReady() {
     }
 }
 
-/**
- * Best-effort cleanup of the legacy chat_metadata.gf_phoneChatHistory key
- * once the self-managed file is confirmed to hold the truth. Only flushes
- * if ST's chat array is populated — otherwise the queueSaveChat would write
- * an empty chat slice to disk. Idempotent: callable any number of times.
- */
+// Only flushes if ST's chat array is populated — otherwise queueSaveChat
+// would write an empty chat slice to disk. Idempotent.
 async function _maybeCleanupLegacyKey(reason) {
     if (!chat_metadata) return;
     if (!Array.isArray(chat_metadata[META_KEY_HISTORY])) return;
@@ -1137,21 +1595,33 @@ async function _ensureSelfManagedFile(chatId, charId) {
     return { branch: 'fresh', filename };
 }
 
-/**
- * Called on CHAT_CHANGED. Always invalidates the cache (key changed). If the
- * external-storage switch is on, also ensures the self-managed file exists
- * (creating it / migrating from LEGACY if needed) and prewarms the cache.
- * Failure in either step is logged but never propagated — the user must not
- * see the chat app crash because of a storage hiccup.
- *
- * @returns {Promise<void>}
- */
+// Always invalidates the cache (key changed). If external storage is on, also
+// ensures the self-managed file exists (creating/migrating from LEGACY as
+// needed) and prewarms the cache. Failure is logged but never propagated —
+// the user must not see the chat app crash because of a storage hiccup.
 export async function handleChatChanged() {
-    chatHistoryStore.invalidate();
-
-    if (!_useExternalStorage()) return;
+    if (!_useExternalStorage()) {
+        // Backend disabled — force-clear cache; legacy chat_metadata is the
+        // truth and the in-memory cache is irrelevant.
+        chatHistoryStore.invalidate();
+        return;
+    }
 
     const { chatId, charId } = _getCurrentKey();
+
+    // Compute the incoming hash BEFORE invalidating so we can ask the cache
+    // to be preserved when it already corresponds to the same key — that's
+    // the path a refresh / same-chat reload takes, and preserving the cache
+    // lets loadHistory({ allowStale }) keep the UI populated while prewarm
+    // races to complete.
+    let preservedHash = null;
+    try {
+        preservedHash = await chatHistoryStore.computeKeyHash(chatId, charId);
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} computeKeyHash failed; cache will be cleared:`, e.message);
+    }
+    chatHistoryStore.invalidate({ preservedHash });
+
     try {
         await _ensureSelfManagedFile(chatId, charId);
     } catch (e) {
@@ -1166,15 +1636,11 @@ export async function handleChatChanged() {
     }
 }
 
-/**
- * Register the CHAT_CHANGED listener. Idempotent guard via a module flag so
- * repeated init calls don't stack listeners. Driven purely by ST events — we
- * never trigger handleChatChanged() ourselves, because doing so during plugin
- * init (when ST's chat array may not be filled yet) would let _tryMigrate's
- * downstream queueSaveChat() rewrite the .jsonl with an empty chat. ST's
- * own CHAT_CHANGED emit happens at the end of getChatResult, by which point
- * chat is guaranteed populated.
- */
+// Driven purely by ST events — we never trigger handleChatChanged() ourselves,
+// because doing so during plugin init (when ST's chat array may not be filled
+// yet) would let the downstream queueSaveChat() rewrite the .jsonl with an
+// empty chat. ST's own CHAT_CHANGED emit happens at the end of getChatResult,
+// by which point chat is guaranteed populated.
 let _hooksRegistered = false;
 export function initChatStorageHooks() {
     if (_hooksRegistered) return;
@@ -1194,17 +1660,34 @@ export function initChatStorageHooks() {
     }
 }
 
-/**
- * Escape hatch (plan D6 "彻底回到 chat_metadata"): delete this chat's
- * self-managed file and invalidate the in-memory cache. The caller MUST also
- * flip the useExternalChatStorage setting OFF (and refresh), otherwise the
- * next CHAT_CHANGED will just recreate an empty self-managed file. We do not
- * touch chat_metadata here — the legacy gf_storageMigrated key is harmless
- * residual data and removing it would require a queueSaveChat that could
- * race with ST chat load (Phase 2 事故 B).
- *
- * @returns {Promise<{ok: boolean, deletedFile?: string, error?: string}>}
- */
+// Used by the chat-app open path (and other read-then-render entry points)
+// to ensure prewarm has completed before calling loadChatHistory(). Without
+// this gate, the page-reload race — CHAT_CHANGED fires async, prewarm awaits
+// readJSON over a slow remote — can leave the cache empty when the UI renders,
+// painting an empty conversation that allowStale cannot save (fresh reload
+// starts with _cacheKey = null).
+//
+// Cheap no-op when the cache is already ready, and a full no-op for the
+// chat_metadata backend. Failure is swallowed and logged — "best effort,
+// caller still gets to render with whatever the cache currently holds".
+export async function ensureChatHistoryReady() {
+    if (!_useExternalStorage()) return;
+    try {
+        await chatHistoryStore.ensureReady();
+        if (chatHistoryStore.debugInfo().cacheReady) return;
+        // No in-flight prewarm and cache still empty: drive one ourselves.
+        // handleChatChanged is idempotent against the current key.
+        await handleChatChanged();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} ensureChatHistoryReady failed (rendering anyway):`, e.message);
+    }
+}
+
+// Escape hatch — "彻底回到 chat_metadata". Caller MUST also flip the
+// useExternalChatStorage setting OFF (and refresh), otherwise the next
+// CHAT_CHANGED will just recreate an empty self-managed file. We deliberately
+// do NOT touch chat_metadata here: any queueSaveChat could race with ST chat
+// load (事故 B).
 export async function purgeExternalChatHistory() {
     try {
         const { chatId, charId } = _getCurrentKey();

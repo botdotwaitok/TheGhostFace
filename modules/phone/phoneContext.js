@@ -118,17 +118,40 @@ export function getPhoneUserPersona() {
     }
 }
 
+/** Default token cap for phone-recent-chat assembly. Mirrors chatStorage's
+ *  ST_HISTORY_TOKEN_LIMIT so phone-side prompts can include full message
+ *  bodies (no per-message char truncation) while still bounding total size. */
+const PHONE_RECENT_CHAT_TOKEN_LIMIT = 20000;
+
+/** Cheap CJK-aware token estimator. CJK ≈ 1.5 tok / char, Latin ≈ 0.25 tok / char.
+ *  Kept local to avoid a cyclic import with chatStorage. */
+function estimatePhoneChatTokens(text) {
+    if (!text) return 0;
+    let tokens = 0;
+    for (const ch of text) {
+        tokens += ch.charCodeAt(0) > 0x2E80 ? 1.5 : 0.25;
+    }
+    return Math.ceil(tokens);
+}
+
 /**
- * 获取 ST 主对话最近 n 条消息，拼接成文本片段。
+ * 获取 ST 主对话最近 n 条消息的完整内容，拼接成文本片段。
  * 跳过系统消息（is_system === true）和空消息。
+ * 单条消息内容不截断；整体应用 token 预算，超出时从最旧一端裁掉，
+ * 保留最新的若干条以贴近"此刻 ta 的状态"。
+ *
  * @param {number} n - 最多取多少条（默认 10），0 表示全部
+ * @param {number} tokenLimit - Token 预算上限（默认 20000），0 表示不限
  * @returns {string} 拼接好的对话文本，如无内容则返回空字符串
  */
-export function getPhoneRecentChat(n = 10) {
+export function getPhoneRecentChat(n = 10, tokenLimit = PHONE_RECENT_CHAT_TOKEN_LIMIT) {
     try {
         const context = getContext();
         const chat = context.chat;
         if (!chat || !Array.isArray(chat) || chat.length === 0) return '';
+
+        const userName = getPhoneUserName();
+        const charName = getPhoneCharInfo()?.name || 'Character';
 
         let messages = chat.filter(msg =>
             msg &&
@@ -141,11 +164,29 @@ export function getPhoneRecentChat(n = 10) {
             messages = messages.slice(-n);
         }
 
-        return messages.map(msg => {
-            const role = msg.is_user ? getPhoneUserName() : (getPhoneCharInfo()?.name || 'Character');
-            const text = msg.mes.substring(0, 200);
-            return `${role}: ${text}`;
-        }).join('\n');
+        let lines = messages.map(msg => {
+            const role = msg.is_user ? userName : charName;
+            return `${role}: ${msg.mes}`;
+        });
+
+        if (tokenLimit > 0 && lines.length > 0) {
+            let acc = 0;
+            let cutIdx = 0;
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const cost = estimatePhoneChatTokens(lines[i]) + 4;
+                if (acc + cost > tokenLimit) {
+                    cutIdx = i + 1;
+                    break;
+                }
+                acc += cost;
+            }
+            if (cutIdx > 0) {
+                console.log(`${CONTEXT_LOG_PREFIX} recent-chat token cap hit (${tokenLimit} tok): dropped oldest ${cutIdx}/${lines.length} msgs`);
+                lines = lines.slice(cutIdx);
+            }
+        }
+
+        return lines.join('\n');
     } catch (e) {
         console.warn(`${CONTEXT_LOG_PREFIX} getPhoneRecentChat failed:`, e);
         return '';

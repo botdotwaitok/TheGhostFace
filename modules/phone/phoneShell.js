@@ -54,7 +54,6 @@ export const phonePanelTemplate = String.raw`
                         </div>
                         <div class="memo-status">今日待办</div>
                     </div>
-                    <div class="phone-widget-label">备忘录</div>
                 </div>
                 
                 <div class="phone-widget-container">
@@ -65,17 +64,24 @@ export const phonePanelTemplate = String.raw`
                         </div>
                         <div class="calendar-events">No events today</div>
                     </div>
-                    <div class="phone-widget-label">Calendar</div>
                 </div>
             </div>
 
-            <!-- App Grid (populated dynamically) -->
-            <div class="phone-app-grid" id="phone_app_grid">
-                <!-- Apps will be injected here by phoneController -->
+            <!-- App Pager (paginated grid; populated dynamically) -->
+            <div class="phone-app-pager" id="phone_app_pager">
+                <!-- .phone-app-page nodes injected by phoneController -->
+            </div>
+
+            <!-- Page indicator dots (hidden when only one page) -->
+            <div class="phone-app-dots" id="phone_app_dots">
+                <!-- .phone-app-dot nodes injected by phoneController -->
             </div>
 
         </div>
 
+
+        <!-- ═══ Progress Card Overlay (mount point for long-running task indicators) ═══ -->
+        <div class="phone-progress-overlay" id="phone_progress_overlay"></div>
 
         <!-- ═══ App Viewport (for in-phone app rendering — reserved for future) ═══ -->
         <div class="phone-app-viewport" id="phone_app_viewport">

@@ -12,6 +12,7 @@
 import { REACTION_EMOJIS, toggleReaction } from './chatReactions.js';
 import { loadChatHistory } from './chatStorage.js';
 import { EMOJI_CATEGORIES, getRecentEmojis, pushRecentEmoji } from './chatEmojiData.js';
+import { toggleUserFavorite } from './chatFavorites.js';
 
 const LONG_PRESS_DELAY = 500;
 const MOVE_THRESHOLD = 10;
@@ -34,6 +35,11 @@ let _scrollHandler = null;
 let _resizeHandler = null;
 let _outsideHandler = null;
 let _escHandler = null;
+// Timestamp of the most recent menu dismissal. Used by isBubbleMenuActiveOrRecent
+// so a click that lands right after the menu closes (or right after long-press
+// fired the menu open) doesn't fall through and toggle the thought bubble.
+let _bubbleMenuDismissedAt = 0;
+const BUBBLE_MENU_GRACE_MS = 400;
 
 // ── Active full-emoji-picker state (separate from the bubble menu) ──
 let _activeFullPicker = null;
@@ -55,7 +61,8 @@ const _actions = {
 //
 // Each item:
 //   id          — used as data-action; also identifies the item in handlers
-//   label       — visible text
+//   label       — visible text. Accepts a string OR (ctx) => string for items
+//                 that need state-dependent wording (e.g. "收藏" / "取消收藏").
 //   icon        — Phosphor icon class suffix (e.g. 'ph-copy')
 //   destructive — true paints the item in iOS system red (used for Delete)
 //   visible     — (ctx) => boolean; hide the row when false
@@ -70,6 +77,13 @@ const ACTION_ITEMS = [
         icon: 'ph-arrow-bend-up-left',
         visible: () => true,
         handler: (ctx) => { _actions.onReply?.(ctx.msgIndex); },
+    },
+    {
+        id: 'favorite',
+        label: (ctx) => ctx.msg?.favoritedByUser ? '取消收藏' : '收藏',
+        icon: 'ph-bookmark-simple',
+        visible: () => true,
+        handler: (ctx) => toggleUserFavorite(ctx.msgIndex),
     },
     {
         id: 'copy',
@@ -207,6 +221,7 @@ export function attachBubbleLongPress(messagesArea, options = {}) {
  * which overlay is currently open.
  */
 export function dismissBubbleMenu() {
+    const wasActive = !!(_activeEmojiBar || _activeActionMenu);
     if (_activeEmojiBar) {
         _activeEmojiBar.remove();
         _activeEmojiBar = null;
@@ -218,6 +233,18 @@ export function dismissBubbleMenu() {
     _activeRow = null;
     unbindDismissListeners();
     dismissFullEmojiPicker();
+    if (wasActive) _bubbleMenuDismissedAt = Date.now();
+}
+
+/**
+ * True while the long-press menu is open, or briefly after dismissal.
+ * Callers (e.g. chatApp's thought-toggle click delegate) use this to ignore
+ * the click that originated from the long-press gesture itself, or the click
+ * that just dismissed the menu by tapping outside.
+ */
+export function isBubbleMenuActiveOrRecent() {
+    if (_activeEmojiBar || _activeActionMenu) return true;
+    return (Date.now() - _bubbleMenuDismissedAt) < BUBBLE_MENU_GRACE_MS;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -511,9 +538,10 @@ function buildActionMenu(msgIndex, isDark) {
         const cls = item.destructive
             ? 'chat-bubble-menu-item destructive'
             : 'chat-bubble-menu-item';
+        const label = typeof item.label === 'function' ? item.label(ctx) : item.label;
         return `
             <button class="${cls}" data-action="${item.id}">
-                <span class="chat-bubble-menu-label">${item.label}</span>
+                <span class="chat-bubble-menu-label">${label}</span>
                 <i class="ph ${item.icon} chat-bubble-menu-icon"></i>
             </button>`;
     }).join('');

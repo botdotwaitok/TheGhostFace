@@ -4,10 +4,11 @@
 
 import { openAppInViewport, updateAppBadge } from '../phoneController.js';
 import {
-    loadChatHistory, clearChatHistory,
+    loadChatHistory,
     getCharacterInfo,
     getCharacterDisplayName, loadCharacterNickname, saveCharacterNickname,
     buildReplySnippet,
+    ensureChatHistoryReady,
 } from './chatStorage.js';
 import {
     consumePendingResult, consumeError,
@@ -19,7 +20,7 @@ import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
 import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
 
 // ── Sub-module imports ──
-import { buildChatPage, buildMessagesHtml, buildBubbleRow, CHAT_DISPLAY_COUNT, attachBubbleTailObserver } from './chatHtmlBuilder.js';
+import { buildChatPage, buildMessagesAreaInner, CHAT_DISPLAY_COUNT, computeChatWindow, attachBubbleTailObserver } from './chatHtmlBuilder.js';
 import {
     addPendingMessage, sendAllMessages,
     handleResponseReady, handleRetryEvent,
@@ -28,11 +29,11 @@ import {
 } from './chatMessageHandler.js';
 import {
     toggleDeleteMode, toggleSelectMessage, updateDeleteToolbar, handleBatchDelete,
-    toggleEditMode, openEditOverlay, closeEditOverlay, handleEditSave,
+    openEditOverlay, closeEditOverlay, handleEditSave,
     rerollLastMessage, selectMessageForDeletion,
 } from './chatEditDelete.js';
 import { toggleReaction } from './chatReactions.js';
-import { attachBubbleLongPress } from './chatBubbleMenu.js';
+import { attachBubbleLongPress, isBubbleMenuActiveOrRecent } from './chatBubbleMenu.js';
 import { renderBuffBar, renderChatInventory, handleReturnHome, handleManualSummarize } from './chatInventory.js';
 import { beginRecording } from './chatVoice.js';
 import { handleImageSelection, showImageLightbox } from './chatImage.js';
@@ -40,6 +41,7 @@ import { handleVoicePlayback } from './chatVoice.js';
 import {
     applyChatBackground, uploadChatBackground, clearChatBackground, hasChatBackground,
 } from './chatBackground.js';
+import { openChatSettingsPage } from './chatSettings.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Shared State
@@ -62,6 +64,23 @@ let _pendingImageData = null;      // { base64, thumbnail, fileName } | null
 // Shape: { role: 'user'|'char', snippet: string } | null
 let _pendingReplyTo = null;
 
+// Anchor-window state — the inclusive [startIdx, endIdx] slice of chat history
+// currently rendered into messagesArea. Tracked so search-jump can land on
+// arbitrarily old messages WITHOUT mounting every bubble between target and
+// tail (a 10k-message scrollback would otherwise paint ~10k DOM nodes). The
+// "older / newer" load buttons each shift one end of the window outward.
+//
+// Maintained by:
+//   - openChatApp + rerenderMessagesArea  → reset window after full repaint
+//   - load-more / load-newer click handlers → shift one end
+//   - chatMessageHandler ensureWindowAtTail → snap back to tail before append
+//
+// Default sentinel (endIdx < startIdx) marks "not yet committed" — any
+// isWindowAtTail() check on the sentinel returns false so the very first
+// append after page boot still triggers a full repaint instead of writing
+// into an unmounted window.
+let _chatWindow = { startIdx: 0, endIdx: -1 };
+
 export const CHAT_LOG_PREFIX = '[聊天]';
 
 // ── State Getters / Setters (for sub-modules) ──
@@ -82,6 +101,65 @@ export function setPendingImageData(v) { _pendingImageData = v; }
 export function getPendingReplyTo() { return _pendingReplyTo; }
 export function setPendingReplyTo(v) { _pendingReplyTo = v; }
 export function clearPendingReplyTo() { _pendingReplyTo = null; }
+
+// ── Anchor-window getters / setters (for chatMessageHandler + builder) ──
+export function getChatWindow() {
+    return { ..._chatWindow };
+}
+export function setChatWindow(startIdx, endIdx) {
+    _chatWindow = { startIdx, endIdx };
+}
+
+/**
+ * True when the rendered window's right edge is at the latest history index.
+ * Append-style DOM writes (new user msg, AI reply, auto message) MUST only
+ * fire when this returns true — otherwise they'd insert into the middle of a
+ * non-contiguous scrollback.
+ *
+ * @param {number} [historyLength] - optional override for callers who already
+ *   loaded history (avoids a redundant cache lookup).
+ * @returns {boolean}
+ */
+export function isWindowAtTail(historyLength) {
+    const len = typeof historyLength === 'number' ? historyLength : loadChatHistory().length;
+    if (len === 0) return true; // empty chat: nothing to be "behind"
+    return _chatWindow.endIdx >= len - 1;
+}
+
+/**
+ * If the user is parked in a historical anchor window (search-jump aftermath),
+ * snap back to the tail before doing any append. Resets the window via
+ * rerenderMessagesArea, which re-mounts the last CHAT_DISPLAY_COUNT messages
+ * and scrolls to bottom.
+ *
+ * Two usage patterns:
+ *   1. PRE-push (caller will history.push next): isWindowAtTail check uses the
+ *      pre-push length, so a tail user is a no-op and a historical-window user
+ *      gets a rerender of pre-push entries. Caller then pushes + manually
+ *      appends bubbles + calls syncWindowToTail() to commit the new endIdx.
+ *   2. POST-push (renderAutoMessages): isWindowAtTail check sees endIdx lagging
+ *      behind newly-pushed entries, so rerender triggers AND repaints those
+ *      entries. Caller MUST check the return value and skip its manual append
+ *      loop when this returns true.
+ *
+ * @returns {boolean} true iff a rerender fired (caller should skip manual append)
+ */
+export function ensureWindowAtTail() {
+    if (isWindowAtTail()) return false;
+    rerenderMessagesArea(false);
+    return true;
+}
+
+/**
+ * Move _chatWindow.endIdx to the current last-index of history. Call this
+ * AFTER manually appending new bubbles, so the anchor window state reflects
+ * the DOM. Otherwise the next isWindowAtTail() check falsely returns false
+ * and triggers an unnecessary rerender.
+ */
+export function syncWindowToTail() {
+    const len = loadChatHistory().length;
+    setChatWindow(_chatWindow.startIdx, len === 0 ? -1 : len - 1);
+}
 
 /**
  * Begin a reply to a history message. Snippet is captured now and frozen;
@@ -116,11 +194,32 @@ export function cancelReplyTo() {
 // Entry Point
 // ═══════════════════════════════════════════════════════════════════════
 
-export function openChatApp() {
+export async function openChatApp(opts = {}) {
+    // Drive the external-storage cache to a ready state BEFORE reading
+    // history. Without this, a page-reload race window (CHAT_CHANGED fired,
+    // prewarm still awaiting readJSON over a slow remote) lets loadChatHistory
+    // fall through to an empty chat_metadata and paint a blank conversation —
+    // and allowStale can't rescue that case because a fresh page load starts
+    // with _cacheKey = null. Cheap no-op when cache is already warm.
+    await ensureChatHistoryReady();
+
     const history = loadChatHistory();
     pendingMessages = [];
     _pendingReplyTo = null;
-    const html = buildChatPage(history);
+
+    // scrollToMsgIdx is set by the search panel (chatSearch.js) when the user
+    // clicks a hit. buildChatPage centers a ±CHAT_DISPLAY_COUNT anchor window
+    // on the target so far-back jumps don't mount the whole scrollback.
+    const scrollToMsgIdx = Number.isInteger(opts.scrollToMsgIdx) && opts.scrollToMsgIdx >= 0
+        ? opts.scrollToMsgIdx
+        : null;
+    const html = buildChatPage(history, { scrollToMsgIdx });
+
+    // Commit the window we just rendered into module state so subsequent
+    // appends (chatMessageHandler) and load-more / load-newer clicks know
+    // where the rendered slice begins and ends.
+    const initialWindow = computeChatWindow(history.length, scrollToMsgIdx);
+    setChatWindow(initialWindow.startIdx, initialWindow.endIdx);
 
     // Build custom header for chat
     const charInfo = getCharacterInfo();
@@ -162,31 +261,39 @@ export function openChatApp() {
         // append bubbles into chat_messages_area).
         attachBubbleTailObserver(document.getElementById('chat_messages_area'));
 
-        // ── Consume pending background result if available ──
-        if (hasPendingResult()) {
-            console.log(`${CHAT_LOG_PREFIX} Pending background result found, rendering...`);
-            const result = consumePendingResult();
-            if (result) {
-                renderResponseToDom(result.rawResponse, result.messagesToSend, result.indexableReplyMap || null);
+        // Pending background results, errors, and auto-messages all eventually
+        // trigger an append that — through ensureWindowAtTail — would snap the
+        // anchor window back to the history tail. In jump mode that would yank
+        // the user away from the search target before they ever see it. Leave
+        // these queued (badge stays visible) so the next normal chat open can
+        // consume them.
+        if (scrollToMsgIdx === null) {
+            // ── Consume pending background result if available ──
+            if (hasPendingResult()) {
+                console.log(`${CHAT_LOG_PREFIX} Pending background result found, rendering...`);
+                const result = consumePendingResult();
+                if (result) {
+                    renderResponseToDom(result.rawResponse, result.messagesToSend, result.indexableReplyMap || null);
+                }
+                updateAppBadge('chat', 0); // Clear red dot
+            } else if (hasError()) {
+                // Show error from failed background generation
+                const errMsg = consumeError();
+                const messagesArea = document.getElementById('chat_messages_area');
+                if (messagesArea && errMsg) {
+                    messagesArea.insertAdjacentHTML('beforeend',
+                        `<div class="chat-retract">⚠️ 发送失败: ${escHtml(errMsg)}</div>`);
+                    scrollToBottom(true);
+                }
+                updateAppBadge('chat', 0);
             }
-            updateAppBadge('chat', 0); // Clear red dot
-        } else if (hasError()) {
-            // Show error from failed background generation
-            const errMsg = consumeError();
-            const messagesArea = document.getElementById('chat_messages_area');
-            if (messagesArea && errMsg) {
-                messagesArea.insertAdjacentHTML('beforeend',
-                    `<div class="chat-retract">⚠️ 发送失败: ${escHtml(errMsg)}</div>`);
-                scrollToBottom(true);
-            }
-            updateAppBadge('chat', 0);
-        }
 
-        // ── Consume pending auto messages if available ──
-        if (hasAutoMessagePending()) {
-            console.log(`${CHAT_LOG_PREFIX} Pending auto message found, rendering...`);
-            renderAutoMessages(consumeAutoMessages());
-            updateAppBadge('chat', 0);
+            // ── Consume pending auto messages if available ──
+            if (hasAutoMessagePending()) {
+                console.log(`${CHAT_LOG_PREFIX} Pending auto message found, rendering...`);
+                renderAutoMessages(consumeAutoMessages());
+                updateAppBadge('chat', 0);
+            }
         }
 
         // ── If background generation is still running, show typing indicator + stop button ──
@@ -194,7 +301,37 @@ export function openChatApp() {
             showTypingIndicator(true);
             updateButtonStates();
         }
+
+        // ── Search jump: scroll the target into view + briefly highlight it.
+        // Runs after bindChatEvents()' default scrollToBottom, so this wins
+        // for jump-mode opens and is a no-op for plain opens.
+        if (scrollToMsgIdx !== null) {
+            scrollToMsgIndex(scrollToMsgIdx);
+        }
     }, actionsHtml);
+}
+
+/**
+ * Locate the bubble row carrying `data-msg-index="<idx>"`, center it in the
+ * viewport, and pulse a `.chat-search-jump-target` class for 2 seconds.
+ * Falls back silently if the row is missing (e.g. history changed between
+ * search and click).
+ *
+ * @param {number} idx — globalIndex of the message to focus
+ */
+function scrollToMsgIndex(idx) {
+    requestAnimationFrame(() => {
+        const area = document.getElementById('chat_messages_area');
+        if (!area) return;
+        const row = area.querySelector(`.chat-bubble-row[data-msg-index="${idx}"]`);
+        if (!row) {
+            console.warn(`${CHAT_LOG_PREFIX} scrollToMsgIndex: row ${idx} not in DOM`);
+            return;
+        }
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row.classList.add('chat-search-jump-target');
+        setTimeout(() => row.classList.remove('chat-search-jump-target'), 2000);
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -207,9 +344,6 @@ function bindChatEvents() {
     const kiwiBtn = document.getElementById('chat_kiwi_btn');
     const sendBtn = document.getElementById('chat_send_btn');
     const menuBtn = document.getElementById('chat_menu_btn');
-    const menuOverlay = document.getElementById('chat_menu_overlay');
-    const menuCancel = document.getElementById('chat_menu_cancel');
-    const clearHistoryBtn = document.getElementById('chat_clear_history');
     const plusOverlay = document.getElementById('chat_plus_overlay');
     const plusCancel = document.getElementById('chat_plus_cancel');
     const returnHomeBtn = document.getElementById('chat_return_home_btn');
@@ -314,6 +448,10 @@ function bindChatEvents() {
             if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.chat-special-card')) return;
             const anchor = e.target.closest('.chat-bubble-anchor');
             if (anchor && anchor.closest('.chat-bubble-row.char')) {
+                // Suppress when a long-press menu just opened or just dismissed —
+                // the click that ends the long-press gesture (or the click that
+                // closed the menu by tapping outside) should not flip the thought.
+                if (isBubbleMenuActiveOrRecent()) return;
                 const col = anchor.closest('.chat-bubble-column');
                 const thought = col && col.querySelector('.chat-thought-bubble');
                 if (thought) {
@@ -321,21 +459,29 @@ function bindChatEvents() {
                 }
             }
 
-            // Load more
+            // Load more — older direction (top button)
             if (e.target.id === 'chat_load_more_btn') {
                 const oldScrollHeight = messagesArea.scrollHeight;
-                let currentLimit = parseInt(e.target.dataset.limit || String(CHAT_DISPLAY_COUNT), 10);
-                currentLimit += CHAT_DISPLAY_COUNT;
+                const win = _chatWindow;
                 const history = loadChatHistory();
-                const displayHistory = history.slice(-currentLimit);
-
-                const startIndex = history.length - currentLimit;
-                let newHtml = buildMessagesHtml(displayHistory, Math.max(0, startIndex));
-                if (history.length > currentLimit) {
-                    newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="${currentLimit}">查看更早的聊天记录</div>` + newHtml;
-                }
-                messagesArea.innerHTML = newHtml;
+                const newStart = Math.max(0, win.startIdx - CHAT_DISPLAY_COUNT);
+                _paintChatWindow(messagesArea, history, newStart, win.endIdx);
+                // Preserve scroll position so the previously-visible content
+                // stays put while new bubbles appear above the viewport.
                 messagesArea.scrollTop = messagesArea.scrollHeight - oldScrollHeight;
+                return;
+            }
+
+            // Load newer — bottom button (only present inside a search-jump
+            // anchor window; expanding to history end will drop it).
+            if (e.target.id === 'chat_load_newer_btn') {
+                const win = _chatWindow;
+                const history = loadChatHistory();
+                const newEnd = Math.min(history.length - 1, win.endIdx + CHAT_DISPLAY_COUNT);
+                _paintChatWindow(messagesArea, history, win.startIdx, newEnd);
+                // New bubbles sit below the previously-visible content; the
+                // user can scroll into them naturally.
+                return;
             }
         });
     }
@@ -428,6 +574,15 @@ function bindChatEvents() {
         summarizeBtn.addEventListener('click', () => {
             plusOverlay?.classList.remove('active');
             handleManualSummarize();
+        });
+    }
+
+    // ─── Plus panel: "重新生成" ───
+    const plusRerollBtn = document.getElementById('chat_plus_reroll_btn');
+    if (plusRerollBtn) {
+        plusRerollBtn.addEventListener('click', () => {
+            plusOverlay?.classList.remove('active');
+            rerollLastMessage();
         });
     }
 
@@ -593,12 +748,11 @@ function bindChatEvents() {
         });
     }
 
-    // ─── Top-right ⋯ Menu ───
+    // ─── Top-right ⋯ button → ChatSettings second-level page ───
     if (menuBtn) {
         menuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            _overlayOpenedAt = Date.now();
-            menuOverlay?.classList.add('active');
+            openChatSettingsPage();
         });
     }
 
@@ -608,55 +762,6 @@ function bindChatEvents() {
         plusCallBtn.addEventListener('click', () => {
             plusOverlay?.classList.remove('active');
             openVoiceCall({ chatContext: true });
-        });
-    }
-    if (menuCancel) {
-        menuCancel.addEventListener('click', () => {
-            menuOverlay?.classList.remove('active');
-        });
-    }
-    if (menuOverlay) {
-        menuOverlay.addEventListener('click', (e) => {
-            if (e.target === menuOverlay && Date.now() - _overlayOpenedAt > 200) {
-                menuOverlay.classList.remove('active');
-            }
-        });
-    }
-    if (clearHistoryBtn) {
-        clearHistoryBtn.addEventListener('click', async () => {
-            if (confirm('确定要清空所有聊天记录吗？\n此操作无法撤销。')) {
-                await clearChatHistory();
-                pendingMessages = [];
-                openChatApp(); // Re-render
-            }
-            menuOverlay?.classList.remove('active');
-        });
-    }
-
-    // ─── Reroll button ───
-    const rerollBtn = document.getElementById('chat_reroll_btn');
-    if (rerollBtn) {
-        rerollBtn.addEventListener('click', () => {
-            menuOverlay?.classList.remove('active');
-            rerollLastMessage();
-        });
-    }
-
-    // ─── Delete mode button ───
-    const deleteModeBtn = document.getElementById('chat_delete_mode_btn');
-    if (deleteModeBtn) {
-        deleteModeBtn.addEventListener('click', () => {
-            menuOverlay?.classList.remove('active');
-            toggleDeleteMode();
-        });
-    }
-
-    // ─── Edit mode button ───
-    const editModeBtn = document.getElementById('chat_edit_mode_btn');
-    if (editModeBtn) {
-        editModeBtn.addEventListener('click', () => {
-            menuOverlay?.classList.remove('active');
-            toggleEditMode();
         });
     }
 
@@ -790,7 +895,11 @@ export function showTypingIndicator(show) {
 }
 
 /**
- * Re-render the messages area from the current history.
+ * Re-render the messages area from the current history. Always snaps the
+ * anchor window back to the tail (last CHAT_DISPLAY_COUNT messages) — this
+ * is also the recovery path used by ensureWindowAtTail() when an append
+ * fires while the user is parked in a historical jump window.
+ *
  * @param {boolean} [smooth=false] - If true, smooth-scroll to bottom
  */
 export function rerenderMessagesArea(smooth = false) {
@@ -798,22 +907,25 @@ export function rerenderMessagesArea(smooth = false) {
     if (!messagesArea) return;
 
     const history = loadChatHistory();
-    const displayHistory = history.slice(-CHAT_DISPLAY_COUNT);
-    const startIndex = history.length - displayHistory.length;
-
-    let newHtml = displayHistory.length > 0
-        ? buildMessagesHtml(displayHistory, startIndex)
-        : `<div class="chat-empty">
-               <div class="chat-empty-icon">💬</div>
-               <div class="chat-empty-text">开始聊天吧…</div>
-           </div>`;
-
-    if (history.length > CHAT_DISPLAY_COUNT && displayHistory.length > 0) {
-        newHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="${CHAT_DISPLAY_COUNT}">查看更早的聊天记录</div>` + newHtml;
-    }
-
-    messagesArea.innerHTML = newHtml;
+    const { startIdx, endIdx } = computeChatWindow(history.length, null);
+    _paintChatWindow(messagesArea, history, startIdx, endIdx, '开始聊天吧…');
     scrollToBottom(smooth);
+}
+
+/**
+ * Paint the messages area for an arbitrary [startIdx, endIdx] anchor window
+ * and commit that window to module state. Used by load-more / load-newer
+ * click handlers and by rerenderMessagesArea.
+ *
+ * @param {HTMLElement} area - #chat_messages_area
+ * @param {object[]} history
+ * @param {number} startIdx
+ * @param {number} endIdx
+ * @param {string} [emptyText='开始聊天吧…']
+ */
+function _paintChatWindow(area, history, startIdx, endIdx, emptyText = '开始聊天吧…') {
+    area.innerHTML = buildMessagesAreaInner(history, startIdx, endIdx, emptyText);
+    setChatWindow(startIdx, endIdx);
 }
 
 export function scrollToBottom(smooth = true) {

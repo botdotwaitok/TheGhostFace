@@ -350,6 +350,14 @@
     opacity: 0.5;
 }
 
+/* Bottom-anchored counterpart: only rendered inside a search-jump anchor
+   window (when endIdx < history.length - 1). Mirrors the top button's
+   spacing so it doesn't crowd the last bubble. */
+.chat-load-more.chat-load-newer {
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+
 /* ─── Draft Bubbles (pending messages) ─── */
 .chat-draft-area {
     padding: 0 16px 4px;
@@ -3260,4 +3268,1811 @@ textarea#chat_edit_textarea {
 
 .chat-toast-retry-btn:active {
     background: rgba(255, 255, 255, 0.38);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ChatSettings — second-level page (entry via top-right ⋯ in chat app)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.chat-settings-nav-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.chat-settings-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    color: #1c1c1e;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-settings-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px max(20px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-settings-section {
+    margin-bottom: 22px;
+}
+
+.chat-settings-card {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-settings-search-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-settings-search-card:not(.disabled):hover {
+    background: #f2f2f7;
+}
+
+.chat-settings-search-card.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.chat-settings-search-icon {
+    font-size: 20px;
+    color: #8e8e93;
+    flex-shrink: 0;
+}
+
+.chat-settings-search-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chat-settings-search-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1c1c1e;
+}
+
+.chat-settings-search-hint {
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.chat-settings-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-settings-item:last-child {
+    border-bottom: none;
+}
+
+.chat-settings-item:not(.disabled):hover {
+    background: #f2f2f7;
+}
+
+.chat-settings-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chat-settings-item-icon {
+    font-size: 18px;
+    color: #8e8e93;
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+}
+
+.chat-settings-item.danger .chat-settings-item-icon {
+    color: #FF3B30;
+}
+
+.chat-settings-item-label {
+    flex: 1;
+    font-size: 15px;
+    color: #1c1c1e;
+}
+
+.chat-settings-item.danger .chat-settings-item-label {
+    color: #FF3B30;
+}
+
+.chat-settings-item-hint {
+    font-size: 12px;
+    color: #c7c7cc;
+}
+
+.chat-settings-item-chevron {
+    font-size: 14px;
+    color: #c7c7cc;
+    flex-shrink: 0;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-settings-page {
+    background: #000;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-settings-card,
+.phone-dark-mode .chat-settings-search-card {
+    background: #1c1c1e;
+    box-shadow: none;
+}
+
+.phone-dark-mode .chat-settings-search-card:not(.disabled):hover,
+.phone-dark-mode .chat-settings-item:not(.disabled):hover {
+    background: #2c2c2e;
+}
+
+.phone-dark-mode .chat-settings-search-title,
+.phone-dark-mode .chat-settings-item-label {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-settings-search-hint,
+.phone-dark-mode .chat-settings-item-hint {
+    color: #6d6d72;
+}
+
+.phone-dark-mode .chat-settings-item {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-settings-item.danger .chat-settings-item-icon,
+.phone-dark-mode .chat-settings-item.danger .chat-settings-item-label {
+    color: #ff453a;
+}
+
+.phone-dark-mode .chat-settings-item-chevron {
+    color: #48484a;
+}
+
+/* ─── Import / Export sub-page additions ─── */
+.chat-importexport-info-card {
+    padding: 4px 0;
+}
+
+.chat-importexport-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-importexport-info-row:last-child {
+    border-bottom: none;
+}
+
+.chat-importexport-info-label {
+    font-size: 13px;
+    color: #8e8e93;
+    flex-shrink: 0;
+}
+
+.chat-importexport-info-value {
+    font-size: 14px;
+    color: #1c1c1e;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-importexport-note {
+    font-size: 12px;
+    color: #8e8e93;
+    line-height: 1.55;
+    padding: 0 4px;
+    margin-top: -8px;
+}
+
+.chat-importexport-note strong {
+    color: #1c1c1e;
+    font-weight: 600;
+}
+
+.phone-dark-mode .chat-importexport-info-row {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-importexport-info-value {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-importexport-note {
+    color: #6d6d72;
+}
+
+.phone-dark-mode .chat-importexport-note strong {
+    color: #f2f2f7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ChatSearch — full-page in-character search (Phase 3)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.chat-search-nav-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.chat-search-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    color: #1c1c1e;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-search-input-row {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    background: #f2f2f7;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.chat-search-input-icon {
+    font-size: 18px;
+    color: #8e8e93;
+    padding-left: 8px;
+}
+
+.chat-search-page input.chat-search-input,
+input#chat_search_input.chat-search-input {
+    flex: 1;
+    min-width: 0;
+    border: none !important;
+    outline: none !important;
+    background: #ffffff !important;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 15px;
+    color: #1c1c1e !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+.chat-search-input::placeholder {
+    color: #c7c7cc;
+}
+
+.chat-search-clear-btn {
+    background: transparent;
+    border: none;
+    color: #8e8e93;
+    font-size: 16px;
+    padding: 4px 6px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.chat-search-clear-btn:hover {
+    color: #1c1c1e;
+}
+
+.chat-search-status {
+    flex-shrink: 0;
+    padding: 10px 18px;
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.chat-search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 14px max(20px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-search-result {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-search-result:hover {
+    background: #f8f8fa;
+}
+
+.chat-search-result-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.chat-search-result-source {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6d6d72;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+}
+
+.chat-search-result-source.user {
+    color: #007aff;
+}
+
+.chat-search-result-time {
+    font-size: 11px;
+    color: #c7c7cc;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.chat-search-result-snippet {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1c1c1e;
+    word-break: break-word;
+}
+
+.chat-search-mark {
+    background: #ffe066;
+    color: #1c1c1e;
+    padding: 0 2px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.chat-search-result-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: #8e8e93;
+}
+
+.chat-search-result-hint i {
+    font-size: 13px;
+}
+
+/* ─── Favorites page ─── */
+/* Mirrors the search page's vertical layout. Result rows reuse
+   .chat-search-result* so both lists look and animate identically; only the
+   page root and the empty-state need favorites-specific rules. */
+.chat-favorites-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    color: #1c1c1e;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-favorites-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px 24px;
+    color: #8e8e93;
+}
+
+.chat-favorites-empty-icon {
+    font-size: 44px;
+    color: #c7c7cc;
+    margin-bottom: 12px;
+}
+
+.chat-favorites-empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #6d6d72;
+    margin-bottom: 4px;
+}
+
+.chat-favorites-empty-hint {
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.phone-dark-mode .chat-favorites-page {
+    background: #000;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-favorites-empty {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-favorites-empty-icon {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-favorites-empty-title {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-favorites-empty-hint {
+    color: #6d6d72;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ChatSummaryView — "查看总结" sub-page (current + history)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.chat-summary-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    color: #1c1c1e;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-summary-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px max(20px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-summary-section {
+    margin-bottom: 22px;
+}
+
+.chat-summary-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6d6d72;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 4px 4px;
+}
+
+.chat-summary-section-hint {
+    font-size: 12px;
+    color: #8e8e93;
+    margin: 0 4px 8px;
+}
+
+/* ─── Current summary card ─── */
+
+.chat-summary-current-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-summary-current-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+}
+
+.chat-summary-current-count {
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.chat-summary-current-body {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1c1c1e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-summary-current-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Buttons — both expand and action variants share these resets */
+
+.chat-summary-expand-btn,
+.chat-summary-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.chat-summary-expand-btn {
+    color: #007AFF;
+    margin-top: 8px;
+    padding-left: 0;
+}
+
+.chat-summary-expand-btn:hover {
+    background: rgba(0, 122, 255, 0.08);
+}
+
+.chat-summary-action-btn {
+    color: #007AFF;
+    padding: 6px 12px;
+    background: rgba(0, 122, 255, 0.1);
+}
+
+.chat-summary-action-btn:hover {
+    background: rgba(0, 122, 255, 0.18);
+}
+
+/* ─── History rows ─── */
+
+.chat-summary-history-row {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-summary-history-row:last-child {
+    margin-bottom: 0;
+}
+
+.chat-summary-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.chat-summary-history-source {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.chat-summary-history-source.auto {
+    background: rgba(0, 122, 255, 0.12);
+    color: #007AFF;
+}
+
+.chat-summary-history-source.manual {
+    background: rgba(255, 149, 0, 0.14);
+    color: #B26A00;
+}
+
+.chat-summary-history-time {
+    font-size: 12px;
+    color: #8e8e93;
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-summary-history-body {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #1c1c1e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-summary-history-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.chat-summary-history-count {
+    font-size: 11px;
+    color: #c7c7cc;
+}
+
+/* ─── Per-row delete button (normal mode) ─── */
+
+.chat-summary-history-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #c7c7cc;
+    cursor: pointer;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+    padding: 0;
+}
+
+.chat-summary-history-delete-btn:hover {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+}
+
+.chat-summary-history-delete-btn i {
+    font-size: 16px;
+}
+
+/* ─── Checkbox in selection mode ─── */
+
+.chat-summary-history-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    color: #c7c7cc;
+    cursor: pointer;
+}
+
+.chat-summary-history-check i {
+    font-size: 20px;
+}
+
+.chat-summary-history-row.selection-mode {
+    cursor: pointer;
+    user-select: none;
+}
+
+.chat-summary-history-row.selected {
+    background: rgba(0, 122, 255, 0.08);
+    box-shadow: 0 0 0 1.5px #007AFF inset;
+}
+
+.chat-summary-history-row.selected .chat-summary-history-check {
+    color: #007AFF;
+}
+
+/* ─── Selection toolbar (top, when in selection mode) ─── */
+
+.chat-summary-selection-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(248, 248, 250, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+    z-index: 2;
+}
+
+.chat-summary-selection-toolbar[hidden] {
+    display: none;
+}
+
+.chat-summary-selection-count {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c1c1e;
+    flex: 1;
+    text-align: center;
+}
+
+.chat-summary-selection-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: #007AFF;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.chat-summary-selection-btn:hover:not(:disabled) {
+    background: rgba(0, 122, 255, 0.1);
+}
+
+.chat-summary-selection-btn.danger {
+    color: #ff3b30;
+}
+
+.chat-summary-selection-btn.danger:hover:not(:disabled) {
+    background: rgba(255, 59, 48, 0.12);
+}
+
+.chat-summary-selection-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ─── Manual hide-range card (used inside chat settings page) ─── */
+
+.chat-hide-range-section {
+    margin-top: 8px;
+}
+
+.chat-hide-range-card {
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: rgba(0, 122, 255, 0.05);
+    border: 1px solid rgba(0, 122, 255, 0.25);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.chat-hide-range-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.chat-hide-range-meta strong {
+    color: rgba(0, 0, 0, 0.85);
+    font-weight: 600;
+    margin: 0 2px;
+}
+
+.chat-hide-range-slider {
+    width: 100%;
+    margin: 4px 0;
+    accent-color: #007aff;
+    cursor: pointer;
+}
+
+.chat-hide-range-slider:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.chat-hide-range-readout {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.65);
+}
+
+.chat-hide-range-readout strong {
+    color: rgba(0, 0, 0, 0.9);
+    font-weight: 600;
+    margin: 0 2px;
+}
+
+.chat-hide-range-token-cell {
+    text-align: right;
+}
+
+.chat-hide-range-apply-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+    background: rgba(0, 122, 255, 0.1);
+    border: 1px solid rgba(0, 122, 255, 0.45);
+    border-radius: 10px;
+    color: #007aff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-hide-range-apply-btn:hover:not(:disabled) {
+    background: rgba(0, 122, 255, 0.18);
+}
+
+.chat-hide-range-apply-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.phone-dark-mode .chat-hide-range-card {
+    background: rgba(10, 132, 255, 0.08);
+    border-color: rgba(10, 132, 255, 0.35);
+}
+
+.phone-dark-mode .chat-hide-range-meta {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.phone-dark-mode .chat-hide-range-meta strong,
+.phone-dark-mode .chat-hide-range-readout strong {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.phone-dark-mode .chat-hide-range-readout {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.phone-dark-mode .chat-hide-range-apply-btn {
+    background: rgba(10, 132, 255, 0.14);
+    border-color: rgba(10, 132, 255, 0.55);
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-hide-range-apply-btn:hover:not(:disabled) {
+    background: rgba(10, 132, 255, 0.24);
+}
+
+/* ─── Reset row inside hide-range card (clear all hide marks) ─── */
+
+.chat-hide-range-reset-row {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-hide-range-reset-hint {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.55);
+    line-height: 1.5;
+}
+
+.chat-hide-range-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+    background: rgba(255, 59, 48, 0.08);
+    border: 1px solid rgba(255, 59, 48, 0.4);
+    border-radius: 10px;
+    color: #ff3b30;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-hide-range-reset-btn:hover {
+    background: rgba(255, 59, 48, 0.14);
+}
+
+.phone-dark-mode .chat-hide-range-reset-row {
+    border-top-color: rgba(255, 255, 255, 0.16);
+}
+
+.phone-dark-mode .chat-hide-range-reset-hint {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.phone-dark-mode .chat-hide-range-reset-btn {
+    background: rgba(255, 69, 58, 0.12);
+    border-color: rgba(255, 69, 58, 0.45);
+    color: #ff453a;
+}
+
+.phone-dark-mode .chat-hide-range-reset-btn:hover {
+    background: rgba(255, 69, 58, 0.2);
+}
+
+/* ─── Empty states ─── */
+
+.chat-summary-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 36px 24px;
+    background: #fff;
+    border-radius: 12px;
+    color: #8e8e93;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-summary-empty-icon {
+    font-size: 40px;
+    color: #c7c7cc;
+    margin-bottom: 10px;
+}
+
+.chat-summary-empty-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6d6d72;
+    margin-bottom: 4px;
+}
+
+.chat-summary-empty-hint {
+    font-size: 12px;
+    color: #8e8e93;
+    line-height: 1.5;
+}
+
+/* ─── Dark mode ─── */
+
+.phone-dark-mode .chat-summary-page {
+    background: #000;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-summary-section-title {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-summary-section-hint {
+    color: #6d6d72;
+}
+
+.phone-dark-mode .chat-summary-current-card,
+.phone-dark-mode .chat-summary-history-row,
+.phone-dark-mode .chat-summary-empty {
+    background: #1c1c1e;
+    box-shadow: none;
+}
+
+.phone-dark-mode .chat-summary-current-body,
+.phone-dark-mode .chat-summary-history-body {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-summary-current-actions {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-summary-current-count,
+.phone-dark-mode .chat-summary-history-time {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-summary-history-count {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-summary-history-source.auto {
+    background: rgba(10, 132, 255, 0.18);
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-summary-history-source.manual {
+    background: rgba(255, 159, 10, 0.18);
+    color: #ff9f0a;
+}
+
+.phone-dark-mode .chat-summary-expand-btn,
+.phone-dark-mode .chat-summary-action-btn {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-summary-action-btn {
+    background: rgba(10, 132, 255, 0.15);
+}
+
+.phone-dark-mode .chat-summary-empty-icon {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-summary-empty-title {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-summary-history-delete-btn,
+.phone-dark-mode .chat-summary-history-check {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-summary-history-delete-btn:hover {
+    background: rgba(255, 69, 58, 0.18);
+    color: #ff453a;
+}
+
+.phone-dark-mode .chat-summary-history-row.selected {
+    background: rgba(10, 132, 255, 0.16);
+    box-shadow: 0 0 0 1.5px #0a84ff inset;
+}
+
+.phone-dark-mode .chat-summary-history-row.selected .chat-summary-history-check {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-summary-selection-toolbar {
+    background: rgba(28, 28, 30, 0.96);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-summary-selection-count {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-summary-selection-btn {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-summary-selection-btn:hover:not(:disabled) {
+    background: rgba(10, 132, 255, 0.15);
+}
+
+.phone-dark-mode .chat-summary-selection-btn.danger {
+    color: #ff453a;
+}
+
+.phone-dark-mode .chat-summary-selection-btn.danger:hover:not(:disabled) {
+    background: rgba(255, 69, 58, 0.18);
+}
+
+.phone-dark-mode .chat-summary-empty-hint {
+    color: #6d6d72;
+}
+
+/* ─── Edit sub-page (full-screen textarea + header action buttons) ─── */
+
+.chat-summary-edit-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* High specificity + !important is required: ST's global .text_pole
+   and form-control rules otherwise hijack font, color, border, and
+   background here. */
+.chat-summary-edit-page .chat-summary-edit-textarea {
+    flex: 1;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 16px 14px max(20px, env(safe-area-inset-bottom)) !important;
+    border: none !important;
+    outline: none !important;
+    background: #fff !important;
+    color: #1c1c1e !important;
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    font-family: inherit !important;
+    resize: none !important;
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-summary-edit-page .chat-summary-edit-textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* Header action buttons (slot into .phone-app-viewport-actions) */
+.chat-summary-edit-action {
+    background: transparent !important;
+    border: none !important;
+    cursor: pointer;
+    font-size: 14px !important;
+    padding: 6px 10px !important;
+    border-radius: 6px;
+    font-family: inherit !important;
+    transition: background 0.15s, color 0.15s;
+}
+
+.chat-summary-edit-action.cancel {
+    color: #8e8e93 !important;
+}
+
+.chat-summary-edit-action.cancel:hover {
+    color: #1c1c1e !important;
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+
+.chat-summary-edit-action.save {
+    color: #007AFF !important;
+    font-weight: 600 !important;
+}
+
+.chat-summary-edit-action.save:hover {
+    background: rgba(0, 122, 255, 0.1) !important;
+}
+
+/* Dark mode for edit page */
+.phone-dark-mode .chat-summary-edit-page {
+    background: #000;
+}
+
+.phone-dark-mode .chat-summary-edit-page .chat-summary-edit-textarea {
+    background: #1c1c1e !important;
+    color: #f2f2f7 !important;
+}
+
+.phone-dark-mode .chat-summary-edit-action.cancel {
+    color: #98989d !important;
+}
+
+.phone-dark-mode .chat-summary-edit-action.cancel:hover {
+    color: #f2f2f7 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.phone-dark-mode .chat-summary-edit-action.save {
+    color: #0a84ff !important;
+}
+
+.phone-dark-mode .chat-summary-edit-action.save:hover {
+    background: rgba(10, 132, 255, 0.15) !important;
+}
+
+/* Pulse the bubble row briefly after a search-result jump so the user can
+   re-find the message at a glance when it sits in a dense scrollback. */
+@keyframes chatSearchJumpPulse {
+    0%   { background: rgba(255, 224, 102, 0.55); }
+    70%  { background: rgba(255, 224, 102, 0.25); }
+    100% { background: transparent; }
+}
+
+.chat-bubble-row.chat-search-jump-target {
+    border-radius: 12px;
+    animation: chatSearchJumpPulse 2s ease-out forwards;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-search-page {
+    background: #000;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-search-input-row {
+    background: #000;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-search-page input.chat-search-input,
+.phone-dark-mode input#chat_search_input.chat-search-input {
+    background: #1c1c1e !important;
+    color: #f2f2f7 !important;
+    box-shadow: none !important;
+}
+
+.phone-dark-mode .chat-search-input::placeholder {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-search-clear-btn {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-search-clear-btn:hover {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-search-status {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-search-result {
+    background: #1c1c1e;
+    box-shadow: none;
+}
+
+.phone-dark-mode .chat-search-result:hover {
+    background: #2c2c2e;
+}
+
+.phone-dark-mode .chat-search-result-source {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-search-result-source.user {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-search-result-time {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-search-result-snippet {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-search-mark {
+    background: #b58900;
+    color: #fff;
+}
+
+.phone-dark-mode .chat-search-result-hint {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-bubble-row.chat-search-jump-target {
+    animation-name: chatSearchJumpPulseDark;
+}
+
+@keyframes chatSearchJumpPulseDark {
+    0%   { background: rgba(181, 137, 0, 0.45); }
+    70%  { background: rgba(181, 137, 0, 0.2); }
+    100% { background: transparent; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ChatStats — data statistics page (Phase 3)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.chat-stats-nav-title {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.chat-stats-page {
+    width: 100%;
+    height: 100%;
+    background: #f2f2f7;
+    color: #1c1c1e;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-stats-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px max(20px, env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-stats-section {
+    margin-bottom: 22px;
+}
+
+.chat-stats-card {
+    background: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-stats-summary-card {
+    padding: 4px 0;
+}
+
+.chat-stats-summary-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-stats-summary-row:last-child {
+    border-bottom: none;
+}
+
+.chat-stats-summary-label {
+    font-size: 14px;
+    color: #6d6d72;
+}
+
+.chat-stats-summary-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1c1c1e;
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-stats-next-round-card {
+    border: 1px solid rgba(0, 122, 255, 0.18);
+}
+
+/* Sub-rows under the "总Token数" card — visually subordinate so the eye lands
+   on the headline number first, then drills into the breakdown. */
+.chat-stats-summary-subrow {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-bottom: none;
+}
+
+.chat-stats-summary-subrow .chat-stats-summary-sublabel {
+    font-size: 12px;
+    color: #8e8e93;
+    padding-left: 8px;
+}
+
+.chat-stats-summary-subrow .chat-stats-summary-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: #3a3a3c;
+}
+
+/* Threshold row turns red when current prompt is over the trigger point —
+   makes "我距离自动总结还有多远" readable at a glance. */
+.chat-stats-summary-value.over-threshold {
+    color: #ff3b30;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-stats-page {
+    background: #000;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-card {
+    background: #1c1c1e;
+    box-shadow: none;
+}
+
+.phone-dark-mode .chat-stats-summary-row {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-stats-summary-label {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-summary-value {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-next-round-card {
+    border-color: rgba(10, 132, 255, 0.28);
+}
+
+.phone-dark-mode .chat-stats-summary-subrow .chat-stats-summary-sublabel {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-summary-subrow .chat-stats-summary-value {
+    color: #c7c7cc;
+}
+
+.phone-dark-mode .chat-stats-summary-value.over-threshold {
+    color: #ff453a;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ChatStats — fun cards (Phase 1: talkative + thought ratio)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.chat-stats-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px 10px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
+    color: #1c1c1e;
+}
+
+.chat-stats-card-header i.ph {
+    font-size: 18px;
+    color: #418ef6;
+    line-height: 1;
+}
+
+.chat-stats-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c1c1e;
+}
+
+.chat-stats-card-body {
+    padding: 14px 16px 16px;
+}
+
+.chat-stats-empty {
+    font-size: 13px;
+    color: #8e8e93;
+    text-align: center;
+    padding: 6px 0;
+}
+
+/* ── Talkative card ── */
+
+.chat-stats-talkative-row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+        "label bar"
+        "label meta";
+    column-gap: 10px;
+    row-gap: 4px;
+    align-items: center;
+}
+
+.chat-stats-talkative-row + .chat-stats-talkative-row {
+    margin-top: 14px;
+}
+
+.chat-stats-talkative-label {
+    grid-area: label;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1c1c1e;
+    align-self: center;
+}
+
+.chat-stats-talkative-bar-track {
+    grid-area: bar;
+    width: 100%;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.chat-stats-talkative-bar {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 240ms ease-out;
+}
+
+.chat-stats-talkative-bar-user {
+    background: #418ef6;
+}
+
+.chat-stats-talkative-bar-char {
+    background: #c7c7cc;
+}
+
+.chat-stats-talkative-meta {
+    grid-area: meta;
+    font-size: 12px;
+    color: #6d6d72;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Thought-ratio card ── */
+
+.chat-stats-thought-ratio-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #418ef6;
+    text-align: center;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+}
+
+.chat-stats-thought-ratio-tag {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #1c1c1e;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.chat-stats-thought-ratio-caption {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #8e8e93;
+    text-align: center;
+}
+
+/* ── Dark mode ── */
+
+.phone-dark-mode .chat-stats-card-header {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-card-header i.ph {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-stats-card-title {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-empty {
+    color: #8e8e93;
+}
+
+.phone-dark-mode .chat-stats-talkative-label {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-talkative-bar-track {
+    background: rgba(255, 255, 255, 0.10);
+}
+
+.phone-dark-mode .chat-stats-talkative-bar-user {
+    background: #0a84ff;
+}
+
+.phone-dark-mode .chat-stats-talkative-bar-char {
+    background: #48484a;
+}
+
+.phone-dark-mode .chat-stats-talkative-meta {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-thought-ratio-value {
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-stats-thought-ratio-tag {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-thought-ratio-caption {
+    color: #6d6d72;
+}
+
+/* ── Heatmap card (Phase 2) ── */
+
+.chat-stats-heatmap-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.chat-stats-heatmap-row,
+.chat-stats-heatmap-axis-row {
+    display: grid;
+    grid-template-columns: 24px repeat(24, 1fr);
+    gap: 2px;
+    align-items: center;
+}
+
+.chat-stats-heatmap-axis-row {
+    margin-bottom: 2px;
+}
+
+.chat-stats-heatmap-axis-corner {
+    height: 10px;
+}
+
+.chat-stats-heatmap-axis-tick {
+    font-size: 9px;
+    color: #8e8e93;
+    text-align: center;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-stats-heatmap-row-label {
+    font-size: 11px;
+    color: #6d6d72;
+    text-align: right;
+    padding-right: 2px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-stats-heatmap-cell {
+    height: 14px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.chat-stats-heatmap-cell-active {
+    background: rgba(65, 142, 246, var(--cell-alpha, 0.2));
+}
+
+.chat-stats-heatmap-caption {
+    margin-top: 14px;
+    font-size: 12px;
+    color: #6d6d72;
+    text-align: center;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-stats-heatmap-caption strong {
+    color: #1c1c1e;
+    font-weight: 600;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-stats-heatmap-row-label {
+    color: #8e8e93;
+}
+
+.phone-dark-mode .chat-stats-heatmap-axis-tick {
+    color: #6d6d72;
+}
+
+.phone-dark-mode .chat-stats-heatmap-cell {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.phone-dark-mode .chat-stats-heatmap-cell-active {
+    background: rgba(10, 132, 255, var(--cell-alpha, 0.2));
+}
+
+.phone-dark-mode .chat-stats-heatmap-caption {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-heatmap-caption strong {
+    color: #f2f2f7;
+}
+
+/* ── Top words card (Phase 3) ── */
+
+.chat-stats-topwords-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chat-stats-topwords-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: linear-gradient(
+        to right,
+        rgba(65, 142, 246, 0.18) var(--bar-pct, 0%),
+        rgba(0, 0, 0, 0.03) var(--bar-pct, 0%)
+    );
+}
+
+.chat-stats-topwords-rank {
+    font-size: 11px;
+    color: #8e8e93;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.chat-stats-topwords-token {
+    font-size: 14px;
+    color: #1c1c1e;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-stats-topwords-count {
+    font-size: 12px;
+    color: #6d6d72;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-stats-topwords-row {
+    background: linear-gradient(
+        to right,
+        rgba(10, 132, 255, 0.28) var(--bar-pct, 0%),
+        rgba(255, 255, 255, 0.04) var(--bar-pct, 0%)
+    );
+}
+
+.phone-dark-mode .chat-stats-topwords-rank {
+    color: #6d6d72;
+}
+
+.phone-dark-mode .chat-stats-topwords-token {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-stats-topwords-count {
+    color: #98989d;
+}
+
+/* ── Emoji-usage cards (paired, stacked vertically) ── */
+
+/* Layout mirrors the topwords card: each side is a vertical list of rows,
+   row background is a left-to-right gradient capped at --bar-pct so the row
+   doubles as its own bar chart. Bar normalized to that side's own #1, so
+   even a quiet side gets a full-width #1 bar. */
+
+.chat-stats-emoji-side + .chat-stats-emoji-side {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 0.5px dashed rgba(0, 0, 0, 0.08);
+}
+
+.chat-stats-emoji-side-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6d6d72;
+    margin-bottom: 6px;
+}
+
+.chat-stats-emoji-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chat-stats-emoji-row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: linear-gradient(
+        to right,
+        rgba(65, 142, 246, 0.18) var(--bar-pct, 0%),
+        rgba(0, 0, 0, 0.03) var(--bar-pct, 0%)
+    );
+}
+
+.chat-stats-emoji-row .chat-stats-emoji-count {
+    justify-self: end;
+}
+
+.chat-stats-emoji-glyph {
+    font-size: 20px;
+    line-height: 1;
+    /* Force colour emoji rendering on systems that have both a B/W and a
+       colour font available (some Linux setups default to monochrome). */
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
+                 "Twemoji Mozilla", sans-serif;
+}
+
+.chat-stats-emoji-count {
+    font-size: 12px;
+    color: #6d6d72;
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-stats-emoji-side-empty {
+    font-size: 12px;
+    color: #c7c7cc;
+    padding: 4px 10px;
+}
+
+/* Dark mode */
+.phone-dark-mode .chat-stats-emoji-side + .chat-stats-emoji-side {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.phone-dark-mode .chat-stats-emoji-side-label {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-emoji-row {
+    background: linear-gradient(
+        to right,
+        rgba(10, 132, 255, 0.28) var(--bar-pct, 0%),
+        rgba(255, 255, 255, 0.04) var(--bar-pct, 0%)
+    );
+}
+
+.phone-dark-mode .chat-stats-emoji-count {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-stats-emoji-side-empty {
+    color: #48484a;
 }

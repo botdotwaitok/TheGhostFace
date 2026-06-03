@@ -24,6 +24,7 @@ import { updateWidgets } from './widgets/homeWidgets.js';
 import { openHandbookApp } from './handbook/handbookApp.js';
 import { openDiscordApp } from './discord/discordApp.js';
 import { openLiteratureApp } from './literature/literatureApp.js';
+import { openTaPhoneApp } from './taPhone/taPhoneApp.js';
 import { startAppUsage, stopAppUsage } from './utils/appUsageTracker.js';
 
 // ─── State ───
@@ -148,6 +149,14 @@ const registeredApps = [];   // { id, name, icon, color, glow, onOpen, badge?, c
         link14.href = `${baseDir}/literature/literature.css`;
         document.head.appendChild(link14);
     }
+    // Ta's Phone CSS
+    if (!document.getElementById('gf-ta-phone-styles')) {
+        const link15 = document.createElement('link');
+        link15.id = 'gf-ta-phone-styles';
+        link15.rel = 'stylesheet';
+        link15.href = `${baseDir}/taPhone/taPhone.css`;
+        document.head.appendChild(link15);
+    }
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -182,6 +191,7 @@ export function openPhone() {
     updateStatusBar();
     updateGreeting();
     updateWidgets();
+    resetAppPager();
     renderApps();
     applySavedAppearance();
     
@@ -195,6 +205,14 @@ export function openPhone() {
     if (overlay) {
         requestAnimationFrame(() => overlay.classList.add('phone-visible'));
     }
+
+    // Show the changelog popup once after a version bump. Lazy-imported so a
+    // fetch / parse failure can't block the phone overlay from rendering.
+    setTimeout(() => {
+        import('./settings/changelog.js').then(m => {
+            m.maybeShowChangelogOnPhoneOpen().catch(() => {});
+        }).catch(() => {});
+    }, 400);
 }
 
 /** Close the phone overlay */
@@ -382,6 +400,16 @@ export function initPhone() {
         onOpen: () => openLiteratureApp(),
     });
 
+    // ── ta 的手机 (Ta's Phone — character mirror phone) ──
+    registerApp({
+        id: 'taphone',
+        name: 'ta 的手机',
+        icon: 'ph ph-device-mobile',
+        color: 'linear-gradient(135deg, #a78bfa, #f472b6)',
+        glow: 'rgba(167, 139, 250, 0.4)',
+        onOpen: () => openTaPhoneApp(),
+    });
+
     // ── 手账本 (HandBook) ──
     registerApp({
         id: 'handbook',
@@ -474,15 +502,106 @@ function isPhoneUnlocked() {
     return !!(s.authToken && s.discordBound !== false);
 }
 
+// ─── App Pager state ───
+// Row height = icon (66) + inner gap (6) + label line (~18) ≈ 90px.
+// Plus 16px row gap between rows. Kept in JS to avoid CSS parsing per call.
+// If icon sizing in phone.css changes, update these constants too.
+const APP_ROW_HEIGHT = 90;
+const APP_ROW_GAP = 16;
+const APP_COLS = 4;
+let _currentPageIndex = 0;
+
+function _rowsFromHeight(h) {
+    if (h <= 0) return 4;
+    return Math.max(1, Math.floor((h + APP_ROW_GAP) / (APP_ROW_HEIGHT + APP_ROW_GAP)));
+}
+
+// Measure pager height under both states (widget visible / hidden) so page 1
+// and pages 2+ can have their own row capacity (widget hides on non-first pages
+// to release the space to the grid).
+function _measureRowsPerPage() {
+    const homeScreen = document.querySelector('.phone-home-screen');
+    const pager = document.getElementById('phone_app_pager');
+    if (!homeScreen || !pager) return { rowsFirst: 4, rowsRest: 4 };
+
+    const wasNonFirst = homeScreen.classList.contains('is-non-first-page');
+    homeScreen.classList.add('is-non-first-page');
+    const hRest = pager.clientHeight;
+    homeScreen.classList.remove('is-non-first-page');
+    const hFirst = pager.clientHeight;
+    if (wasNonFirst) homeScreen.classList.add('is-non-first-page');
+
+    return { rowsFirst: _rowsFromHeight(hFirst), rowsRest: _rowsFromHeight(hRest) };
+}
+
+function _chunkAppsByPage(apps, rowsFirst, rowsRest) {
+    if (apps.length === 0) return [[]];
+    const capFirst = rowsFirst * APP_COLS;
+    const capRest = rowsRest * APP_COLS;
+    const pages = [apps.slice(0, capFirst)];
+    let i = capFirst;
+    while (i < apps.length) {
+        pages.push(apps.slice(i, i + capRest));
+        i += capRest;
+    }
+    return pages;
+}
+
+function _setActivePage(index) {
+    const homeScreen = document.querySelector('.phone-home-screen');
+    const pager = document.getElementById('phone_app_pager');
+    const dotsEl = document.getElementById('phone_app_dots');
+    if (!homeScreen || !pager || !dotsEl) return;
+    const pages = pager.querySelectorAll('.phone-app-page');
+    const dots = dotsEl.querySelectorAll('.phone-app-dot');
+    if (!pages.length) return;
+    const clamped = Math.max(0, Math.min(index, pages.length - 1));
+    _currentPageIndex = clamped;
+    pages.forEach((p, i) => p.classList.toggle('is-active', i === clamped));
+    dots.forEach((d, i) => d.classList.toggle('is-active', i === clamped));
+    homeScreen.classList.toggle('is-non-first-page', clamped > 0);
+}
+
+function resetAppPager() {
+    _currentPageIndex = 0;
+}
+
 function renderApps() {
-    const grid = document.getElementById('phone_app_grid');
-    if (!grid) return;
+    const pager = document.getElementById('phone_app_pager');
+    const dotsEl = document.getElementById('phone_app_dots');
+    if (!pager || !dotsEl) return;
 
     const unlocked = isPhoneUnlocked();
-    grid.innerHTML = registeredApps.map(app => renderAppIcon(app, unlocked)).join('');
+    const { rowsFirst, rowsRest } = _measureRowsPerPage();
+    const pages = _chunkAppsByPage(registeredApps, rowsFirst, rowsRest);
 
-    // Bind click events
-    document.querySelectorAll('.phone-app-item[data-app-id]').forEach(el => {
+    // Render pages
+    pager.innerHTML = pages
+        .map(pageApps => `
+            <div class="phone-app-page">
+                ${pageApps.map(app => renderAppIcon(app, unlocked)).join('')}
+            </div>
+        `)
+        .join('');
+
+    // Render dots (hidden via :empty when only one page)
+    dotsEl.innerHTML = pages.length > 1
+        ? pages.map((_, i) => `<button class="phone-app-dot" data-page="${i}" aria-label="第 ${i + 1} 页"></button>`).join('')
+        : '';
+
+    // Clamp current page to new range and activate
+    _setActivePage(_currentPageIndex);
+
+    // Bind dot click → switch page
+    dotsEl.querySelectorAll('.phone-app-dot').forEach(dot => {
+        dot.addEventListener('click', () => {
+            const idx = parseInt(dot.dataset.page, 10);
+            if (!Number.isNaN(idx)) _setActivePage(idx);
+        });
+    });
+
+    // Bind app click events
+    pager.querySelectorAll('.phone-app-item[data-app-id]').forEach(el => {
         el.addEventListener('click', () => {
             const appId = el.dataset.appId;
             const app = registeredApps.find(a => a.id === appId);

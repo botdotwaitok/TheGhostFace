@@ -11,11 +11,17 @@
 // chatStorage.js:264-271 for the incident that motivated it.
 
 import { atomicWriteJSON, readJSON, deleteFile, tmpNameFor } from './fileStore.js';
+import { upsertEntry as upsertIndexEntry } from './chatIndexStore.js';
 
 const LOG = '[ChatHistoryStore]';
 const FILE_PREFIX = 'ghostface_chat_';
 const FILE_EXT = '.json';
-const MAX_HISTORY_MESSAGES = 500;
+
+// No message-count cap. The 500-message limit inherited from the chat_metadata
+// era existed only to protect ST's .jsonl autosave from bloat. Self-managed
+// files live under /user/files/ and never touch the .jsonl, so the cap has no
+// remaining justification and was silently dropping history users expected to
+// keep. Summarize-for-prompt-context handles LLM token pressure separately.
 
 // ═══════════════════════════════════════════════════════════════════════
 // Internal state
@@ -29,6 +35,15 @@ let _cache = [];              // shallow copy; truth is on disk
 let _cacheReady = false;
 let _pendingPrewarm = null;   // Promise<void> currently loading (for ensureReady)
 let _writeQueue = Promise.resolve();
+
+// Hash of whatever (chatId, charId) the current _cache belongs to. Tracked
+// separately from _currentKey so that during a same-chat invalidate→prewarm
+// cycle (e.g. ST refresh, page reload) the cache can be preserved as a
+// stale-read fallback for loadHistory({ allowStale }) — keeping the UI from
+// rendering "empty chat" while prewarm is still in flight. On a real chat
+// switch the hash differs and _cache is cleared, so stale data from a
+// previous character/chat cannot leak into the new view.
+let _cacheKey = null;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Key / filename helpers
@@ -56,6 +71,32 @@ function _filenameFor(hash) {
 export async function filenameForKey(chatId, charId) {
     const hash = await _hashKey(chatId, charId);
     return _filenameFor(hash);
+}
+
+/**
+ * Synchronous filename construction from a known hash. The lookup index keeps
+ * fileHash as its primary key, so search-path code already has the hash in
+ * hand and only needs to map it back to a disk filename.
+ *
+ * @param {string} hash - 16-char hex hash matching the index key
+ * @returns {string}
+ */
+export function filenameForHash(hash) {
+    return _filenameFor(hash);
+}
+
+/**
+ * Public wrapper over the internal hash function so the chat lifecycle
+ * layer (handleChatChanged) can ask "what hash will this (chatId, charId)
+ * map to?" before invalidating, in order to pass it as preservedHash and
+ * keep the stale-read fallback alive across a same-key reload.
+ *
+ * @param {string} chatId
+ * @param {string} charId
+ * @returns {Promise<string>}
+ */
+export async function computeKeyHash(chatId, charId) {
+    return _hashKey(chatId, charId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -94,12 +135,21 @@ export async function prewarm(chatId, charId) {
             }
             _cache = Array.isArray(parsed) ? parsed : [];
             _cacheReady = true;
+            _cacheKey = nextKey.hash; // tag _cache with the key it belongs to
             console.log(`${LOG} prewarm ${nextKey.filename}: ${_cache.length} messages loaded`);
+
+            // Side-effect: refresh the lookup index used by phone chat search.
+            // Fire-and-forget so a slow/failed index write never blocks chat
+            // load; loadIndex de-dupes a same-tuple upsert into a no-op.
+            upsertIndexEntry(nextKey.hash, charId, chatId).catch(err => {
+                console.warn(`${LOG} index upsert failed (non-fatal):`, err.message);
+            });
         } catch (e) {
             console.warn(`${LOG} prewarm failed for ${nextKey.filename}; starting empty:`, e.message);
             if (_currentKey?.hash === nextKey.hash) {
                 _cache = [];
                 _cacheReady = true;
+                _cacheKey = nextKey.hash;
             }
         }
     })();
@@ -118,14 +168,32 @@ export async function ensureReady() {
 }
 
 /**
- * Drop the cache; next prewarm() re-reads from disk. Call when (chat_id,
- * char_id) changes outside the prewarm flow.
+ * Drop the cache-ready flag; next prewarm() re-reads from disk.
+ *
+ * Pass `preservedHash` (the hash that the upcoming prewarm will use) to
+ * KEEP the in-memory data when it matches `_cacheKey`. The data becomes
+ * stale-but-non-empty, so loadHistory({ allowStale }) can serve it during
+ * the race window between invalidate and the next successful prewarm.
+ * Without this, a same-chat reload (refresh / ST CHAT_CHANGED echo on the
+ * SAME chat) would briefly return [] from loadHistory and the UI would
+ * paint an empty conversation — looking exactly like "all messages were
+ * deleted" until the next prewarm finishes.
+ *
+ * Omit `preservedHash` (or pass a different hash) on a real chat switch:
+ * keeping stale data from the previous (chatId, charId) would leak the
+ * old chat's messages into the new chat's view.
+ *
+ * @param {{ preservedHash?: string }} [opts]
  */
-export function invalidate() {
+export function invalidate({ preservedHash = null } = {}) {
+    const keepCache = (preservedHash != null && _cacheKey != null && preservedHash === _cacheKey);
     _currentKey = null;
-    _cache = [];
     _cacheReady = false;
     _pendingPrewarm = null;
+    if (!keepCache) {
+        _cache = [];
+        _cacheKey = null;
+    }
 }
 
 /**
@@ -160,22 +228,35 @@ async function _recoverOrphanTmp(name) {
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Return a shallow copy of the cached history. Throws if cache is not ready,
- * forcing the caller to ensure prewarm has run — preventing the
- * "empty array displayed but data exists on disk" race.
+ * Return a shallow copy of the cached history.
  *
+ * Default behavior: throws if cache is not ready, forcing the caller to
+ * ensure prewarm has run.
+ *
+ * `allowStale: true`: if the cache is marked not-ready but still holds
+ * data tagged with a _cacheKey (i.e. invalidate was called with a matching
+ * preservedHash), return that stale snapshot instead of throwing. Reader-
+ * side callers (UI render path) want this so a race-window read returns
+ * the last-known-good messages rather than [], which the UI would paint
+ * as "this chat was wiped".
+ *
+ * Writer-side callers (saveHistory in particular) MUST NOT pass allowStale:
+ * writing back a stale slice could clobber messages that landed on disk
+ * after the cache went stale.
+ *
+ * @param {{ allowStale?: boolean }} [opts]
  * @returns {Array}
  */
-export function loadHistory() {
-    if (!_cacheReady) {
-        throw new Error('chatHistoryStore.loadHistory: cache not ready — call prewarm() first');
-    }
-    return _cache.slice();
+export function loadHistory({ allowStale = false } = {}) {
+    if (_cacheReady) return _cache.slice();
+    if (allowStale && _cacheKey != null) return _cache.slice();
+    throw new Error('chatHistoryStore.loadHistory: cache not ready — call prewarm() first');
 }
 
 /**
- * Persist a new history snapshot to disk. Trims to MAX_HISTORY_MESSAGES.
- * Serialized through an internal queue independent of ST's saveChatConditional.
+ * Persist a new history snapshot to disk. No message-count cap — full history
+ * is written as-is. Serialized through an internal queue independent of ST's
+ * saveChatConditional.
  *
  * Await semantics: the returned Promise resolves only after disk ack, never
  * sooner. Callers in async hot paths (chatMessageHandler, sendAllMessages)
@@ -190,9 +271,9 @@ export async function saveHistory(messages) {
     if (!_currentKey) {
         throw new Error('chatHistoryStore.saveHistory: no active key — call prewarm() first');
     }
-    const trimmed = messages.slice(-MAX_HISTORY_MESSAGES);
+    const snapshot = messages.slice();
     const keyAtCall = _currentKey;
-    _cache = trimmed;
+    _cache = snapshot;
 
     const next = _writeQueue
         .catch(() => {}) // isolate prior failures from later tasks
@@ -200,7 +281,7 @@ export async function saveHistory(messages) {
             // Even if the user switched chats after this save was queued, we
             // still want this write to go through against ITS original key
             // (snapshotted as keyAtCall) — those bytes ARE that file's truth.
-            await atomicWriteJSON(keyAtCall.filename, trimmed);
+            await atomicWriteJSON(keyAtCall.filename, snapshot);
         });
     _writeQueue = next;
     return next;
@@ -215,7 +296,7 @@ export async function saveHistory(messages) {
  */
 export function commitInMemory(messages) {
     if (!_currentKey) return 0;
-    _cache = messages.slice(-MAX_HISTORY_MESSAGES);
+    _cache = messages.slice();
     return _cache.length;
 }
 

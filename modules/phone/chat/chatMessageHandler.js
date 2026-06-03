@@ -34,6 +34,7 @@ import { hasAutoMessagePending, consumeAutoMessages, resetAutoMessageTimer, getP
 import { synthesizeToBlob, uploadAudioToST } from './voiceMessageService.js';
 import { buildBubbleRow, buildRecalledPeekBubble, formatChatTime, shiftBubbleMsgIndexes } from './chatHtmlBuilder.js';
 import { applyAIReactions } from './chatReactions.js';
+import { applyAIFavorites } from './chatFavorites.js';
 import { renderBuffBar } from './chatInventory.js';
 import { getPendingVoiceData, clearPendingVoiceData } from './chatVoice.js';
 import { openVoiceCall } from '../voiceCall/voiceCallUI.js';
@@ -45,7 +46,7 @@ import {
     getPendingImageData, setPendingImageData,
     getPendingReplyTo, clearPendingReplyTo, cancelReplyTo,
     updateButtonStates, rerenderMessagesArea,
-    isUserInChatApp,
+    isUserInChatApp, ensureWindowAtTail, syncWindowToTail,
 } from './chatApp.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -70,7 +71,12 @@ export async function handleCallDeclined() {
     // Snapshot idle duration BEFORE saving the missed call entry
     const idleMsSnapshot = getPhoneIdleDuration();
 
-    // Inject missed call event into chat history as a user action
+    // Inject missed call event into chat history as a user action.
+    // Snap the anchor window back to tail BEFORE the push — if we did it
+    // after, the rerender would paint the just-pushed bubble itself, and
+    // the manual append below would duplicate it. (Same pre-push pattern is
+    // used by sendAllMessages and renderResponseToDom.)
+    ensureWindowAtTail();
     const history = loadChatHistory();
     const now = new Date().toISOString();
     const missedCallEntry = {
@@ -103,6 +109,7 @@ export async function handleCallDeclined() {
             buildBubbleRow('user', '[用户拒接了来电]', null, missedIdx, null, missedCallEntry));
         scrollToBottom(true);
     }
+    syncWindowToTail();
 
     // Trigger background generation (character will react to the missed call)
     const historyBeforeSend = history.slice(0, -1);
@@ -316,6 +323,11 @@ export async function sendAllMessages() {
         payloads.push({ text: '[图片]', replyTo: null });
     }
 
+    // Pre-push: snap the anchor window back to tail before mutating history.
+    // Doing this AFTER push would trigger a rerender that paints the just-
+    // pushed bubbles, then the manual append loop below would duplicate them.
+    ensureWindowAtTail();
+
     // Load history, add user messages
     const history = loadChatHistory();
     const historyBeforeSend = [...history]; // snapshot for prompt building
@@ -376,14 +388,12 @@ export async function sendAllMessages() {
             );
         }
 
-        // Sync chat_metadata UPFRONT so the rendered msgIndex values match the
-        // trimmed view loadChatHistory() returns. Without this, long histories
-        // (past MAX_HISTORY_MESSAGES) drift the local index past the trimmed
-        // array's end and the bubble menu / reaction picker silently bail.
+        // Sync chat_metadata UPFRONT so the rendered msgIndex values match what
+        // loadChatHistory() will return. History is no longer trimmed, so
+        // storedLen == history.length in normal operation; the shift branch
+        // below remains as a defensive guard against any future re-introduction
+        // of a head-trimming cap.
         const storedLen = commitHistoryInMemory(history);
-        // If the commit trimmed entries off the head, shift every existing DOM
-        // bubble's data-msg-index so old rows still point to their messages
-        // and the new batch doesn't collide with stale indexes.
         const trimmedOff = history.length - storedLen;
         if (trimmedOff > 0) {
             shiftBubbleMsgIndexes(messagesArea, trimmedOff);
@@ -403,6 +413,9 @@ export async function sendAllMessages() {
                 buildBubbleRow('user', msg, null, histIdx, null, histEntry));
         }
     }
+    // Commit the new tail position so the next ensureWindowAtTail() correctly
+    // sees the window as up-to-date.
+    syncWindowToTail();
 
     scrollToBottom(true);
 
@@ -454,6 +467,7 @@ export function handleResponseReady(e) {
         } else if (!success) {
             const errMsg = consumeError();
             showTypingIndicator(false);
+            ensureWindowAtTail();
             const messagesArea = document.getElementById('chat_messages_area');
             if (messagesArea && errMsg) {
                 const isCancelled = errMsg === '已取消生成' || errMsg === '已取消重试';
@@ -487,6 +501,7 @@ export function handleRetryEvent(e) {
 
     if (!isUserInChatApp()) return; // No UI to show if user isn't in chat
 
+    ensureWindowAtTail();
     const messagesArea = document.getElementById('chat_messages_area');
     if (!messagesArea) return;
 
@@ -590,6 +605,17 @@ export function handleAutoMessageReady() {
 export function renderAutoMessages(messages) {
     if (!messages || messages.length === 0) return;
 
+    // Post-push entry point: autoMessage.js already pushed these to history
+    // and saved before invoking us. That means ensureWindowAtTail() sees endIdx
+    // lagging behind length-1 and rerenders — repainting the just-pushed auto
+    // messages as part of the tail-40 slice. When that happens we must skip
+    // the manual append loop to avoid duplicate bubbles.
+    if (ensureWindowAtTail()) {
+        // rerender already painted everything — nothing else to do here.
+        scrollToBottom(true);
+        return;
+    }
+
     const messagesArea = document.getElementById('chat_messages_area');
     if (!messagesArea) return;
 
@@ -616,6 +642,7 @@ export function renderAutoMessages(messages) {
             buildBubbleRow('char', text, msg.thought, nextIdx, null, histAfterSave[nextIdx]));
         nextIdx++;
     }
+    syncWindowToTail();
 
     scrollToBottom(true);
 }
@@ -652,12 +679,13 @@ function resolveReplyToIndex(idx, indexableReplyMap) {
  *   silently degrades to "no quote" in that case.
  */
 export async function renderResponseToDom(rawResponse, messagesToSend, indexableReplyMap = null) {
+    ensureWindowAtTail();
     const messagesArea = document.getElementById('chat_messages_area');
 
     try {
         // Parse JSON response — strip moments commands first so they don't break JSON.parse
         const cleanedResponse = stripMomentsCommands(rawResponse);
-        const { messages: charMessages, aiReactions } = parseApiResponse(cleanedResponse);
+        const { messages: charMessages, aiReactions, aiFavorites } = parseApiResponse(cleanedResponse);
 
         if (charMessages.length === 0) {
             throw new Error('LLM返回了空的消息数组');
@@ -691,14 +719,13 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
 
         // ─── Pre-push all char entries + commit ONCE before rendering ───
         // We push everything upfront (instead of one-per-iteration) so each
-        // bubble gets a unique, final msgIndex relative to the trimmed
-        // chat_metadata view. Per-iteration commits cap storedLen at
-        // MAX_HISTORY_MESSAGES once the history crosses the cap — so every
-        // bubble in the burst ended up with the SAME msgIndex (= last entry's
-        // index). That broke per-bubble reactions (badge always landed on the
-        // first DOM row matching that index) and per-bubble reply targeting
-        // (always quoted the last message). Pre-pushing lets us hand out
-        // distinct indexes (burstBaseIdx + i) for each bubble.
+        // bubble gets a unique, final msgIndex. The original motivation was
+        // an interaction with a head-trimming cap on chat_metadata: a per-
+        // iteration commit pinned storedLen at the cap once history crossed
+        // it, so every bubble in the burst inherited the last entry's index,
+        // breaking per-bubble reactions and reply targeting. The cap is gone,
+        // but pre-pushing remains the cleanest way to hand out distinct
+        // indexes (burstBaseIdx + i) in a single commit pass.
         const historyEntries = charMessages.map((cmsg) => {
             const entry = {
                 role: 'char',
@@ -735,9 +762,9 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
         if (trimmedOff > 0) {
             shiftBubbleMsgIndexes(messagesArea, trimmedOff);
         }
-        // Index of charMessages[0] in the trimmed chat_metadata view.
-        // If the burst itself exceeds MAX_HISTORY_MESSAGES (won't happen in
-        // practice — no LLM returns 500+ bubbles), clamp to 0.
+        // Index of charMessages[0] in the persisted history. clamp(0, …)
+        // defensively absorbs any unexpected commit return that's shorter
+        // than the burst (e.g. if a future cap is reintroduced).
         const burstBaseIdx = Math.max(0, storedLenAfterBurst - charMessages.length);
 
         for (let i = 0; i < charMessages.length; i++) {
@@ -830,6 +857,16 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
                 applyAIReactions(aiReactions, updatedHistory);
             }
         } catch (e) { console.warn('[聊天] AI reactions error:', e); }
+
+        // ─── Apply AI favorites (LLM bookmarks user messages) ───
+        // Mutates updatedHistory in place; persisted by the saveChatHistory
+        // call below. No DOM update — favorites are page-only (bubble stays
+        // clean by design), so toggling favoritedByChar needs no rerender.
+        try {
+            if (aiFavorites && aiFavorites.length > 0) {
+                applyAIFavorites(aiFavorites, updatedHistory);
+            }
+        } catch (e) { console.warn('[聊天] AI favorites error:', e); }
 
         await saveChatHistory(updatedHistory);
 
@@ -988,6 +1025,11 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
 
         renderBuffBar();
 
+        // Commit the new tail position — the bubble loop above appended fresh
+        // char messages beyond _chatWindow.endIdx, and without this the next
+        // ensureWindowAtTail() check would needlessly rerender.
+        syncWindowToTail();
+
         // ─── Auto-summarize check (fire-and-forget, non-blocking) ───
         maybeAutoSummarize().catch(e => console.warn('[聊天] 自动总结后台错误:', e));
 
@@ -1049,12 +1091,19 @@ export function parseApiResponse(raw) {
             aiReactions = parsed.reactions;
         }
 
+        // Extract optional AI favorites (LLM bookmarks targeting user messages)
+        let aiFavorites = null;
+        if (parsed.favorites && Array.isArray(parsed.favorites)) {
+            aiFavorites = parsed.favorites;
+        }
+
         if (parsed.messages && Array.isArray(parsed.messages)) {
             return {
                 messages: parsed.messages
                     .filter(m => m.text && typeof m.text === 'string')
                     .map(mapMsg),
                 aiReactions,
+                aiFavorites,
             };
         }
 
@@ -1065,6 +1114,7 @@ export function parseApiResponse(raw) {
                     .filter(m => m.text && typeof m.text === 'string')
                     .map(mapMsg),
                 aiReactions: null,
+                aiFavorites: null,
             };
         }
     }
@@ -1082,10 +1132,10 @@ export function parseApiResponse(raw) {
                 thought: '',
                 delay: i === 0 ? 0 : 1,
                 recalledContent: '',
-            })), aiReactions: null
+            })), aiReactions: null, aiFavorites: null
         };
     }
 
     // Last resort: entire response as one message
-    return { messages: [{ text: raw.trim(), thought: '', delay: 0, recalledContent: '' }], aiReactions: null };
+    return { messages: [{ text: raw.trim(), thought: '', delay: 0, recalledContent: '' }], aiReactions: null, aiFavorites: null };
 }

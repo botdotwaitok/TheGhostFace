@@ -11,27 +11,89 @@ import { isKeepAliveEnabled } from '../keepAlive.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 // Initial number of messages rendered into the chat view, and the step size
-// used by the "load earlier messages" button. Kept in one place so the
-// builder and the rerender/load-more paths stay in sync.
+// used by the "load earlier / load newer" buttons. Kept in one place so the
+// builder and the load-more / load-newer paths stay in sync.
 export const CHAT_DISPLAY_COUNT = 40;
 
-export function buildChatPage(history) {
+/**
+ * Compute the inclusive [startIdx, endIdx] anchor window for a given history
+ * length and optional jump target. Centralized so buildChatPage and the chatApp
+ * state-sync layer agree on what's actually mounted.
+ *
+ *   - No target: window hugs the tail (default chat-open behavior).
+ *   - With target: window centered on target, ±CHAT_DISPLAY_COUNT each side,
+ *     clamped to history bounds.
+ *
+ * Empty history returns the sentinel { 0, -1 }.
+ *
+ * @param {number} historyLength
+ * @param {number|null} [scrollToMsgIdx]
+ * @returns {{ startIdx: number, endIdx: number }}
+ */
+export function computeChatWindow(historyLength, scrollToMsgIdx) {
+    if (historyLength <= 0) return { startIdx: 0, endIdx: -1 };
+
+    const target = Number.isInteger(scrollToMsgIdx) && scrollToMsgIdx >= 0 && scrollToMsgIdx < historyLength
+        ? scrollToMsgIdx
+        : null;
+
+    if (target === null) {
+        const endIdx = historyLength - 1;
+        const startIdx = Math.max(0, endIdx - CHAT_DISPLAY_COUNT + 1);
+        return { startIdx, endIdx };
+    }
+
+    const startIdx = Math.max(0, target - CHAT_DISPLAY_COUNT);
+    const endIdx = Math.min(historyLength - 1, target + CHAT_DISPLAY_COUNT);
+    return { startIdx, endIdx };
+}
+
+/**
+ * Build the inner HTML of #chat_messages_area for a given [startIdx, endIdx]
+ * anchor window, including the older / newer load buttons at the appropriate
+ * boundaries. Used by buildChatPage (initial paint), _paintChatWindow
+ * (load-more / load-newer expansion), and rerenderMessagesArea (snap back to
+ * tail) so the three paths can't disagree about button placement.
+ *
+ * Returns an empty-state placeholder when the slice is empty so callers can
+ * blindly drop the result into innerHTML.
+ *
+ * @param {object[]} history
+ * @param {number} startIdx
+ * @param {number} endIdx
+ * @param {string} emptyText - placeholder shown when history is fully empty
+ * @returns {string}
+ */
+export function buildMessagesAreaInner(history, startIdx, endIdx, emptyText) {
+    const slice = endIdx >= startIdx ? history.slice(startIdx, endIdx + 1) : [];
+
+    if (slice.length === 0) {
+        return `<div class="chat-empty">
+                   <div class="chat-empty-icon">💬</div>
+                   <div class="chat-empty-text">${escHtml(emptyText)}</div>
+               </div>`;
+    }
+
+    let html = buildMessagesHtml(slice, startIdx);
+    if (startIdx > 0) {
+        html = `<div class="chat-load-more" id="chat_load_more_btn">查看更早的聊天记录</div>` + html;
+    }
+    if (endIdx < history.length - 1) {
+        html = html + `<div class="chat-load-more chat-load-newer" id="chat_load_newer_btn">查看更新的聊天记录</div>`;
+    }
+    return html;
+}
+
+export function buildChatPage(history, opts = {}) {
     const charName = getCharacterDisplayName();
 
-    // Messages HTML
-    const displayHistory = history.slice(-CHAT_DISPLAY_COUNT);
-    const hasMore = history.length > CHAT_DISPLAY_COUNT;
-
-    let messagesHtml = displayHistory.length > 0
-        ? buildMessagesHtml(displayHistory, history.length - displayHistory.length)
-        : `<div class="chat-empty">
-               <div class="chat-empty-icon">💬</div>
-               <div class="chat-empty-text">开始和你的${escHtml(charName)}聊天吧…</div>
-           </div>`;
-
-    if (hasMore && displayHistory.length > 0) {
-        messagesHtml = `<div class="chat-load-more" id="chat_load_more_btn" data-limit="${CHAT_DISPLAY_COUNT}">查看更早的聊天记录</div>` + messagesHtml;
-    }
+    const { startIdx, endIdx } = computeChatWindow(history.length, opts.scrollToMsgIdx);
+    const messagesHtml = buildMessagesAreaInner(
+        history,
+        startIdx,
+        endIdx,
+        `开始和你的${charName}聊天吧…`,
+    );
 
     return `
     <div class="chat-page" id="chat_page_root">
@@ -118,6 +180,10 @@ export function buildChatPage(history) {
                         <i class="ph ph-image-square"></i>
                         <span>背景</span>
                     </div>
+                    <div class="chat-plus-action" id="chat_plus_reroll_btn">
+                        <i class="ph ph-arrows-clockwise"></i>
+                        <span>重新生成</span>
+                    </div>
                 </div>
                 <div class="chat-menu-cancel" id="chat_plus_cancel">取消</div>
             </div>
@@ -144,17 +210,6 @@ export function buildChatPage(history) {
                 </div>
                 <div class="chat-inventory-list" id="chat_inventory_list"></div>
                 <div class="chat-inventory-active" id="chat_inventory_active"></div>
-            </div>
-        </div>
-
-        <!-- Action sheet menu (top-right ⋯) -->
-        <div class="chat-overlay-base chat-menu-overlay" id="chat_menu_overlay">
-            <div class="chat-menu-sheet">
-                <div class="chat-menu-item" id="chat_reroll_btn">重新生成</div>
-                <div class="chat-menu-item" id="chat_edit_mode_btn">编辑消息</div>
-                <div class="chat-menu-item" id="chat_delete_mode_btn">删除消息</div>
-                <div class="chat-menu-item danger" id="chat_clear_history">清空聊天记录</div>
-                <div class="chat-menu-cancel" id="chat_menu_cancel">取消</div>
             </div>
         </div>
 

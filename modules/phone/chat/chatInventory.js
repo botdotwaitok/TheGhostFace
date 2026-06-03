@@ -10,7 +10,12 @@ import {
     loadChatSummary, saveChatSummary,
     getMessagesSinceHome, saveHomeMarker,
     markMessagesSummarizedUntil,
+    pushChatSummaryHistory,
+    callPhoneLLMWithTimeout,
+    formatTranscriptLine,
+    isAnySummarizing, setManualSummarizingFlag,
 } from './chatStorage.js';
+import { openProgressCard } from './chatProgressCard.js';
 import { callPhoneLLM } from '../../api.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { saveToWorldBook } from '../../worldbook.js';
@@ -320,7 +325,7 @@ export async function handleReturnHome() {
 
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-check-circle"></i> 总结生成成功！正在发送…';
 
-            await sendSummaryAsUserMessage(summary.trim());
+            await sendSummaryAsUserMessage(summary.trim(), newMessages);
 
             if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！总结已作为消息发送，你对象正在回应～';
         }
@@ -387,6 +392,11 @@ export async function handleManualSummarize() {
         return;
     }
 
+    if (isAnySummarizing()) {
+        alert('后台正在压缩中，请稍候…');
+        return;
+    }
+
     if (!confirm(`将对 ${unsummarized.length} 条未总结消息进行压缩总结。\n这会消耗一次LLM调用，确定继续吗？`)) {
         return;
     }
@@ -394,22 +404,19 @@ export async function handleManualSummarize() {
     const charName = getCharacterInfo()?.name || '角色';
     const userName = getUserName();
 
-    // Show status in chat
-    const messagesArea = document.getElementById('chat_messages_area');
-    if (messagesArea) {
-        messagesArea.insertAdjacentHTML('beforeend',
-            `<div class="chat-retract" id="chat_summarize_status"><i class="ph ph-note"></i> 正在生成总结…</div>`);
-    }
-    scrollToBottom(true);
+    setManualSummarizingFlag(true);
+    const card = openProgressCard({ title: '压缩聊天记忆' });
 
     try {
-        // Keep recent 30 messages unsummarized (same as auto-summarize)
+        // Keep recent 30 messages unsummarized — manual summarize is meant for
+        // an explicit "compress now" user gesture and reuses a smaller floor
+        // than auto's 60, so a tap on the button actually folds something even
+        // when the chat is below the auto threshold.
         const KEEP_RECENT = 30;
         const toSummarizeCount = unsummarized.length - KEEP_RECENT;
 
         if (toSummarizeCount <= 0) {
-            const statusEl = document.getElementById('chat_summarize_status');
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-check-circle"></i> 消息数量不足，无需总结（少于30条未总结）';
+            card.complete('消息不足，无需总结');
             return;
         }
 
@@ -420,13 +427,13 @@ export async function handleManualSummarize() {
             messagesToSummarize.map(m => `${m.timestamp}|${m.role}|${(m.content || '').slice(0, 50)}`)
         );
 
-        // Build transcript
+        // Use the shared transcript formatter so manual and auto paths feed
+        // identical [YYYY-MM-DD HH:MM] context to the LLM — the rolling-summary
+        // prompt asks for concrete dates and the model can only obey if it
+        // actually sees them on each line.
         const transcript = messagesToSummarize.map(msg => {
             const role = msg.role === 'user' ? userName : charName;
-            const timeStr = msg.timestamp
-                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                : '';
-            return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
+            return formatTranscriptLine(role, msg);
         }).join('\n');
 
         const existingSummary = loadChatSummary();
@@ -443,16 +450,29 @@ export async function handleManualSummarize() {
         try { pushPromptLog('ManualSummarize System', summarySystemPrompt); } catch (e) { /* */ }
         try { pushPromptLog('ManualSummarize User', '', summaryUserPrompt); } catch (e) { /* */ }
 
-        const statusEl = document.getElementById('chat_summarize_status');
-        if (statusEl) statusEl.innerHTML = '<i class="ph ph-spinner"></i> LLM 正在压缩总结…';
+        card.setStage('鬼面正在奋笔疾书 …');
 
-        const newSummary = await callPhoneLLM(summarySystemPrompt, summaryUserPrompt, { maxTokens: 2000 });
+        const newSummary = await callPhoneLLMWithTimeout(
+            summarySystemPrompt,
+            summaryUserPrompt,
+            { maxTokens: 2000 },
+        );
 
         if (!newSummary || !newSummary.trim()) {
-            throw new Error('LLM 返回了空的总结');
+            throw new Error('鬼面返回了空的总结');
         }
 
-        // Save summary
+        card.setStage('收尾归档 …');
+
+        // Archive the previous rolling summary into history BEFORE overwriting
+        // so the "查看总结 → 历史" page keeps a paper trail. The auto path
+        // already does this; manual was missing it, which is why users only
+        // ever saw the latest version with no way to recover prior text.
+        await pushChatSummaryHistory({
+            summary: existingSummary,
+            source: 'auto',
+            msgCount: messagesToSummarize.length,
+        });
         await saveChatSummary(newSummary.trim());
 
         // Mark messages as summarized
@@ -471,11 +491,12 @@ export async function handleManualSummarize() {
         await saveChatHistory(freshHistory);
 
         console.log(`${CHAT_LOG_PREFIX} ✅ 手动总结完成: ${newSummary.trim().length} 字, 标记 ${markedCount} 条`);
-        if (statusEl) statusEl.innerHTML = `<i class="ph ph-check-circle"></i> 总结完成！压缩了 ${markedCount} 条消息 (${newSummary.trim().length} 字)`;
+        card.complete(`压缩完成，折叠 ${markedCount} 条`);
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} ❌ 手动总结失败:`, error);
-        const statusEl = document.getElementById('chat_summarize_status');
-        if (statusEl) statusEl.innerHTML = `<i class="ph ph-warning"></i> 总结失败: ${error.message}`;
+        card.fail(`压缩失败：${error.message}`);
+    } finally {
+        setManualSummarizingFlag(false);
     }
 }

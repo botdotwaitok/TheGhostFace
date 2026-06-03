@@ -5,7 +5,7 @@
 
 import { callPhoneLLM } from '../../api.js';
 import { buildChatSystemPrompt, buildChatUserPrompt, stripMomentsCommands, buildIndexableReplyMap } from './chatPromptBuilder.js';
-import { persistPendingResult, loadPersistedPendingResult, clearPersistedPendingResult } from './chatStorage.js';
+import { persistPendingResult, loadPersistedPendingResult, clearPersistedPendingResult, selectActiveHistoryForPrompt } from './chatStorage.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Config
@@ -53,9 +53,11 @@ export async function startBackgroundGeneration(messagesToSend, historyBeforeSen
     // Build prompts once (no need to rebuild on retry)
     let systemPrompt, userPrompt;
     // Snapshot of the {role, snippet} lookup table that backs [N] in the
-    // prompt. Must mirror buildChatUserPrompt's activeHistory filter so the
-    // LLM's replyToIndex resolves against the exact rows it saw.
-    const activeHistorySnapshot = (historyBeforeSend || []).filter(m => !m.summarized);
+    // prompt. Must use selectActiveHistoryForPrompt so the [N] indexes the
+    // exact same slice buildChatUserPrompt renders into chat_history — same
+    // summarized filter + same token cap, so a cap cut on a long unsummarized
+    // tail trims both sides identically.
+    const activeHistorySnapshot = selectActiveHistoryForPrompt(historyBeforeSend);
     const indexableReplyMap = buildIndexableReplyMap(activeHistorySnapshot);
     try {
         systemPrompt = await buildChatSystemPrompt();

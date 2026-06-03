@@ -1,8 +1,40 @@
 // api.js
 import { getContext, extension_settings } from '../../../../extensions.js';
-import { saveSettingsDebounced, getRequestHeaders } from '../../../../../script.js';
+import { saveSettingsDebounced, getRequestHeaders, getMaxContextSize } from '../../../../../script.js';
 import { getChatCompletionModel } from '../../../../openai.js';
+import { getTokenCountAsync } from '../../../../tokenizers.js';
 import { dlog } from './utils.js';
+
+// ─── Context size guard ───────────────────────────────────────────────
+// Mirror ST's own "Mandatory prompts exceed the context size" behavior:
+// before any LLM call hits the network we count the prompt with ST's
+// model-aware tokenizer and compare against the ST-configured max context
+// (minus reserved response length). Over-cap → toast.error + throw so the
+// caller's existing try/catch shows the standard failure UI. We never
+// silently truncate — phone / chat prompts are flat strings, not the
+// layered prompt structure ST's main loop can shed entries from.
+async function _assertPromptWithinContext(systemPrompt, userPrompt, maxTokens) {
+    const combined = `${systemPrompt || ''}\n\n${userPrompt || ''}`;
+    if (!combined.trim()) return;
+    let promptTokens;
+    try {
+        promptTokens = await getTokenCountAsync(combined);
+    } catch (e) {
+        console.warn('[GhostFace.api] token count failed, skipping context guard:', e);
+        return;
+    }
+    const maxContext = getMaxContextSize(maxTokens || undefined);
+    if (!Number.isFinite(maxContext) || maxContext <= 0) return;
+    if (promptTokens <= maxContext) return;
+    const msg = `Prompt 超出上下文上限（${promptTokens} > ${maxContext} tokens），请缩短世界书 / 聊天历史，或在 ST 设置里调高 max context`;
+    console.warn('[GhostFace.api]', msg);
+    if (typeof toastr !== 'undefined') toastr.error(msg);
+    const err = new Error(msg);
+    err.code = 'CONTEXT_OVERFLOW';
+    err.promptTokens = promptTokens;
+    err.maxContext = maxContext;
+    throw err;
+}
 
 
 // 定义模块名称常量
@@ -555,6 +587,8 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         throw new Error('自定义API配置不完整');
     }
 
+    await _assertPromptWithinContext(systemPrompt, userPrompt, maxTokens);
+
     let apiUrl = customApiConfig.url;
     if (!apiUrl.endsWith('/')) apiUrl += '/';
 
@@ -800,6 +834,10 @@ async function _callSTBackendChat(systemPrompt, userPrompt, { images = null, max
     };
     const resolvedSystem = subst(systemPrompt);
     const resolvedUser = subst(userPrompt);
+
+    // Count on the resolved text — macros like {{datetime}} / {{getvar::x}}
+    // are what actually ship to the model, so the guard should see them too.
+    await _assertPromptWithinContext(resolvedSystem, resolvedUser, maxTokens);
 
     // ── 构建 messages 数组 ──
     const messages = [];

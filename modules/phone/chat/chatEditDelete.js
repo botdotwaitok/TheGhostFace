@@ -11,6 +11,7 @@ import {
 import {
     loadChatHistory, saveChatHistory,
     deleteMessagesByIndices, updateMessageByIndex,
+    selectActiveHistoryForPrompt,
 } from './chatStorage.js';
 import { callPhoneLLM } from '../../api.js';
 import { buildChatSystemPrompt, buildChatUserPrompt, buildIndexableReplyMap } from './chatPromptBuilder.js';
@@ -45,12 +46,6 @@ export function toggleDeleteMode() {
     if (inputBar) inputBar.style.display = getIsDeleteMode() ? 'none' : '';
     if (draftArea && getIsDeleteMode()) draftArea.style.display = 'none';
     if (deleteToolbar) deleteToolbar.style.display = getIsDeleteMode() ? 'flex' : 'none';
-
-    // Update the menu button label
-    const deleteModeBtn = document.getElementById('chat_delete_mode_btn');
-    if (deleteModeBtn) {
-        deleteModeBtn.textContent = getIsDeleteMode() ? '退出删除模式' : '删除消息';
-    }
 
     if (getIsDeleteMode()) updateDeleteToolbar();
 }
@@ -150,11 +145,6 @@ export function toggleEditMode() {
 
     if (inputBar) inputBar.style.display = getIsEditMode() ? 'none' : '';
     if (draftArea && getIsEditMode()) draftArea.style.display = 'none';
-
-    const editModeBtn = document.getElementById('chat_edit_mode_btn');
-    if (editModeBtn) {
-        editModeBtn.textContent = getIsEditMode() ? '退出编辑模式' : '编辑消息';
-    }
 }
 
 /**
@@ -296,9 +286,11 @@ export async function rerollLastMessage() {
         const systemPrompt = await buildChatSystemPrompt();
         const userPrompt = buildChatUserPrompt(lastUserMessages, historyBeforeReroll);
         // Mirror backgroundGen: snapshot the [N] lookup table for replyToIndex
-        // resolution so a reroll can still produce reply-quoted bubbles.
+        // resolution so a reroll can still produce reply-quoted bubbles. Must
+        // go through selectActiveHistoryForPrompt so summarized filter + token
+        // cap stay in lockstep with the prompt builder's chat_history slice.
         const rerollReplyMap = buildIndexableReplyMap(
-            historyBeforeReroll.filter(m => !m.summarized));
+            selectActiveHistoryForPrompt(historyBeforeReroll));
 
         console.log(`${CHAT_LOG_PREFIX} Reroll: re-generating with ${lastUserMessages.length} user messages...`);
 

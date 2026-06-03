@@ -42,6 +42,14 @@ import {
     startAmbient, stopAmbient, isAmbientPlaying
 } from '../voiceCall/ambientManager.js';
 import { getTodayUsage, getAppListInfo, clearAllUsageData, stopAppUsage, startAppUsage, getUsageData, isScreenTimeEnabled } from '../utils/appUsageTracker.js';
+import { openChangelogPopup, getCurrentVersionString } from './changelog.js';
+import {
+    clearData as clearTaPhoneData,
+    clearNotes as clearTaPhoneNotes,
+    clearMessages as clearTaPhoneMessages,
+    clearBrowser as clearTaPhoneBrowser,
+    clearAlbum as clearTaPhoneAlbum,
+} from '../taPhone/taPhoneStore.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Discord Binding Section (reused in account detail page)
@@ -922,6 +930,33 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ ta 的手机 ═══ -->
+        <details class="phone-settings-section">
+            <summary class="phone-settings-section-header">
+                <span class="phone-settings-section-icon" style="background: linear-gradient(135deg, #C77DFF, #FF6B9D);"><i class="ph ph-device-mobile"></i></span>
+                <span>ta 的手机</span>
+                <i class="fa-solid fa-chevron-down phone-settings-chevron"></i>
+            </summary>
+            <div class="phone-settings-section-body">
+                <div style="padding: 8px 16px 8px; font-size: 14px; color: #8e8e93; line-height: 1.6;">
+                    选择要清空的内容，分项只清对应 app；「全部」会一并重置主屏壁纸 / appLayout / 偷看状态。
+                </div>
+
+                <div class="phone-settings-row" style="display:flex; align-items:center; gap:12px; padding: 0 16px 14px;">
+                    <select id="${P}_ta_phone_clear_target" class="phone-settings-input" style="height: 36px; flex: 1;">
+                        <option value="notes">备忘录</option>
+                        <option value="messages">消息</option>
+                        <option value="browser">浏览器</option>
+                        <option value="album">相册</option>
+                        <option value="all">全部</option>
+                    </select>
+                    <button id="${P}_ta_phone_clear_btn" class="phone-settings-btn" style="font-size:13px; padding:6px 18px; white-space:nowrap;">
+                        清空
+                    </button>
+                </div>
+            </div>
+        </details>
+
         <!-- ═══ 外观设置 ═══ -->
         <details class="phone-settings-section">
             <summary class="phone-settings-section-header">
@@ -1344,6 +1379,19 @@ export function openSettingsApp() {
             </div>
         </details>
 
+        <!-- ═══ Version Footer ═══ -->
+        <div class="phone-settings-footer" id="${P}_version_footer">
+            <div class="phone-settings-footer-brand">
+                <i class="ph ph-ghost"></i>
+                <span>TheGhostFace</span>
+            </div>
+            <div class="phone-settings-footer-version" id="${P}_version_label">v…</div>
+            <button class="phone-settings-footer-link" id="${P}_view_changelog_btn">
+                <i class="ph ph-sparkle"></i>
+                <span>查看更新说明</span>
+            </button>
+        </div>
+
     </div>
     `;
 
@@ -1357,6 +1405,13 @@ export function openSettingsApp() {
         // Bind moments events
         onClick(`${P}_save_settings_btn`, () => saveSettingsFromUI(P));
         onClick(`${P}_toggle_enable_btn`, () => toggleEnable(P));
+
+        // Version footer: fill the version label and bind the changelog link.
+        getCurrentVersionString().then(v => {
+            const label = document.getElementById(`${P}_version_label`);
+            if (label) label.textContent = v ? `v${v}` : '版本未知';
+        });
+        onClick(`${P}_view_changelog_btn`, () => openChangelogPopup());
 
         // Sliders
         bindSlider(`${P}_auto_post_chance`, `${P}_auto_post_chance_val`);
@@ -1718,6 +1773,60 @@ export function openSettingsApp() {
                 } catch (e) {
                     console.warn('[Settings] purgeExternalChatHistory failed:', e);
                     showToast('操作失败，请查看控制台');
+                }
+            });
+        }
+
+        // ═══ Ta Phone · Clear (target dropdown + clear button) ═══
+        {
+            const TARGET_MAP = {
+                notes:    { label: '备忘录', fn: clearTaPhoneNotes },
+                messages: { label: '消息',   fn: clearTaPhoneMessages },
+                browser:  { label: '浏览器', fn: clearTaPhoneBrowser },
+                album:    { label: '相册',   fn: clearTaPhoneAlbum },
+            };
+
+            onClick(`${P}_ta_phone_clear_btn`, async () => {
+                const sel = document.getElementById(`${P}_ta_phone_clear_target`);
+                const target = sel?.value || 'notes';
+
+                if (target === 'all') {
+                    const confirmed = confirm(
+                        '确定要清空当前会话里 ta 的手机所有内容吗？\n\n'
+                        + '· 备忘录 / 消息 / 浏览器 / 相册 全部清掉\n'
+                        + '· 主屏壁纸 / appLayout / 偷看状态一起重置\n'
+                        + '· 下次打开会重新弹"偷看"确认 + 重新生成\n'
+                        + '· 此操作无法撤销\n\n'
+                        + '确定要继续吗？'
+                    );
+                    if (!confirmed) return;
+                    try {
+                        await clearTaPhoneData();
+                        showToast('ta 的手机内容已清空');
+                    } catch (e) {
+                        console.warn('[Settings] clearTaPhoneData failed:', e);
+                        showToast('清空失败，请查看控制台');
+                    }
+                    return;
+                }
+
+                const entry = TARGET_MAP[target];
+                if (!entry) return;
+                const { label, fn } = entry;
+                const confirmed = confirm(
+                    `确定要清空 ta 的手机里的「${label}」吗？\n\n`
+                    + `· 仅清掉「${label}」的内容\n`
+                    + `· 其她 app 的内容、主屏壁纸、偷看状态不动\n`
+                    + `· 此操作无法撤销\n\n`
+                    + `确定要继续吗？`
+                );
+                if (!confirmed) return;
+                try {
+                    await fn();
+                    showToast(`${label}已清空`);
+                } catch (e) {
+                    console.warn(`[Settings] clear ${label} failed:`, e);
+                    showToast('清空失败，请查看控制台');
                 }
             });
         }

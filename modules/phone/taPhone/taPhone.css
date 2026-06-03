@@ -1,0 +1,1552 @@
+/* modules/phone/taPhone/taPhone.css — Ta's Phone app styles
+ * iOS 18 light language to match the host phone simulator
+ * (phone.css). The only narrative-specific element kept is the
+ * LLM-generated gradient wallpaper on the home screen. Everything
+ * else (popups, buttons, app tiles, sub-page cards) mirrors the
+ * frosted-white + iOS blue look used throughout the rest of the
+ * phone. Dark mode rides on .phone-dark-mode via token overrides.
+ *
+ * No border-left decorative bars (workspace convention) — layers
+ * and state are expressed via background tone, border highlight,
+ * and subtle elevation.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Tokens — iOS 18 palette (matches phone.css)
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+    --tp-bg-page: #f0f2f5;
+    --tp-bg-card: rgba(255, 255, 255, 0.85);
+    --tp-bg-card-solid: #ffffff;
+    --tp-bg-soft: rgba(120, 120, 128, 0.08);
+    --tp-bg-soft-strong: rgba(120, 120, 128, 0.16);
+    --tp-text-primary: #1c1c1e;
+    --tp-text-secondary: #636366;
+    --tp-text-muted: #8e8e93;
+    --tp-text-faint: #aeaeb2;
+    --tp-divider: rgba(60, 60, 67, 0.1);
+    --tp-accent: #007aff;
+    --tp-accent-hover: #0066d6;
+    --tp-accent-soft: rgba(0, 122, 255, 0.1);
+    --tp-warn: #ff3b30;
+    --tp-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+    --tp-shadow-pop: 0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+    --tp-tile-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.phone-dark-mode {
+    --tp-bg-page: #1c1c1e;
+    --tp-bg-card: rgba(44, 44, 46, 0.85);
+    --tp-bg-card-solid: #2c2c2e;
+    --tp-bg-soft: rgba(255, 255, 255, 0.07);
+    --tp-bg-soft-strong: rgba(255, 255, 255, 0.12);
+    --tp-text-primary: #f2f2f7;
+    --tp-text-secondary: #d1d1d6;
+    --tp-text-muted: #aeaeb2;
+    --tp-text-faint: #636366;
+    --tp-divider: rgba(255, 255, 255, 0.08);
+    --tp-accent: #0a84ff;
+    --tp-accent-hover: #409cff;
+    --tp-accent-soft: rgba(10, 132, 255, 0.15);
+    --tp-warn: #ff453a;
+    --tp-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.25);
+    --tp-shadow-pop: 0 4px 20px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Shared
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-title {
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--tp-text-primary);
+}
+
+.tp-fade-in {
+    animation: tp-fade-in 220ms ease-out;
+}
+@keyframes tp-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.tp-fade-out {
+    opacity: 0 !important;
+    transition: opacity 200ms ease;
+}
+
+.tp-btn {
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 11px 22px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: opacity 0.15s ease, transform 0.1s ease, background 0.15s ease !important;
+    font-family: inherit !important;
+}
+.tp-btn:active { transform: scale(0.97); }
+
+.tp-btn-primary {
+    background: var(--tp-accent) !important;
+    color: #fff !important;
+}
+.tp-btn-primary:hover { background: var(--tp-accent-hover) !important; }
+
+.tp-btn-secondary {
+    background: var(--tp-bg-soft-strong) !important;
+    color: var(--tp-text-primary) !important;
+}
+.tp-btn-secondary:hover { background: rgba(120, 120, 128, 0.24) !important; }
+.phone-dark-mode .tp-btn-secondary:hover { background: rgba(255, 255, 255, 0.18) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Peek confirm — iOS-style center dialog
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-peek-page {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+}
+
+.tp-peek-card {
+    width: 100%;
+    max-width: 320px;
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 26px 22px 20px;
+    box-shadow: var(--tp-shadow-pop);
+    text-align: center;
+}
+
+.tp-peek-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 15px;
+    margin: 0 auto 18px;
+    background: linear-gradient(180deg, #5ac8fa, #007aff);
+    color: #fff;
+    font-size: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: saturate(0.5);
+    opacity: 0.9;
+}
+
+.tp-peek-text {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--tp-text-primary);
+    margin-bottom: 22px;
+}
+
+.tp-peek-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.tp-peek-actions .tp-btn { flex: 1; min-width: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Init error (generation failed — retry / open empty shell)
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-init-error { padding: 24px 20px; }
+.tp-init-error-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 16px;
+}
+.tp-init-error-actions .tp-btn { flex: 1; min-width: 0; max-width: 160px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Loading page
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-loading-page {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.tp-loading-card {
+    width: 100%;
+    max-width: 300px;
+    text-align: center;
+    padding: 24px 20px;
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 16px;
+    box-shadow: var(--tp-shadow-card);
+}
+
+.tp-loading-spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 18px;
+    border: 2.5px solid var(--tp-bg-soft-strong);
+    border-top-color: var(--tp-accent);
+    border-radius: 50%;
+    animation: tp-spin 900ms linear infinite;
+}
+@keyframes tp-spin {
+    to { transform: rotate(360deg); }
+}
+
+.tp-loading-line {
+    font-size: 14px;
+    color: var(--tp-text-primary);
+    line-height: 1.6;
+    min-height: 44px;
+    transition: opacity 200ms ease;
+    margin-bottom: 12px;
+}
+
+.tp-loading-hint {
+    font-size: 12px;
+    color: var(--tp-text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Home screen — LLM gradient wallpaper + iOS-style app grid
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-home-page {
+    min-height: 100%;
+    height: 100%;
+    padding: 16px 20px 32px;
+    display: flex;
+    flex-direction: column;
+    color: #fff;
+    position: relative;
+}
+
+.tp-home-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px 10px;
+    padding: 8px 0 24px;
+    justify-items: center;
+}
+
+.tp-app-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease;
+    width: 74px;
+}
+.tp-app-tile:active,
+.tp-app-tile.tp-pressed {
+    transform: scale(0.9);
+}
+
+/* Match phone.css .phone-app-icon — desaturated, soft, iOS look */
+.tp-app-icon {
+    width: 66px;
+    height: 66px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    filter: saturate(0.5);
+    opacity: 0.85;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.2s ease;
+}
+.tp-app-tile:hover .tp-app-icon {
+    transform: scale(1.05);
+}
+
+.tp-app-icon i {
+    font-size: 36px !important;
+    transform: none !important;
+}
+
+/* Image-based tile icon (e.g. DBD easter egg) — match the optical size of
+   the Phosphor 36px glyph inside a 66px tile. object-fit:contain keeps the
+   logo square-safe across non-square source images. */
+.tp-app-icon-img {
+    width: 72%;
+    height: 72%;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+}
+
+/* Specificity raised to .tp-app-tile .tp-app-label so it beats ST themes
+   that override text-shadow with `body *` / `#... *` + !important.
+   Three soft layers (matches phone.css .phone-app-name) — a near-opaque
+   1px halo to anchor the glyph on light wallpapers, then two progressively
+   softer feathers so the shadow reads as haze rather than a hard stroke. */
+.tp-app-tile .tp-app-label {
+    font-size: 13px;
+    color: #fff;
+    font-weight: 500;
+    text-shadow:
+        0 0 1px rgba(0, 0, 0, 0.9),
+        0 0 3px rgba(0, 0, 0, 0.7),
+        0 1px 6px rgba(0, 0, 0, 0.45) !important;
+    text-align: center;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    line-height: 1.2;
+}
+
+/* Real (clickable) apps stay at the iOS default opacity */
+.tp-app-tile.tp-app-real .tp-app-icon { opacity: 0.92; }
+
+/* Dead tiles (virtual + DBD easter egg) sit slightly muted */
+.tp-app-tile.tp-app-dead .tp-app-icon { opacity: 0.72; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Sub-pages — shared shell
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-subpage {
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    min-height: 100%;
+    padding: 16px;
+}
+
+.tp-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tp-card {
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+    box-shadow: var(--tp-shadow-card);
+}
+
+.tp-tag {
+    display: inline-block;
+    background: var(--tp-bg-soft);
+    color: var(--tp-text-secondary);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-right: 4px;
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.tp-empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--tp-text-muted);
+}
+.tp-empty-icon {
+    font-size: 38px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+.tp-empty-text {
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* ─── Notes ─── */
+.tp-note-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+    margin-bottom: 6px;
+}
+.tp-note-body {
+    font-size: 14px;
+    color: var(--tp-text-primary);
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.tp-note-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.tp-note-time {
+    font-size: 11px;
+    color: var(--tp-text-faint);
+}
+.tp-note-tags { display: inline-block; }
+
+/* ─── Favorites ─── */
+.tp-fav-body {
+    font-size: 14px;
+    color: var(--tp-text-primary);
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.tp-fav-meta {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--tp-accent);
+}
+
+/* ─── Messages — iOS contacts list ─── */
+.tp-msg-list {
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--tp-shadow-card);
+}
+.tp-msg-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--tp-divider);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.tp-msg-row:hover { background: var(--tp-bg-soft); }
+.tp-msg-row:active { background: var(--tp-bg-soft-strong); }
+.tp-msg-row:last-child { border-bottom: none; }
+
+.tp-msg-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--tp-bg-soft-strong);
+    color: var(--tp-text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.tp-msg-main { flex: 1; min-width: 0; }
+.tp-msg-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+}
+.tp-msg-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tp-msg-tag {
+    font-size: 10px;
+    color: var(--tp-text-muted);
+    background: var(--tp-bg-soft);
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-weight: 500;
+}
+.tp-msg-preview {
+    font-size: 12px;
+    color: var(--tp-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-msg-side {
+    text-align: right;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+.tp-msg-time {
+    font-size: 11px;
+    color: var(--tp-text-faint);
+}
+.tp-msg-unread {
+    background: var(--tp-warn);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+}
+
+/* ─── Browser ─── */
+.tp-browser-section {
+    margin-bottom: 16px;
+}
+.tp-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tp-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+    padding-left: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.tp-section-title i { font-size: 12px; }
+
+.tp-browser-item {
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 11px 13px;
+    margin-bottom: 8px;
+    box-shadow: var(--tp-shadow-card);
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.tp-browser-item:hover { background: var(--tp-bg-card-solid); }
+.tp-browser-item:active { transform: scale(0.985); }
+.tp-browser-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+    margin-bottom: 3px;
+}
+.tp-browser-url {
+    font-size: 11px;
+    color: var(--tp-accent);
+    word-break: break-all;
+    margin-bottom: 4px;
+}
+.tp-browser-time {
+    font-size: 11px;
+    color: var(--tp-text-faint);
+}
+
+.tp-browser-search {
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px 13px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--tp-text-secondary);
+    font-size: 13px;
+    box-shadow: var(--tp-shadow-card);
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.tp-browser-search:hover { background: var(--tp-bg-card-solid); }
+.tp-browser-search:active { transform: scale(0.985); }
+.tp-browser-search > i:first-child {
+    color: var(--tp-text-muted);
+    font-size: 14px;
+}
+.tp-browser-query {
+    flex: 1;
+    color: var(--tp-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ─── Album ─── */
+.tp-album-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.tp-album-card {
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--tp-shadow-card);
+    display: flex;
+    gap: 12px;
+    padding: 10px;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    border: 1px solid transparent;
+}
+.tp-album-card:hover {
+    border-color: var(--tp-accent-soft);
+    box-shadow: var(--tp-shadow-pop);
+}
+.tp-album-card:active { transform: scale(0.985); }
+.tp-album-thumb {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #c7c7cc, #8e8e93);
+    color: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    flex-shrink: 0;
+    /* Slight desaturation keeps list thumbnails muted so the detail
+       canvas — same gradient at full saturation — feels like the real
+       photo by comparison. */
+    filter: saturate(0.7);
+}
+.tp-album-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.tp-album-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+}
+.tp-album-desc {
+    font-size: 13px;
+    color: var(--tp-text-secondary);
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+.tp-album-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: auto;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.tp-album-time {
+    font-size: 11px;
+    color: var(--tp-text-faint);
+}
+
+/* ─── Album · category tabs (Phase 5) ─── */
+.tp-album-tabs-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.tp-album-tabs-bar .tp-album-tabs {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+.tp-album-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    padding: 4px 2px 10px;
+    margin-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.tp-album-tabs::-webkit-scrollbar { display: none; }
+.tp-album-tabs--expanded {
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    scroll-snap-type: none;
+}
+.tp-album-tabs-toggle {
+    flex-shrink: 0;
+    margin-top: 4px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--tp-accent-soft);
+    background: var(--tp-bg-card);
+    color: var(--tp-text-secondary);
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.tp-album-tabs-toggle:hover {
+    color: var(--tp-text-primary);
+    border-color: var(--tp-accent);
+}
+.tp-album-tabs-toggle i {
+    transition: transform 0.2s ease;
+    line-height: 1;
+}
+.tp-album-tabs-toggle--expanded {
+    background: var(--tp-accent);
+    color: #ffffff;
+    border-color: var(--tp-accent);
+}
+.tp-album-tabs-toggle--expanded i {
+    transform: rotate(180deg);
+}
+.tp-album-tabs-toggle--hidden { display: none; }
+.tp-album-tab {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--tp-accent-soft);
+    background: var(--tp-bg-card);
+    color: var(--tp-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+}
+.tp-album-tab i { font-size: 13px; line-height: 1; }
+.tp-album-tab:hover {
+    color: var(--tp-text-primary);
+    border-color: var(--tp-accent);
+}
+.tp-album-tab--active {
+    background: var(--tp-accent);
+    color: #ffffff;
+    border-color: var(--tp-accent);
+}
+.tp-album-tab--active:hover {
+    background: var(--tp-accent-hover);
+    color: #ffffff;
+    border-color: var(--tp-accent-hover);
+}
+
+/* ─── Album · pager ─── */
+.tp-album-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 16px 0 4px;
+    color: var(--tp-text-secondary);
+}
+.tp-album-pager-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--tp-accent-soft);
+    background: var(--tp-bg-card);
+    color: var(--tp-text-secondary);
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.tp-album-pager-btn:hover:not(:disabled) {
+    color: var(--tp-text-primary);
+    border-color: var(--tp-accent);
+}
+.tp-album-pager-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.tp-album-pager-info {
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 48px;
+    text-align: center;
+}
+
+/* ─── Album · thumbnail badges (Phase 5) ─── */
+.tp-album-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #ffffff;
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tp-album-badge--icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+.tp-album-badge--video {
+    height: 18px;
+    padding: 0 6px 0 5px;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+.tp-album-badge--video i { font-size: 9px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Message detail — iMessage-style conversation flow (Phase 2)
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-msg-detail {
+    min-height: 100%;
+    height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    flex-direction: column;
+}
+
+.tp-msg-detail-stream {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    scroll-behavior: smooth;
+}
+
+/* Time divider — centered, small, muted. Inserted between bubbles when
+   the conversation goes quiet for > 60min, or at the start. */
+.tp-msg-time-divider {
+    align-self: center;
+    font-size: 11px;
+    color: var(--tp-text-muted);
+    padding: 8px 12px 4px;
+    text-align: center;
+    letter-spacing: 0.2px;
+}
+
+/* Cluster = run of consecutive bubbles from the same speaker without a
+   time divider between them. Self → right column, other → left column. */
+.tp-msg-cluster {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 6px;
+    max-width: 78%;
+}
+.tp-msg-cluster-self  { align-self: flex-end;   align-items: flex-end; }
+.tp-msg-cluster-other { align-self: flex-start; align-items: flex-start; }
+
+.tp-msg-bubble {
+    font-size: 14.5px;
+    line-height: 1.45;
+    padding: 8px 12px;
+    border-radius: 18px;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    box-shadow: var(--tp-shadow-card);
+    max-width: 100%;
+}
+
+.tp-msg-cluster-self .tp-msg-bubble {
+    background: var(--tp-accent);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+}
+.tp-msg-cluster-self .tp-msg-bubble:not(:last-child) {
+    border-bottom-right-radius: 18px;
+}
+.tp-msg-cluster-self .tp-msg-bubble:first-child:not(:last-child) {
+    border-bottom-right-radius: 18px;
+}
+
+.tp-msg-cluster-other .tp-msg-bubble {
+    background: var(--tp-bg-card-solid);
+    color: var(--tp-text-primary);
+    border-bottom-left-radius: 6px;
+}
+.tp-msg-cluster-other .tp-msg-bubble:not(:last-child) {
+    border-bottom-left-radius: 18px;
+}
+
+/* Detail loading / error — share the loading-page shell so a quick LLM
+   roundtrip still feels visually consistent with the first-time gen. */
+.tp-detail-loading,
+.tp-detail-error {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+}
+.tp-detail-loading .tp-loading-card { width: 100%; max-width: 280px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Header action button — slots into #phone_app_viewport_actions
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-header-btn {
+    background: transparent !important;
+    border: none !important;
+    color: var(--tp-accent) !important;
+    font-size: 22px !important;
+    padding: 4px 8px !important;
+    cursor: pointer !important;
+    line-height: 1 !important;
+    border-radius: 8px !important;
+    transition: background 0.15s ease, opacity 0.15s ease !important;
+    font-family: inherit !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.tp-header-btn:hover { background: var(--tp-accent-soft) !important; }
+.tp-header-btn:active { transform: scale(0.92); }
+.tp-header-btn.tp-header-btn-busy { opacity: 0.6; pointer-events: none; }
+
+.tp-header-btn i { font-size: 22px !important; }
+
+/* Spinner glyph reused for "re-write more" busy state */
+.tp-spin {
+    display: inline-block;
+    animation: tp-spin 900ms linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Browser detail pages — 5 templates (Phase 3)
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-browser-detail {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    padding: 14px;
+    overflow-y: auto;
+}
+
+/* Shared url footer at the bottom of every fake-page card */
+.tp-browser-detail-url {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--tp-divider);
+    font-size: 11px;
+    color: var(--tp-text-faint);
+    word-break: break-all;
+    font-family: -apple-system-monospace, ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+/* ─── XHS (小红书) ────────────────────────────────────────────────── */
+.tp-xhs-card {
+    background: var(--tp-bg-card-solid);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: var(--tp-shadow-card);
+}
+.tp-xhs-author {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.tp-xhs-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff6b9d, #ff2442);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.tp-xhs-author-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tp-xhs-follow {
+    background: #ff2442 !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 999px !important;
+    padding: 4px 14px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    cursor: default !important;
+    opacity: 0.85 !important;
+    font-family: inherit !important;
+}
+.tp-xhs-image-placeholder {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: linear-gradient(135deg, #ffe5ec, #ffd1dc);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ff7aa2;
+    gap: 6px;
+}
+.tp-xhs-image-placeholder i { font-size: 36px; }
+.tp-xhs-image-placeholder span { font-size: 11px; letter-spacing: 0.4px; }
+.tp-xhs-title {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--tp-text-primary);
+    margin-bottom: 10px;
+}
+.tp-xhs-content {
+    font-size: 14px;
+    color: var(--tp-text-primary);
+    line-height: 1.65;
+}
+.tp-xhs-content p { margin: 0 0 8px; }
+.tp-xhs-content p:last-child { margin-bottom: 0; }
+.tp-xhs-interactions {
+    display: flex;
+    gap: 18px;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--tp-divider);
+    color: var(--tp-text-muted);
+    font-size: 13px;
+}
+.tp-xhs-interactions span { display: inline-flex; align-items: center; gap: 4px; }
+.tp-xhs-interactions i { font-size: 16px; }
+
+/* ─── Zhihu (知乎) ────────────────────────────────────────────────── */
+.tp-zhihu-card {
+    background: var(--tp-bg-card-solid);
+    border-radius: 14px;
+    padding: 18px 16px;
+    box-shadow: var(--tp-shadow-card);
+}
+.tp-zhihu-question {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.45;
+    color: var(--tp-text-primary);
+    margin-bottom: 14px;
+}
+.tp-zhihu-author {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--tp-divider);
+}
+.tp-zhihu-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #0084ff;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+.tp-zhihu-author-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+}
+.tp-zhihu-content {
+    font-size: 15px;
+    color: var(--tp-text-primary);
+    line-height: 1.75;
+}
+.tp-zhihu-content p { margin: 0 0 12px; }
+.tp-zhihu-content p:last-child { margin-bottom: 0; }
+
+/* ─── Bilibili (B站) ──────────────────────────────────────────────── */
+.tp-bili-card {
+    background: var(--tp-bg-card-solid);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: var(--tp-shadow-card);
+}
+.tp-bili-cover {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(135deg, #00a1d6, #fb7299);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+.tp-bili-cover i { font-size: 48px; color: #fff; opacity: 0.92; }
+.tp-bili-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--tp-text-primary);
+    margin-bottom: 10px;
+}
+.tp-bili-up {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #fb7299;
+    margin-bottom: 8px;
+}
+.tp-bili-up i { font-size: 16px; }
+.tp-bili-stats {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tp-divider);
+    color: var(--tp-text-muted);
+    font-size: 12px;
+}
+.tp-bili-stats span { display: inline-flex; align-items: center; gap: 3px; }
+.tp-bili-stats i { font-size: 14px; }
+.tp-bili-description {
+    font-size: 13.5px;
+    color: var(--tp-text-secondary);
+    line-height: 1.7;
+}
+.tp-bili-description p { margin: 0 0 8px; }
+.tp-bili-description p:last-child { margin-bottom: 0; }
+
+/* ─── Generic article (通用网页) ──────────────────────────────────── */
+.tp-article-card {
+    background: var(--tp-bg-card-solid);
+    border-radius: 14px;
+    padding: 18px 16px;
+    box-shadow: var(--tp-shadow-card);
+}
+.tp-article-title {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--tp-text-primary);
+    margin-bottom: 8px;
+}
+.tp-article-author {
+    font-size: 12px;
+    color: var(--tp-text-muted);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tp-divider);
+}
+.tp-article-content {
+    font-size: 14.5px;
+    color: var(--tp-text-primary);
+    line-height: 1.75;
+}
+.tp-article-content p { margin: 0 0 12px; }
+.tp-article-content p:last-child { margin-bottom: 0; }
+
+/* ─── Search page (百度风格搜索结果) ─────────────────────────────── */
+.tp-search-page {
+    padding-top: 0;
+}
+.tp-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--tp-bg-card-solid);
+    border: 1px solid var(--tp-divider);
+    border-radius: 999px;
+    padding: 9px 16px;
+    margin-bottom: 16px;
+    color: var(--tp-text-muted);
+}
+.tp-search-bar i { font-size: 16px; }
+.tp-search-query {
+    font-size: 14px;
+    color: var(--tp-text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.tp-search-result {
+    background: transparent;
+    padding: 4px 2px 14px;
+    border-bottom: 1px solid var(--tp-divider);
+}
+.tp-search-result:last-child { border-bottom: none; }
+.tp-search-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2440b3;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    cursor: default;
+}
+.phone-dark-mode .tp-search-title { color: #6b8cff; }
+
+.tp-search-url {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 11px;
+}
+.tp-search-source {
+    color: #2e8540;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.phone-dark-mode .tp-search-source { color: #6fcf6f; }
+.tp-search-link {
+    color: var(--tp-text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+.tp-search-snippet {
+    font-size: 13px;
+    color: var(--tp-text-secondary);
+    line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Error
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-error-page {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Detail-page empty state — Phase 3.5 prompt card. Replaces the old
+   "auto-LLM on cache miss" loading screen for messages / browser /
+   search detail pages. Points the user back to the list's top ⟳ button.
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-detail-empty {
+    min-height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+}
+.tp-empty-prompt-card {
+    width: 100%;
+    max-width: 320px;
+    background: var(--tp-bg-card);
+    border: 1px solid var(--tp-divider);
+    border-radius: 14px;
+    padding: 28px 22px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+.tp-empty-prompt-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: var(--tp-accent-soft);
+    color: var(--tp-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+}
+.tp-empty-prompt-icon i { font-size: 28px; }
+.tp-empty-prompt-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tp-text-primary);
+    margin-bottom: 10px;
+}
+.tp-empty-prompt-body {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--tp-text-secondary);
+}
+.tp-empty-prompt-body i {
+    color: var(--tp-accent);
+    font-size: 15px;
+    vertical-align: -2px;
+    margin: 0 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Photo detail — big-card reframe of an album entry (Phase 4, no LLM).
+   Canvas at the top is a gradient placeholder hashed from the title so
+   the same photo always looks the same on re-entry. Sticky bottom nav
+   wraps around via openAlbumDetail(album, i±1).
+   ═══════════════════════════════════════════════════════════════════════ */
+.tp-photo-detail {
+    min-height: 100%;
+    height: 100%;
+    background: var(--tp-bg-page);
+    color: var(--tp-text-primary);
+    display: flex;
+    flex-direction: column;
+}
+
+.tp-photo-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 12px;
+}
+
+.tp-photo-canvas {
+    width: 100%;
+    min-height: 280px;
+    padding: 22px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Inset shadow gives the gradient a subtle "framed photo" depth
+       without needing a border. */
+    box-shadow: inset 0 -1px 24px rgba(0, 0, 0, 0.12);
+    position: relative;
+    overflow: hidden;
+}
+/* Old-data fallback — when visualDescription is missing, show the
+   image icon we used before. New entries replace this with the
+   .tp-photo-canvas-text card below. */
+.tp-photo-canvas-icon {
+    font-size: 72px;
+    color: rgba(255, 255, 255, 0.7);
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
+}
+/* The "image stand-in" — a frosted-glass card pinned over the gradient
+   that holds the LLM's detailed visual description. Compensates for the
+   lack of real image generation. Stays readable on any palette pair
+   because the translucent bg lifts contrast independent of hue. */
+.tp-photo-canvas-text {
+    max-width: 100%;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--tp-text-primary);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.1);
+    white-space: pre-wrap;
+    word-break: break-word;
+    /* Slight italic + letter spacing to feel like a caption / placard,
+       not a paragraph of body text. */
+    font-style: italic;
+    letter-spacing: 0.1px;
+}
+.phone-dark-mode .tp-photo-canvas-text {
+    background: rgba(28, 28, 30, 0.7);
+    color: var(--tp-text-primary);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+}
+
+/* Detail-page mediaType badge (Phase 5/3). Pinned top-right of the
+   gradient canvas; same dark frosted pill as the thumb badge but bigger
+   to read at full canvas scale. Only predefined types (自拍/截屏/视频)
+   get a badge here — custom album surfaces in the body row below. */
+.tp-photo-canvas-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #ffffff;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    z-index: 1;
+}
+.tp-photo-canvas-badge--icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    font-size: 16px;
+}
+.tp-photo-canvas-badge--video {
+    height: 26px;
+    padding: 0 10px 0 8px;
+    border-radius: 13px;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+}
+.tp-photo-canvas-badge--video i { font-size: 11px; }
+
+/* Custom album name surfaced under the title — predefined types skip
+   this since the canvas badge already names them. Subtle, not loud. */
+.tp-photo-album-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--tp-text-secondary);
+    align-self: flex-start;
+}
+.tp-photo-album-name i { font-size: 14px; color: var(--tp-text-muted); }
+
+.tp-photo-body {
+    padding: 22px 22px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.tp-photo-title {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--tp-text-primary);
+    letter-spacing: -0.3px;
+    word-break: break-word;
+}
+
+.tp-photo-desc {
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--tp-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.tp-photo-exif {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 10px 12px;
+    background: var(--tp-bg-soft);
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--tp-text-secondary);
+    letter-spacing: 0.1px;
+}
+.tp-photo-exif-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.tp-photo-exif-item i {
+    font-size: 14px;
+    color: var(--tp-text-muted);
+}
+
+.tp-photo-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+.tp-photo-tags .tp-tag {
+    font-size: 12px;
+    padding: 3px 10px;
+    margin: 0;
+}
+
+/* Sticky bottom nav — stays put while the body scrolls. Two equal pills
+   with a soft frosted backdrop so they read against any gradient that
+   might bleed up under them on short content. */
+.tp-photo-nav {
+    flex-shrink: 0;
+    display: flex;
+    gap: 10px;
+    padding: 10px 16px 14px;
+    background: var(--tp-bg-card);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--tp-divider);
+}
+.tp-photo-nav-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 14px !important;
+    border: none !important;
+    border-radius: 12px !important;
+    background: var(--tp-bg-soft-strong) !important;
+    color: var(--tp-text-primary) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, transform 0.1s ease !important;
+}
+.tp-photo-nav-btn:hover {
+    background: rgba(120, 120, 128, 0.24) !important;
+}
+.phone-dark-mode .tp-photo-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.18) !important;
+}
+.tp-photo-nav-btn:active { transform: scale(0.97); }
+.tp-photo-nav-btn i {
+    font-size: 18px;
+    color: var(--tp-text-primary);
+}

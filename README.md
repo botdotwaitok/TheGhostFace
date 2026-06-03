@@ -2,11 +2,6 @@
 
 > 记忆引擎 + 虚拟手机
 
-## 版本更新
-
-### V4.3.4
-- many css/UX advance for chat app
-
 ## 这是什么
 
 给 SillyTavern 的全栈式扩展，三件套：

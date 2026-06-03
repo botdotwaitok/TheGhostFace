@@ -5,6 +5,8 @@ import { getContext, extension_settings } from '../../../../extensions.js';
 import { this_chid, characters, getRequestHeaders, saveSettingsDebounced } from '../../../../../script.js';
 import { getSettings } from './phone/moments/state.js';
 import { resolveProxyUrl, needsProxy } from './phone/utils/corsProxyFetch.js';
+import { buildPhoneChatExportPayload } from './phone/chat/chatImportExport.js';
+import { ensureChatHistoryReady } from './phone/chat/chatStorage.js';
 
 // 使用全局 logger（如果可用），否则回退到 console
 const logger = {
@@ -278,6 +280,33 @@ async function exportChatHistory() {
 }
 
 /**
+ * 准备鬼面手机自管聊天文件的备份快照。
+ * Returns null when there's no current chat or no phone messages — autobackup
+ * treats that as a silent skip (a freshly-created character with no phone
+ * activity is a normal state, not an error condition).
+ *
+ * Lives under /user/files/, separate from the ST .jsonl that exportChatHistory()
+ * dumps, so without this entry the autobackup leaves phone chats behind on a
+ * reinstall / migration.
+ *
+ * @returns {Promise<{blob: Blob, filename: string} | null>}
+ */
+async function exportPhoneChatForBackup() {
+    try {
+        await ensureChatHistoryReady();
+    } catch (e) {
+        // Non-fatal: external-storage prewarm hiccup. buildPhoneChatExportPayload
+        // will fall back to chat_metadata or return null on an empty cache, and
+        // the backup pipeline must never crash on an unreadable phone chat.
+        logger.warn('📦 ensureChatHistoryReady before phone-chat backup failed (continuing):', e?.message || e);
+    }
+    const result = await buildPhoneChatExportPayload({ filenameStyle: 'backup' });
+    if (!result) return null;
+    const blob = new Blob([result.json], { type: 'application/json;charset=utf-8' });
+    return { blob, filename: result.filename };
+}
+
+/**
  * 触发浏览器下载
  */
 function triggerDownload(blob, filename) {
@@ -318,6 +347,20 @@ async function downloadBackupLocal() {
     } catch (error) {
         logger.error('📦 下载聊天记录失败:', error);
         toastr.error(`聊天记录下载失败: ${error.message}`);
+    }
+
+    // 鬼面手机聊天下载 (self-managed /user/files/ JSON — empty chat = silent skip)
+    try {
+        const phone = await exportPhoneChatForBackup();
+        if (phone) {
+            triggerDownload(phone.blob, phone.filename);
+            logger.info(`📦 手机聊天下载完成: ${phone.filename}`);
+        } else {
+            logger.info('📦 手机聊天为空，跳过手机聊天备份');
+        }
+    } catch (error) {
+        logger.error('📦 下载手机聊天失败:', error);
+        toastr.error(`手机聊天下载失败: ${error.message}`);
     }
 }
 
@@ -363,6 +406,24 @@ async function sendBackupEmail() {
         logger.error('📧 准备聊天记录附件失败:', error);
     }
 
+    // 鬼面手机聊天附件 (silent skip when no phone messages exist)
+    let phoneChatAttached = false;
+    try {
+        const phone = await exportPhoneChatForBackup();
+        if (phone) {
+            const base64 = arrayBufferToBase64(await phone.blob.arrayBuffer());
+            attachments.push({
+                filename: phone.filename,
+                content: base64,
+                encoding: 'base64',
+                contentType: 'application/json',
+            });
+            phoneChatAttached = true;
+        }
+    } catch (error) {
+        logger.error('📧 准备手机聊天附件失败:', error);
+    }
+
     if (attachments.length === 0) {
         toastr.error('📧 没有可发送的附件');
         return;
@@ -391,7 +452,7 @@ async function sendBackupEmail() {
                 },
                 to: smtp.to,
                 subject: `【鬼面备份】${charName} - ${timestamp}`,
-                text: `你好！\n\n这是鬼面自动备份的角色卡和聊天记录：${charName}\n备份时间：${timestamp}\n\n附件包含角色卡的 ${formats.join(' 和 ')} 格式备份及聊天记录 (JSONL)。\n\n—— 鬼面 👻`,
+                text: `你好！\n\n这是鬼面自动备份的角色卡和聊天记录：${charName}\n备份时间：${timestamp}\n\n附件包含角色卡的 ${formats.join(' 和 ')} 格式备份、ST 主聊天记录 (JSONL)${phoneChatAttached ? '，以及鬼面手机聊天记录 (JSON)' : ''}。\n\n—— 鬼面 👻`,
                 attachments,
             }),
         });
