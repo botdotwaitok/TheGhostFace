@@ -18,6 +18,8 @@ import {
     saveChatHistory,
     loadChatSummary,
     saveChatSummary,
+    loadChatSummaryHistory,
+    replaceChatSummaryHistory,
     loadHomeMarker,
     saveHomeMarker,
     loadSTSyncMarker,
@@ -28,12 +30,24 @@ import {
     getCharacterDisplayName,
     getCharacterId,
     ensureChatHistoryReady,
+    prepareImportedFloors,
 } from './chatStorage.js';
+import * as chatHistoryStore from '../../storage/chatHistoryStore.js';
 import { getContext } from '../../../../../../extensions.js';
 
 const LOG = '[ChatImportExport]';
 const FORMAT_ID = 'ghostface-chat-export';
-const FORMAT_VERSION = 1;
+// v2 added optional `data.nextFloor` so round-tripping an export keeps the
+// floor-id counter aligned with the messages it covers. v1 files import fine
+// — the loader synthesizes a counter from the message data (see
+// prepareImportedFloors in chatStorage).
+// v3 (Phase 1.5c) adds `data.summaryHistory` so backup/restore stops silently
+// dropping the archived rolling-summary entries — this also unblocks the
+// upcoming "delete summary entry & restore covered messages" flow, which
+// would be useless if a backup-restore wiped the entries it points at.
+// v1 / v2 imports still work; the loader treats missing summaryHistory as
+// "leave the current chat's summary history untouched".
+const FORMAT_VERSION = 3;
 
 let _backHandler = null;
 let _fileInputEl = null;
@@ -214,8 +228,17 @@ export async function buildPhoneChatExportPayload({ filenameStyle = 'manual' } =
         data: {
             history,
             summary: loadChatSummary() || '',
+            // Archived rolling-summary entries. Carries floorRange on Phase 2+
+            // entries so a restored backup can still drive the "delete &
+            // restore covered messages" flow against its imported history.
+            summaryHistory: loadChatSummaryHistory(),
             homeMarker: loadHomeMarker() || '',
             stSyncMarker: loadSTSyncMarker() || '',
+            // Persisted floor-id counter — read from whichever backend is
+            // active right now. Importing this export later restores the
+            // exact same next-id boundary, so floorRange references inside
+            // summary history keep matching live messages.
+            nextFloor: _readActiveNextFloor(history),
         },
     };
 
@@ -348,11 +371,24 @@ function _validatePayload(p) {
 
 async function _applyImport(payload) {
     const d = payload.data;
+    // Stamp floor ids on every imported message + seed the counter BEFORE
+    // saveChatHistory queues the write — saveHistory snapshots the counter
+    // at queue time, so a later setNextFloor would land on the next write
+    // instead of this one. Works for both backends; see prepareImportedFloors.
+    await prepareImportedFloors(d.history, typeof d.nextFloor === 'number' ? d.nextFloor : undefined);
     // Order matters mildly: history first (largest write, most likely to fail),
     // then markers / summary / nickname. If history save throws we abort before
     // touching anything else, leaving the chat in its prior state.
     await saveChatHistory(d.history);
     await saveChatSummary(typeof d.summary === 'string' ? d.summary : '');
+    // summaryHistory is only present in v3+ exports. For v1/v2 imports we leave
+    // the destination's current summaryHistory untouched — preserves the user's
+    // existing summary archive instead of silently wiping it on a partial-shape
+    // backup. Explicit `null` / `[]` from a v3 export still replaces (overwrite
+    // semantics match the rest of _applyImport's contract).
+    if (Array.isArray(d.summaryHistory)) {
+        await replaceChatSummaryHistory(d.summaryHistory);
+    }
     await saveHomeMarker(typeof d.homeMarker === 'string' ? d.homeMarker : '');
     await saveSTSyncMarker(typeof d.stSyncMarker === 'string' ? d.stSyncMarker : '');
 
@@ -360,6 +396,27 @@ async function _applyImport(payload) {
     if (typeof nickname === 'string') {
         saveCharacterNickname(nickname);
     }
+}
+
+// Pulls the active backend's persisted next-floor counter for export, with a
+// max(history.floor)+1 fallback for the moment between schema upgrade and the
+// first assignNextFloor call (counter not yet materialized on disk).
+function _readActiveNextFloor(history) {
+    let counter = chatHistoryStore.getNextFloor();
+    if (typeof counter !== 'number') {
+        // Either chat_metadata backend, or self-managed cache not primed.
+        // Either way, derive from message data as a best-effort.
+        if (Array.isArray(history) && history.length > 0) {
+            let max = -1;
+            for (const m of history) {
+                if (typeof m?.floor === 'number' && m.floor > max) max = m.floor;
+            }
+            counter = max + 1;
+        } else {
+            counter = 0;
+        }
+    }
+    return counter;
 }
 
 // ───────────────────────────────────────────────────────────────────────

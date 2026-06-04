@@ -18,8 +18,12 @@ import {
     loadChatSummaryHistory,
     pushChatSummaryHistory,
     removeChatSummaryHistoryByIndices,
+    deleteChatSummaryHistoryEntry,
+    unmarkRangeAsSummarized,
     ensureChatHistoryReady,
+    loadReturnHomeArchive,
 } from './chatStorage.js';
+import { openChatReturnHomeArchivePage } from './chatReturnHomeArchive.js';
 
 const LOG = '[ChatSummaryView]';
 
@@ -86,6 +90,12 @@ function _buildPage() {
                 <div id="chat_summary_history_slot"></div>
             </div>
 
+            <div class="chat-summary-section">
+                <div class="chat-summary-section-title">回家档案</div>
+                <div class="chat-summary-section-hint">"我已回家"送往主聊的内容会在这里留档，可单独删除并恢复对应消息</div>
+                <div id="chat_summary_rh_archive_slot"></div>
+            </div>
+
         </div>
     </div>`;
 }
@@ -100,6 +110,7 @@ const HISTORY_PREVIEW_CLAMP = 120;  // chars shown collapsed for each history ro
 function _render() {
     _renderCurrent();
     _renderHistory();
+    _renderReturnHomeArchiveEntry();
 }
 
 function _renderCurrent() {
@@ -180,6 +191,23 @@ function selectedAsArray() {
     return [..._selected];
 }
 
+// Renders the 回家档案 entry-card at the bottom of the summary view. Always
+// shows a count badge so the user knows whether there's anything to open;
+// always clickable (the archive page handles its own empty state).
+function _renderReturnHomeArchiveEntry() {
+    const slot = document.getElementById('chat_summary_rh_archive_slot');
+    if (!slot) return;
+    const count = loadReturnHomeArchive().length;
+    slot.innerHTML = `
+        <button class="chat-summary-rh-entry" data-action="open-rh-archive" type="button">
+            <span class="chat-summary-rh-entry-icon"><i class="ph ph-house-line"></i></span>
+            <span class="chat-summary-rh-entry-label">查看回家档案</span>
+            <span class="chat-summary-rh-entry-count">${count}</span>
+            <span class="chat-summary-rh-entry-chevron"><i class="ph ph-caret-right"></i></span>
+        </button>
+    `;
+}
+
 function _buildHistoryRowHtml(entry, originalIdx) {
     const time = _formatTimestamp(entry.savedAt);
     const sourceLabel = entry.source === 'manual' ? '手动编辑' : '自动总结';
@@ -189,8 +217,18 @@ function _buildHistoryRowHtml(entry, originalIdx) {
     const preview = _clamp(text, HISTORY_PREVIEW_CLAMP);
     const isClamped = preview !== text;
     const msgCountLabel = (typeof entry.msgCount === 'number' && entry.source === 'auto')
-        ? ` · 折叠 ${entry.msgCount} 条消息`
+        ? ` · 折叠 ${entry.msgCount} 条`
         : '';
+    // Floor range tells the user (and Phase 3 delete-and-restore) which
+    // message slice this summary folded. Entries written before Phase 2
+    // (or via the editor's version-overwrite path) have no floorRange, so
+    // they render as "范围未知（旧版总结）" and lose the restore semantics
+    // — they can still be deleted, but no messages will become re-visible.
+    const fr = _entryFloorRange(entry);
+    const rangeLabel = fr
+        ? ` · 覆盖 #${fr.from}-#${fr.to}`
+        : ' · 范围未知（旧版总结）';
+    const deleteAriaLabel = fr ? '删除并恢复' : '删除这条历史';
 
     const isSelected = _selected.has(originalIdx);
     const selectionClass = _selectionMode ? 'selection-mode' : '';
@@ -198,12 +236,14 @@ function _buildHistoryRowHtml(entry, originalIdx) {
 
     // In selection mode the checkbox sits where the delete button would live;
     // in normal mode the delete button is always available so single-row removal
-    // doesn't require entering multi-select first.
+    // doesn't require entering multi-select first. Same button handles both
+    // "delete & restore" (entry has floorRange) and bare "delete" (no range)
+    // paths — the branching lives in _deleteSingle to keep the markup uniform.
     const trailingControl = _selectionMode
         ? `<span class="chat-summary-history-check" data-action="toggle-select" data-history-idx="${originalIdx}">
                 <i class="ph ${isSelected ? 'ph-check-circle-fill' : 'ph-circle'}"></i>
            </span>`
-        : `<button class="chat-summary-history-delete-btn" data-action="delete-one" data-history-idx="${originalIdx}" aria-label="删除这条历史">
+        : `<button class="chat-summary-history-delete-btn" data-action="delete-one" data-history-idx="${originalIdx}" aria-label="${deleteAriaLabel}">
                 <i class="ph ph-trash"></i>
            </button>`;
 
@@ -211,7 +251,7 @@ function _buildHistoryRowHtml(entry, originalIdx) {
         <div class="chat-summary-history-row ${selectionClass} ${selectedClass}" data-expanded="0" data-history-idx="${originalIdx}">
             <div class="chat-summary-history-header">
                 <span class="chat-summary-history-source ${sourceClass}">${sourceLabel}</span>
-                <span class="chat-summary-history-time">${escHtml(time)}${msgCountLabel}</span>
+                <span class="chat-summary-history-time">${escHtml(time)}${msgCountLabel}${rangeLabel}</span>
                 ${trailingControl}
             </div>
             <div class="chat-summary-history-body">${escHtml(preview)}</div>
@@ -261,6 +301,12 @@ function _bindEvents() {
             _exitSelectionMode();
         } else if (action === 'selection-delete') {
             await _deleteSelected();
+        } else if (action === 'open-rh-archive') {
+            // Tear down the summary-view back handler before transitioning so
+            // pressing Back on the archive page doesn't fall through to here
+            // and try to render against an unmounted DOM.
+            _unregisterBackHandler();
+            openChatReturnHomeArchivePage();
         }
     });
 
@@ -348,10 +394,40 @@ function _refreshSelectionToolbar() {
 }
 
 async function _deleteSingle(idx) {
-    if (!confirm('删除这条历史总结？\n\n删除后无法恢复。')) return;
+    const history = loadChatSummaryHistory();
+    const entry = history[idx];
+    if (!entry) return; // index may have shifted between render and click
+    const fr = _entryFloorRange(entry);
+
+    // Two confirm-and-feedback paths share the same delete primitive:
+    //   - With floorRange: warn the user that the covered slice will become
+    //     prompt-visible again, then unmark + show a persistent toast so the
+    //     "this is the prompt-affecting move you just made" feedback is
+    //     impossible to miss.
+    //   - Without floorRange (旧版总结 / 编辑覆盖产生的快照): bare delete
+    //     with a short toast — there's no message slice to put back, so the
+    //     heavy toast would be noise.
+    const span = fr ? (fr.to - fr.from + 1) : 0;
+    const confirmMsg = fr
+        ? `删除并恢复这条总结？\n\n这条总结覆盖了 #${fr.from} - #${fr.to}（共 ${span} 条消息）。\n` +
+          `删除后，这些消息会重新进入LLM的可见范围（再次进入聊天后生效）。\n\n操作不可撤销。`
+        : '删除这条历史总结？\n\n这是旧版/编辑覆盖产生的快照，没有记录覆盖范围，无法自动恢复消息可见性。\n\n操作不可撤销。';
+    if (!confirm(confirmMsg)) return;
+
     try {
-        const removed = await removeChatSummaryHistoryByIndices([idx]);
-        if (removed > 0 && typeof toastr !== 'undefined') {
+        const removed = await deleteChatSummaryHistoryEntry(idx);
+        if (!removed) {
+            if (typeof toastr !== 'undefined') toastr.warning('未找到该条历史，可能已被其它操作删除');
+            _renderHistory();
+            return;
+        }
+        if (fr) {
+            const restoredCount = await unmarkRangeAsSummarized(fr.from, fr.to);
+            _showPersistentToast(
+                `已删除该条总结，第 #${fr.from} - #${fr.to} 共 ${restoredCount} 条消息已取消隐藏。\n` +
+                `再次进入聊天后即生效。`,
+            );
+        } else if (typeof toastr !== 'undefined') {
             toastr.success('已删除', '', { timeOut: 1200 });
         }
     } catch (e) {
@@ -432,6 +508,34 @@ function _clamp(text, max) {
     const cps = [...text];
     if (cps.length <= max) return text;
     return cps.slice(0, max).join('') + '…';
+}
+
+// Returns a normalized { from, to } if the entry carries a valid floorRange,
+// otherwise null. Centralized so the row markup and the delete handler agree
+// on what "has a usable range" means — guards against partial / malformed
+// objects (e.g. from a corrupted import) silently becoming NaN ranges.
+function _entryFloorRange(entry) {
+    const fr = entry?.floorRange;
+    if (!fr) return null;
+    const { from, to } = fr;
+    if (typeof from !== 'number' || typeof to !== 'number') return null;
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    if (from > to) return null;
+    return { from, to };
+}
+
+// Persistent toastr for prompt-affecting actions (delete & restore, etc.):
+// the user MUST notice this happened, so we disable auto-timeout and require
+// an explicit dismiss. extendedTimeOut: 0 is what actually makes it sticky —
+// timeOut: 0 alone still lets it fade out on mouseover/mouseout.
+function _showPersistentToast(message, title = '已删除并恢复') {
+    if (typeof toastr === 'undefined') return;
+    toastr.success(message, title, {
+        timeOut: 0,
+        extendedTimeOut: 0,
+        closeButton: true,
+        tapToDismiss: true,
+    });
 }
 
 function _formatTimestamp(iso) {
@@ -580,9 +684,13 @@ async function _attemptSave() {
         }
         // User chose to overwrite — archive the LATEST disk content (not the
         // stale baseline), otherwise the auto-summary they just saw would be lost.
+        // No floorRange: this is a version-overwrite snapshot, not a fold
+        // operation, so there's no message slice to "restore" if the user later
+        // deletes the entry. Phase 3 will hide the delete button on these.
         await pushChatSummaryHistory({ summary: currentOnDisk, source: 'auto' });
     } else {
         // Normal path: archive the previous version before overwriting.
+        // floorRange intentionally omitted — see comment in the branch above.
         await pushChatSummaryHistory({ summary: _editBaseline, source: 'manual' });
     }
 

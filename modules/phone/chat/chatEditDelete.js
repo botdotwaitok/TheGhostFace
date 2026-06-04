@@ -109,15 +109,12 @@ export async function handleBatchDelete() {
     // Re-render the messages area
     rerenderMessagesArea();
 
-    // Re-apply delete mode
-    if (getIsDeleteMode()) {
-        const messagesArea = document.getElementById('chat_messages_area');
-        messagesArea?.querySelectorAll('.chat-bubble-row[data-msg-index]').forEach(row => {
-            row.classList.add('delete-mode');
-        });
-    }
-
-    updateDeleteToolbar();
+    // Exit delete mode so click / long-press work again right after deletion.
+    // Without this, freshly painted rows keep .delete-mode and the click
+    // delegate falls into the delete-mode branch (silently toggling selection)
+    // while long-press stays gated by isDeleteMode — looks like the bubble
+    // became inert. Mirrors rerollLastMessage's exit pattern.
+    if (getIsDeleteMode()) toggleDeleteMode();
 }
 
 // ═══════════════════════════════════════════════════════════════════════

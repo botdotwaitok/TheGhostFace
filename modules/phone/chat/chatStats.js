@@ -9,7 +9,7 @@ import { openAppInViewport } from '../phoneController.js';
 import { fetchFile } from '../../storage/fileStore.js';
 import { filenameForHash } from '../../storage/chatHistoryStore.js';
 import { getEntriesForChar, removeEntry } from '../../storage/chatIndexStore.js';
-import { loadChatHistory, loadChatSummary, SUMMARIZE_PROMPT_TOKEN_THRESHOLD } from './chatStorage.js';
+import { loadChatHistory, SUMMARIZE_PROMPT_TOKEN_THRESHOLD } from './chatStorage.js';
 import { openChatSettingsPage } from './chatSettings.js';
 import { buildChatSystemPrompt, buildChatUserPrompt } from './chatPromptBuilder.js';
 import { countTokensFromPromptData } from '../../core.js';
@@ -52,12 +52,20 @@ function _buildPage() {
                         <span class="chat-stats-summary-value" id="chat_stats_next_round_tokens">估算中…</span>
                     </div>
                     <div class="chat-stats-summary-row chat-stats-summary-subrow">
-                        <span class="chat-stats-summary-sublabel">└ 短信未总结</span>
-                        <span class="chat-stats-summary-value" id="chat_stats_phone_unsummarized_tokens">—</span>
+                        <span class="chat-stats-summary-sublabel">└ 系统Prompt</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_system_prompt_tokens">—</span>
                     </div>
                     <div class="chat-stats-summary-row chat-stats-summary-subrow">
-                        <span class="chat-stats-summary-sublabel">└ 当前滚动总结</span>
-                        <span class="chat-stats-summary-value" id="chat_stats_phone_summary_tokens">—</span>
+                        <span class="chat-stats-summary-sublabel">└ ST本体剧情前提</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_st_chat_tokens">—</span>
+                    </div>
+                    <div class="chat-stats-summary-row chat-stats-summary-subrow">
+                        <span class="chat-stats-summary-sublabel">└ 世界书可见内容</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_world_info_tokens">—</span>
+                    </div>
+                    <div class="chat-stats-summary-row chat-stats-summary-subrow">
+                        <span class="chat-stats-summary-sublabel">└ 可见短信消息</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_visible_msgs_tokens">—</span>
                     </div>
                     <div class="chat-stats-summary-row chat-stats-summary-subrow">
                         <span class="chat-stats-summary-sublabel">└ 自动总结阈值</span>
@@ -79,6 +87,10 @@ function _buildPage() {
                     <div class="chat-stats-summary-row">
                         <span class="chat-stats-summary-label">文件总大小</span>
                         <span class="chat-stats-summary-value" id="chat_stats_total_bytes">—</span>
+                    </div>
+                    <div class="chat-stats-summary-row chat-stats-summary-subrow">
+                        <span class="chat-stats-summary-sublabel">└ 当前 chat 楼层</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_floor_extent">—</span>
                     </div>
                 </div>
             </div>
@@ -168,8 +180,16 @@ async function _runScan() {
     const charId = _getCurrentCharId();
     if (!charId) {
         _setText('chat_stats_next_round_tokens', '—');
+        _setText('chat_stats_floor_extent', '—');
         return;
     }
+
+    // Floor extent is per-chat (the counter lives alongside the chat data),
+    // unlike the surrounding totals which aggregate across every chat file
+    // for the character — we surface it here so the user can sanity-check
+    // the floor system without bouncing to the 隐藏 page. Sync read against
+    // the in-memory cache; instantaneous, no token gating needed.
+    _renderFloorExtent();
 
     // Fire-and-forget next-round token estimate so it runs in parallel with the
     // on-disk scan. Both write to disjoint DOM nodes; the same _runToken cancels
@@ -236,12 +256,21 @@ async function _runScan() {
         let hidden = 0;
         try {
             const parsed = JSON.parse(text);
-            if (Array.isArray(parsed)) {
-                msgs = parsed.length;
+            // Two on-disk shapes coexist:
+            //   - legacy bare array (pre-floor era)
+            //   - schema v2 wrapper { schema, messages, nextFloor, ... }
+            // chatHistoryStore.prewarm handles both; we have to mirror that
+            // dispatch here because chatStats reads raw bytes via fetchFile
+            // to aggregate across every file for the character.
+            const arr = Array.isArray(parsed)
+                ? parsed
+                : (parsed && Array.isArray(parsed.messages) ? parsed.messages : null);
+            if (arr) {
+                msgs = arr.length;
                 // `summarized: true` is the chat app's "hidden floor" — these
                 // messages still render in the bubble list but are dropped from
                 // the prompt history sent to the LLM (see chatStorage.js).
-                for (const m of parsed) {
+                for (const m of arr) {
                     if (!m) continue;
                     if (m.summarized === true) hidden++;
                     talkative.ingest(m);
@@ -294,39 +323,70 @@ async function _estimateNextRoundTokens(myToken) {
     if (myToken !== _runToken) return;
 
     const fullText = systemPrompt + '\n' + userPrompt;
-    const count = countTokensFromPromptData(fullText);
+    const totalTokens = countTokensFromPromptData(fullText);
     if (myToken !== _runToken) return;
 
-    _setText('chat_stats_next_round_tokens', _fmtNumber(count));
+    _setText('chat_stats_next_round_tokens', _fmtNumber(totalTokens));
 
-    // ── Phone-chat sub-breakdown ──
-    // Show how much of the prompt comes from phone-chat content specifically,
-    // split between "still in-flight messages" (drive the auto-summarize
-    // trigger) and "current rolling summary" (the compressed view the LLM
-    // actually reads). Counting just the raw content stream is a deliberate
-    // approximation — it's the number users care about ("how much of my
-    // chatting am I sending") rather than the wrapped role-prefixed form.
-    const unsummarizedContent = history
-        .filter(m => !m.summarized)
-        .map(m => m.content || '')
-        .join('\n');
-    const unsummarizedTokens = unsummarizedContent
-        ? countTokensFromPromptData(unsummarizedContent)
-        : 0;
+    // Sub-breakdown — pull the three known blocks out of the already-built
+    // prompt strings (so what we count is exactly what gets sent). "系统Prompt"
+    // is everything else (foundation, char card, persona, output_format, plus
+    // chat_summary / time_context / current user message / moments / buffs —
+    // all the bits that aren't one of the three named blocks).
+    const stBlock = _extractTagBlock(userPrompt, 'storyline_context');
+    const wiBlock = _extractTagBlock(systemPrompt, 'world_info');
+    const chBlock = _extractTagBlock(userPrompt, 'chat_history');
+
+    const stTokens = stBlock ? countTokensFromPromptData(stBlock) : 0;
+    if (myToken !== _runToken) return;
+    const wiTokens = wiBlock ? countTokensFromPromptData(wiBlock) : 0;
+    if (myToken !== _runToken) return;
+    const chTokens = chBlock ? countTokensFromPromptData(chBlock) : 0;
     if (myToken !== _runToken) return;
 
-    const summaryText = loadChatSummary() || '';
-    const summaryTokens = summaryText ? countTokensFromPromptData(summaryText) : 0;
-    if (myToken !== _runToken) return;
+    // Tokenizer boundaries between blocks can make the sub-counts not perfectly
+    // additive; clamp at 0 just in case.
+    const sysTokens = Math.max(0, totalTokens - stTokens - wiTokens - chTokens);
 
-    _setText('chat_stats_phone_unsummarized_tokens', _fmtNumber(unsummarizedTokens));
-    _setText('chat_stats_phone_summary_tokens', _fmtNumber(summaryTokens));
+    _setText('chat_stats_system_prompt_tokens', _fmtNumber(sysTokens));
+    _setText('chat_stats_st_chat_tokens', _fmtNumber(stTokens));
+    _setText('chat_stats_world_info_tokens', _fmtNumber(wiTokens));
+    _setText('chat_stats_visible_msgs_tokens', _fmtNumber(chTokens));
 
     // Flag the threshold row red/green so it reads at a glance.
     const thresholdEl = document.getElementById('chat_stats_summarize_threshold');
     if (thresholdEl) {
-        thresholdEl.classList.toggle('over-threshold', count >= SUMMARIZE_PROMPT_TOKEN_THRESHOLD);
+        thresholdEl.classList.toggle('over-threshold', totalTokens >= SUMMARIZE_PROMPT_TOKEN_THRESHOLD);
     }
+}
+
+function _extractTagBlock(text, tag) {
+    const re = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, 'i');
+    const m = text.match(re);
+    return m ? m[0] : '';
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Floor extent (per-chat, sync)
+// ───────────────────────────────────────────────────────────────────────
+
+// Walks the live history for the *current* chat and reports the floor
+// extent — "#min - #max" if at least one message carries a floor, "—"
+// otherwise. Pre-migration chats with no floor field on any message land
+// in the "—" branch instead of misleadingly showing "#0 - #0".
+function _renderFloorExtent() {
+    const history = loadChatHistory();
+    let min = null, max = null;
+    for (const msg of history) {
+        if (typeof msg?.floor !== 'number') continue;
+        if (min === null || msg.floor < min) min = msg.floor;
+        if (max === null || msg.floor > max) max = msg.floor;
+    }
+    if (min === null || max === null) {
+        _setText('chat_stats_floor_extent', '—');
+        return;
+    }
+    _setText('chat_stats_floor_extent', `#${min} - #${max}`);
 }
 
 // ───────────────────────────────────────────────────────────────────────

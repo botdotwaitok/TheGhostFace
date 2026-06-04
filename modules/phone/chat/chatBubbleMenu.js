@@ -65,8 +65,13 @@ const _actions = {
 //                 that need state-dependent wording (e.g. "收藏" / "取消收藏").
 //   icon        — Phosphor icon class suffix (e.g. 'ph-copy')
 //   destructive — true paints the item in iOS system red (used for Delete)
+//   readonly    — true makes the row a non-interactive info display
+//                 (no hover/active feedback, dimmed look, handler is skipped).
+//                 Still dismisses the menu on tap so the user can close by
+//                 tapping the row.
 //   visible     — (ctx) => boolean; hide the row when false
-//   handler     — (ctx) => void; invoked after the menu dismisses
+//   handler     — (ctx) => void; invoked after the menu dismisses (skipped
+//                 for readonly rows)
 //
 // ctx shape (built fresh in buildActionMenu + at click time):
 //   { msg, msgIndex, isLastMessage, isLastCharMessage }
@@ -116,6 +121,22 @@ const ACTION_ITEMS = [
         destructive: true,
         visible: () => true,
         handler: (ctx) => { _actions.onDelete?.(ctx.msgIndex); },
+    },
+    {
+        // Floor id display — pure info row, no action. Helps the user look up
+        // which floor a specific bubble carries so they can plug it into the
+        // 隐藏页 from/to inputs (or just sanity-check the floor system).
+        // Pre-migration messages may not have a floor; we still show the row
+        // so the menu shape stays consistent, but the label degrades to
+        // "楼层 未分配".
+        id: 'floor',
+        label: (ctx) => typeof ctx.msg?.floor === 'number'
+            ? `楼层 #${ctx.msg.floor}`
+            : '楼层 未分配',
+        icon: 'ph-hash',
+        readonly: true,
+        visible: () => true,
+        handler: () => {},
     },
 ];
 
@@ -535,12 +556,12 @@ function buildActionMenu(msgIndex, isDark) {
     overlay.dataset.msgIndex = String(msgIndex);
     if (isDark) overlay.classList.add('dark');
     overlay.innerHTML = items.map(item => {
-        const cls = item.destructive
-            ? 'chat-bubble-menu-item destructive'
-            : 'chat-bubble-menu-item';
+        const classes = ['chat-bubble-menu-item'];
+        if (item.destructive) classes.push('destructive');
+        if (item.readonly) classes.push('readonly');
         const label = typeof item.label === 'function' ? item.label(ctx) : item.label;
         return `
-            <button class="${cls}" data-action="${item.id}">
+            <button class="${classes.join(' ')}" data-action="${item.id}">
                 <span class="chat-bubble-menu-label">${label}</span>
                 <i class="ph ${item.icon} chat-bubble-menu-icon"></i>
             </button>`;
@@ -560,6 +581,9 @@ function buildActionMenu(msgIndex, isDark) {
         // (e.g. an AI reply landed mid-press).
         const freshCtx = buildMenuContext(msgIndex);
         dismissBubbleMenu();
+        // Readonly rows (e.g. the floor-id display) tap-to-dismiss but never
+        // invoke a handler — they exist purely as info banners.
+        if (item.readonly) return;
         try { item.handler(freshCtx); }
         catch (err) { console.warn('[BubbleMenu] action failed:', id, err); }
     });

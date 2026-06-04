@@ -1505,6 +1505,32 @@
     color: #ff453a;
 }
 
+/* Readonly info row (e.g. the floor-id display) — looks tappable enough not
+   to feel broken, but visually dimmed and without hover/active feedback so
+   the user can tell it isn't an action. */
+.chat-bubble-menu-item.readonly,
+.chat-bubble-menu-item.readonly .chat-bubble-menu-icon {
+    color: rgba(60, 60, 67, 0.55);
+    cursor: default;
+    font-size: 13px;
+}
+
+.chat-bubble-menu-item.readonly .chat-bubble-menu-icon {
+    font-size: 15px;
+}
+
+.chat-bubble-menu-item.readonly:hover,
+.chat-bubble-menu-item.readonly:active {
+    background: transparent;
+}
+
+.phone-dark-mode .chat-bubble-menu-item.readonly,
+.phone-dark-mode .chat-bubble-menu-item.readonly .chat-bubble-menu-icon,
+.chat-bubble-menu.dark .chat-bubble-menu-item.readonly,
+.chat-bubble-menu.dark .chat-bubble-menu-item.readonly .chat-bubble-menu-icon {
+    color: rgba(235, 235, 245, 0.45);
+}
+
 /* ─── Reaction Badge (floats over the bubble's top corner, iMessage-style) ─── */
 .chat-reaction-badge {
     position: absolute;
@@ -4055,63 +4081,165 @@ input#chat_search_input.chat-search-input {
     margin: 0 2px;
 }
 
-.chat-hide-range-slider {
-    width: 100%;
-    margin: 4px 0;
-    accent-color: #007aff;
-    cursor: pointer;
-}
-
-.chat-hide-range-slider:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.chat-hide-range-readout {
+/* ── Hidden-segment pills ── */
+.chat-hide-range-segments {
     display: flex;
-    justify-content: space-between;
     flex-wrap: wrap;
-    gap: 8px;
-    font-size: 12px;
-    color: rgba(0, 0, 0, 0.65);
-}
-
-.chat-hide-range-readout strong {
-    color: rgba(0, 0, 0, 0.9);
-    font-weight: 600;
-    margin: 0 2px;
-}
-
-.chat-hide-range-token-cell {
-    text-align: right;
-}
-
-.chat-hide-range-apply-btn {
-    display: inline-flex;
     align-items: center;
     gap: 6px;
-    width: 100%;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
+    padding: 6px 0;
+    border-top: 1px dashed rgba(0, 0, 0, 0.08);
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.chat-hide-range-segments-label {
+    color: rgba(0, 0, 0, 0.55);
+    flex-shrink: 0;
+}
+
+.chat-hide-range-segments-list {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.chat-hide-range-segments-list.has-segments {
+    color: inherit;
+}
+
+.chat-hide-range-segment-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    background: rgba(255, 149, 0, 0.12);
+    border: 1px solid rgba(255, 149, 0, 0.4) !important;
+    border-radius: 999px;
+    color: #b25800;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.chat-hide-range-segment-pill:hover {
+    background: rgba(255, 149, 0, 0.22);
+}
+
+/* ── from/to input row ── */
+.chat-hide-range-input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.chat-hide-range-input-cell {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-hide-range-input-label {
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.65);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.chat-hide-range-input-sep {
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.55);
+    flex-shrink: 0;
+}
+
+.chat-hide-range-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px !important;
+    background: #fff !important;
+    border: 1px solid rgba(0, 0, 0, 0.18) !important;
+    border-radius: 8px !important;
+    color: rgba(0, 0, 0, 0.85) !important;
+    font-size: 14px !important;
+    font-family: inherit !important;
+    box-sizing: border-box;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.chat-hide-range-input::-webkit-outer-spin-button,
+.chat-hide-range-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.chat-hide-range-input:focus {
+    border-color: rgba(0, 122, 255, 0.5) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12) !important;
+}
+
+.chat-hide-range-input-hint {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.55);
+    line-height: 1.4;
+}
+
+.chat-hide-range-input-hint.error {
+    color: #d93025;
+}
+
+/* ── Action button row (hide / restore) ── */
+.chat-hide-range-action-row {
+    display: flex;
+    gap: 10px;
+}
+
+.chat-hide-range-action-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    padding: 10px 14px;
-    background: rgba(0, 122, 255, 0.1);
-    border: 1px solid rgba(0, 122, 255, 0.45);
+    gap: 6px;
+    padding: 10px 12px;
     border-radius: 10px;
-    color: #007aff;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s;
 }
 
-.chat-hide-range-apply-btn:hover:not(:disabled) {
+.chat-hide-range-action-btn.hide {
+    background: rgba(255, 149, 0, 0.1);
+    border: 1px solid rgba(255, 149, 0, 0.45);
+    color: #b25800;
+}
+
+.chat-hide-range-action-btn.hide:hover:not(:disabled) {
+    background: rgba(255, 149, 0, 0.2);
+}
+
+.chat-hide-range-action-btn.restore {
+    background: rgba(0, 122, 255, 0.1);
+    border: 1px solid rgba(0, 122, 255, 0.45);
+    color: #007aff;
+}
+
+.chat-hide-range-action-btn.restore:hover:not(:disabled) {
     background: rgba(0, 122, 255, 0.18);
 }
 
-.chat-hide-range-apply-btn:disabled {
+.chat-hide-range-action-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
 
+/* ── Dark mode for the redesigned card ── */
 .phone-dark-mode .chat-hide-range-card {
     background: rgba(10, 132, 255, 0.08);
     border-color: rgba(10, 132, 255, 0.35);
@@ -4121,22 +4249,76 @@ input#chat_search_input.chat-search-input {
     color: rgba(255, 255, 255, 0.65);
 }
 
-.phone-dark-mode .chat-hide-range-meta strong,
-.phone-dark-mode .chat-hide-range-readout strong {
+.phone-dark-mode .chat-hide-range-meta strong {
     color: rgba(255, 255, 255, 0.92);
 }
 
-.phone-dark-mode .chat-hide-range-readout {
+.phone-dark-mode .chat-hide-range-segments {
+    color: rgba(255, 255, 255, 0.65);
+    border-top-color: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.phone-dark-mode .chat-hide-range-segments-label,
+.phone-dark-mode .chat-hide-range-segments-list {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.phone-dark-mode .chat-hide-range-segments-list.has-segments {
+    color: inherit;
+}
+
+.phone-dark-mode .chat-hide-range-segment-pill {
+    background: rgba(255, 159, 10, 0.18);
+    border-color: rgba(255, 159, 10, 0.55) !important;
+    color: #ffb74d;
+}
+
+.phone-dark-mode .chat-hide-range-segment-pill:hover {
+    background: rgba(255, 159, 10, 0.28);
+}
+
+.phone-dark-mode .chat-hide-range-input-label,
+.phone-dark-mode .chat-hide-range-input-sep {
     color: rgba(255, 255, 255, 0.7);
 }
 
-.phone-dark-mode .chat-hide-range-apply-btn {
+.phone-dark-mode .chat-hide-range-input {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.phone-dark-mode .chat-hide-range-input:focus {
+    border-color: rgba(10, 132, 255, 0.55) !important;
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2) !important;
+}
+
+.phone-dark-mode .chat-hide-range-input-hint {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.phone-dark-mode .chat-hide-range-input-hint.error {
+    color: #ff6b5e;
+}
+
+.phone-dark-mode .chat-hide-range-action-btn.hide {
+    background: rgba(255, 159, 10, 0.14);
+    border-color: rgba(255, 159, 10, 0.55);
+    color: #ffb74d;
+}
+
+.phone-dark-mode .chat-hide-range-action-btn.hide:hover:not(:disabled) {
+    background: rgba(255, 159, 10, 0.26);
+}
+
+.phone-dark-mode .chat-hide-range-action-btn.restore {
     background: rgba(10, 132, 255, 0.14);
     border-color: rgba(10, 132, 255, 0.55);
     color: #0a84ff;
 }
 
-.phone-dark-mode .chat-hide-range-apply-btn:hover:not(:disabled) {
+.phone-dark-mode .chat-hide-range-action-btn.restore:hover:not(:disabled) {
     background: rgba(10, 132, 255, 0.24);
 }
 
@@ -4342,6 +4524,229 @@ input#chat_search_input.chat-search-input {
 
 .phone-dark-mode .chat-summary-empty-hint {
     color: #6d6d72;
+}
+
+/* ─── Return-home archive: entry card on the summary view page ─── */
+
+.chat-summary-rh-entry {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+    background: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    font-size: 14px;
+    color: #1c1c1e;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.chat-summary-rh-entry:hover {
+    background: rgba(0, 122, 255, 0.06);
+}
+
+.chat-summary-rh-entry-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(0, 122, 255, 0.12);
+    color: #007AFF;
+    flex-shrink: 0;
+}
+
+.chat-summary-rh-entry-icon i {
+    font-size: 16px;
+}
+
+.chat-summary-rh-entry-label {
+    flex: 1;
+    font-weight: 500;
+}
+
+.chat-summary-rh-entry-count {
+    min-width: 22px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #e5e5ea;
+    color: #6d6d72;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.chat-summary-rh-entry-chevron {
+    display: inline-flex;
+    color: #c7c7cc;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.phone-dark-mode .chat-summary-rh-entry {
+    background: #1c1c1e;
+    box-shadow: none;
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-summary-rh-entry:hover {
+    background: rgba(10, 132, 255, 0.12);
+}
+
+.phone-dark-mode .chat-summary-rh-entry-icon {
+    background: rgba(10, 132, 255, 0.18);
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-summary-rh-entry-count {
+    background: #2c2c2e;
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-summary-rh-entry-chevron {
+    color: #48484a;
+}
+
+/* ─── Return-home archive: list rows on the archive page ─── */
+
+.chat-rh-archive-row {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.chat-rh-archive-row:last-child {
+    margin-bottom: 0;
+}
+
+.chat-rh-archive-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.chat-rh-archive-mode {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.chat-rh-archive-mode.summary {
+    background: rgba(0, 122, 255, 0.12);
+    color: #007AFF;
+}
+
+.chat-rh-archive-mode.raw {
+    background: rgba(52, 199, 89, 0.16);
+    color: #1f7a3a;
+}
+
+.chat-rh-archive-time {
+    font-size: 12px;
+    color: #8e8e93;
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-rh-archive-meta {
+    font-size: 12px;
+    color: #6d6d72;
+    margin-bottom: 8px;
+}
+
+.chat-rh-archive-body {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #1c1c1e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-rh-archive-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.chat-rh-archive-count {
+    font-size: 11px;
+    color: #c7c7cc;
+}
+
+.chat-rh-archive-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #c7c7cc;
+    cursor: pointer;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+    padding: 0;
+}
+
+.chat-rh-archive-delete-btn:hover {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+}
+
+.chat-rh-archive-delete-btn i {
+    font-size: 16px;
+}
+
+.phone-dark-mode .chat-rh-archive-row {
+    background: #1c1c1e;
+    box-shadow: none;
+}
+
+.phone-dark-mode .chat-rh-archive-body {
+    color: #f2f2f7;
+}
+
+.phone-dark-mode .chat-rh-archive-time,
+.phone-dark-mode .chat-rh-archive-meta {
+    color: #98989d;
+}
+
+.phone-dark-mode .chat-rh-archive-count {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-rh-archive-mode.summary {
+    background: rgba(10, 132, 255, 0.18);
+    color: #0a84ff;
+}
+
+.phone-dark-mode .chat-rh-archive-mode.raw {
+    background: rgba(48, 209, 88, 0.2);
+    color: #30d158;
+}
+
+.phone-dark-mode .chat-rh-archive-delete-btn {
+    color: #48484a;
+}
+
+.phone-dark-mode .chat-rh-archive-delete-btn:hover {
+    background: rgba(255, 69, 58, 0.18);
+    color: #ff453a;
 }
 
 /* ─── Edit sub-page (full-screen textarea + header action buttons) ─── */

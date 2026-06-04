@@ -16,6 +16,39 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 const RELEASE_NOTES = {
+    '4.4.2': {
+        date: '2026-06-04',
+        sections: [
+            {
+                title: '本次主题：每条消息有了"楼层号"',
+                items: [
+                    '<strong>每条短信现在有一个稳定的楼层号</strong>：嗯对抄袭了酒馆的逻辑。长按任意一条消息，菜单底部能看到 "楼层 #N"。',
+                    '<em>楼层号只在聊天设置页面里出现，聊天气泡上看不到，LLM 也不会读到。</em>',
+                ],
+            },
+            {
+                title: '新增',
+                items: [
+                    '<strong>总结后悔了可以撤回</strong>：进设置 → 查看总结 → 历史总结，每条总结现在显示"覆盖 #X-#Y"，点删除按钮会同时把这段消息恢复成 LLM 可见。再次进入聊天后生效。',
+                    '<strong>手动隐藏改成"按范围"</strong> —— 「手动调节可见消息」页换了新 UI：输入"从 #几 到 #几"就能精准隐藏 / 恢复中间任意一段消息。比之前只能"从最旧开始隐藏前 N 条"灵活很多。',
+                    '<strong>聊天统计加了"楼层"和"prompt 分解"</strong> —— 统计页能直接看到当前聊天的楼层范围；下一轮 token 估算从原来的两栏，拆成了「系统Prompt（包括角色卡和人设等信息） / ST本体剧情前提 / 世界书可见内容 / 可见短信消息」四栏，能更清楚地看出 token 都花在哪儿。',
+                ],
+            },
+            {
+                title: '修复',
+                items: [
+                    '<strong>聊天备份不再丢"历史总结"</strong>：之前导出 JSON 备份时一直忘记带上"历史总结快照"，恢复后只剩当前总结。这次修了，并且导出格式升到 v3：备份现在带完整的总结历史 + 楼层计数器，恢复后可以无缝接着用"删除总结 → 恢复消息"功能。<br><em>旧版的 v1 / v2 备份依然能正常导入，不会因为格式升级而失效。</em>',
+                ],
+            },
+            {
+                title: '一些说明',
+                items: [
+                    '升级到 v4.4.2 后会自动给现有消息按当前顺序补楼层号（0、1、2、...），无感完成。',
+                    '升级<strong>之前</strong>就存在的旧总结条目没有楼层范围信息，会显示"范围未知（旧版总结）"，删除时不会自动恢复消息——这是正常的，新总结从这次升级开始就都带范围了。',
+                ],
+            },
+        ],
+    },
     '4.4.1': {
         date: '2026-06-03',
         sections: [
@@ -180,6 +213,7 @@ function buildPopupHtml({ version, date, bodyHtml, isAuto }) {
                 </div>
                 <div class="phone-changelog-footer">
                     <button class="phone-changelog-ack-btn" data-action="dismiss">知道啦</button>
+                    <a class="phone-changelog-history-link" data-action="open-history" href="javascript:void(0)">点击查看历史版本说明 →</a>
                 </div>
             </div>
         </div>
@@ -199,12 +233,18 @@ function attachToPhone(html) {
     modal?.querySelectorAll('[data-action="dismiss"]').forEach(el => {
         el.addEventListener('click', () => closePopup());
     });
+    modal?.querySelectorAll('[data-action="open-history"]').forEach(el => {
+        el.addEventListener('click', () => openChangelogHistoryPage());
+    });
     // If the user closes the phone without dismissing, drop the modal so it
     // doesn't reappear next time the overlay becomes visible.
     if (_activePhoneClosedListener) {
         window.removeEventListener('phone-closed', _activePhoneClosedListener);
     }
-    _activePhoneClosedListener = () => closePopup();
+    _activePhoneClosedListener = () => {
+        closePopup();
+        closeHistoryPage();
+    };
     window.addEventListener('phone-closed', _activePhoneClosedListener);
 }
 
@@ -217,6 +257,95 @@ function closePopup() {
     if (!modal) return;
     modal.classList.remove('visible');
     setTimeout(() => modal.remove(), 200);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// History page — full-screen subpage listing every version's notes,
+// newest first. Reuses renderEntryHtml so per-section markup stays in sync
+// with the main popup.
+// ═══════════════════════════════════════════════════════════════════════
+
+function compareVersionsDesc(a, b) {
+    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+        const diff = (pb[i] || 0) - (pa[i] || 0);
+        if (diff !== 0) return diff;
+    }
+    return 0;
+}
+
+function renderHistoryBodyHtml(currentVersion) {
+    const versions = Object.keys(RELEASE_NOTES).sort(compareVersionsDesc);
+    if (!versions.length) {
+        return '<div class="phone-changelog-empty">还没有任何历史版本记录。</div>';
+    }
+    return versions.map(version => {
+        const entry = RELEASE_NOTES[version];
+        const isCurrent = version === currentVersion;
+        const dateLine = entry?.date
+            ? `<span class="phone-changelog-date">${escapeHtml(entry.date)}</span>`
+            : '';
+        const currentBadge = isCurrent
+            ? '<span class="phone-changelog-history-current-badge">当前版本</span>'
+            : '';
+        return `
+            <section class="phone-changelog-history-version">
+                <header class="phone-changelog-history-version-head">
+                    <span class="phone-changelog-history-version-num">v${escapeHtml(version)}</span>
+                    ${dateLine}
+                    ${currentBadge}
+                </header>
+                <div class="phone-changelog-history-version-body">
+                    ${renderEntryHtml(entry)}
+                </div>
+            </section>
+        `;
+    }).join('');
+}
+
+function buildHistoryPageHtml(currentVersion) {
+    const bodyHtml = renderHistoryBodyHtml(currentVersion);
+    return `
+        <div class="phone-changelog-history-page" id="phone_changelog_history_page" role="dialog" aria-modal="true">
+            <div class="phone-changelog-history-header">
+                <button class="phone-changelog-history-back-btn" data-action="history-back" aria-label="返回">
+                    <i class="ph ph-arrow-left"></i>
+                </button>
+                <div class="phone-changelog-history-title">
+                    <i class="ph ph-clock-counter-clockwise"></i>
+                    <span>历史版本说明</span>
+                </div>
+            </div>
+            <div class="phone-changelog-history-body">
+                ${bodyHtml}
+            </div>
+        </div>
+    `;
+}
+
+// Public: open the full-screen history subpage (triggered from popup footer
+// link or, optionally, from anywhere else in the future).
+export async function openChangelogHistoryPage() {
+    const version = await fetchManifestVersion();
+    const phoneContainer = document.querySelector('.phone-container');
+    const host = phoneContainer || document.body;
+    const existing = document.getElementById('phone_changelog_history_page');
+    if (existing) existing.remove();
+    host.insertAdjacentHTML('beforeend', buildHistoryPageHtml(version || ''));
+    const page = document.getElementById('phone_changelog_history_page');
+    requestAnimationFrame(() => page?.classList.add('visible'));
+    page?.querySelectorAll('[data-action="history-back"]').forEach(el => {
+        el.addEventListener('click', () => closeHistoryPage());
+    });
+}
+
+function closeHistoryPage() {
+    const page = document.getElementById('phone_changelog_history_page');
+    if (!page) return;
+    page.classList.remove('visible');
+    setTimeout(() => page.remove(), 220);
 }
 
 // Public: manually open from settings footer.

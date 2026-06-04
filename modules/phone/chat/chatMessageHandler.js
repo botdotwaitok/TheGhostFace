@@ -7,7 +7,7 @@ import { cleanLlmJson, repairUnescapedQuotes } from '../utils/llmJsonCleaner.js'
 import {
     loadChatHistory, saveChatHistory, commitHistoryInMemory,
     getCharacterInfo, getCharacterDisplayName, getUserName,
-    maybeAutoSummarize,
+    maybeAutoSummarize, assignNextFloor,
 } from './chatStorage.js';
 import { stripMomentsCommands, activateCommunityContext } from './chatPromptBuilder.js';
 import {
@@ -83,6 +83,7 @@ export async function handleCallDeclined() {
         role: 'user',
         content: '[用户拒接了来电]',
         timestamp: now,
+        floor: assignNextFloor(),
     };
     history.push(missedCallEntry);
     await saveChatHistory(history);
@@ -342,7 +343,7 @@ export async function sendAllMessages() {
     for (let i = 0; i < messagesToSend.length; i++) {
         const msg = messagesToSend[i];
         const payload = payloads[i];
-        const entry = { role: 'user', content: msg, timestamp: now };
+        const entry = { role: 'user', content: msg, timestamp: now, floor: assignNextFloor() };
 
         // Attach voice metadata to the last message if we have pending voice data
         if (voiceData && i === messagesToSend.length - 1) {
@@ -732,6 +733,7 @@ export async function renderResponseToDom(rawResponse, messagesToSend, indexable
                 content: cmsg.text,
                 thought: cmsg.thought || '',
                 timestamp: responseTime,
+                floor: assignNextFloor(),
             };
             if (cmsg.recalledContent) {
                 entry.recalledContent = cmsg.recalledContent;

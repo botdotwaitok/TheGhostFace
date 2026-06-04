@@ -3,7 +3,7 @@
 // Config is stored in localStorage; prompts are built via chatPromptBuilder.
 
 import { callPhoneLLM } from '../../api.js';
-import { loadChatHistory, saveChatHistory } from './chatStorage.js';
+import { loadChatHistory, saveChatHistory, assignNextFloor } from './chatStorage.js';
 import { buildAutoMessageSystemPrompt, buildAutoMessageUserPrompt } from './chatPromptBuilder.js';
 import { cleanLlmJson, repairUnescapedQuotes } from '../utils/llmJsonCleaner.js';
 import { updateAppBadge } from '../phoneController.js';
@@ -245,6 +245,7 @@ async function _generateAutoMessage(idleMs) {
             content: text,
             thought: msg.thought || '',
             timestamp: now,
+            floor: assignNextFloor(),
         });
     }
     await saveChatHistory(history);

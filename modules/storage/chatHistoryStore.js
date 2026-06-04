@@ -17,6 +17,19 @@ const LOG = '[ChatHistoryStore]';
 const FILE_PREFIX = 'ghostface_chat_';
 const FILE_EXT = '.json';
 
+// On-disk format.
+//   v1: wraps messages alongside a persistent floor counter so the next-floor
+//       id never resets across reloads even after the tail message is deleted.
+//   v2: adds summary / summaryHistory / homeMarker so all phone-chat-derived
+//       metadata lives in the same self-managed file as the messages it
+//       references. Before v2 these lived in chat_metadata, which desynced
+//       from messages on backup/restore — most visibly, summaryHistory
+//       wasn't even in the backup payload (chatImportExport.js bug).
+// Bare-array files from the pre-floor era are still accepted on read and
+// rewritten as the current schema on the next save; see prewarm() for the
+// migration branch.
+export const CHAT_FILE_SCHEMA_VERSION = 2;
+
 // No message-count cap. The 500-message limit inherited from the chat_metadata
 // era existed only to protect ST's .jsonl autosave from bloat. Self-managed
 // files live under /user/files/ and never touch the .jsonl, so the cap has no
@@ -35,6 +48,24 @@ let _cache = [];              // shallow copy; truth is on disk
 let _cacheReady = false;
 let _pendingPrewarm = null;   // Promise<void> currently loading (for ensureReady)
 let _writeQueue = Promise.resolve();
+
+// Floor counter for the currently loaded key. Always read/written through
+// getNextFloor / setNextFloor so the in-memory value and the on-disk
+// `nextFloor` field stay in lockstep. Monotonically increasing; never reused
+// even after tail deletions — that's the whole point of persisting it.
+let _nextFloor = 0;
+
+// Phone-chat-derived metadata. Same lifecycle as _cache / _nextFloor: loaded
+// in prewarm(), mutated via setters, flushed by saveHistory(). Setters DO NOT
+// auto-save (mirror of setNextFloor) — the chatStorage.js dual-track layer
+// is responsible for awaiting saveHistory() / flushNow() after a mutation
+// when an immediate disk ack is required (which it is for all three: a
+// dropped summary triggers full re-summarize, a lost marker re-sends the
+// whole transcript on 回家, and lost summaryHistory entries are
+// unrecoverable).
+let _summary = '';
+let _summaryHistory = [];
+let _homeMarker = '';
 
 // Hash of whatever (chatId, charId) the current _cache belongs to. Tracked
 // separately from _currentKey so that during a same-chat invalidate→prewarm
@@ -133,10 +164,76 @@ export async function prewarm(chatId, charId) {
                 console.log(`${LOG} prewarm for ${nextKey.filename} superseded — discarding`);
                 return;
             }
-            _cache = Array.isArray(parsed) ? parsed : [];
+
+            // Three on-disk shapes to handle:
+            //   1. null / missing                    → fresh empty cache
+            //   2. bare array (pre-floor era)        → wrap + backfill floors,
+            //                                          mark for resave
+            //   3. { schema, messages, nextFloor, ... } → schema-aware load;
+            //                                          unknown schema falls back
+            //                                          to defensive field pluck
+            let messages = [];
+            let nextFloor = 0;
+            let summary = '';
+            let summaryHistory = [];
+            let homeMarker = '';
+            let needsResave = false;
+
+            if (parsed === null || parsed === undefined) {
+                // Stays empty.
+            } else if (Array.isArray(parsed)) {
+                messages = parsed;
+                // Backfill floor on every message that lacks one. Index-order
+                // is the only signal we have for legacy data; once written,
+                // these ids become the contract going forward.
+                for (let i = 0; i < messages.length; i++) {
+                    if (typeof messages[i].floor !== 'number') {
+                        messages[i].floor = i;
+                    }
+                }
+                // Use length as the counter floor — never reuse the indices
+                // we just assigned, and the wrapped file flips us to the
+                // current schema on the next save so this migration only
+                // ever runs once. Summary / marker fields stay empty here —
+                // the dual-track layer in chatStorage.js will seed them from
+                // chat_metadata on first toggle if anything's there.
+                nextFloor = messages.length;
+                needsResave = true;
+                console.log(`${LOG} migrating bare-array file ${nextKey.filename} → schema ${CHAT_FILE_SCHEMA_VERSION} (${messages.length} messages, nextFloor=${nextFloor})`);
+            } else if (typeof parsed === 'object') {
+                if (Array.isArray(parsed.messages)) {
+                    messages = parsed.messages;
+                    nextFloor = typeof parsed.nextFloor === 'number' ? parsed.nextFloor : messages.length;
+                    // Schema-aware field extraction. v1 lacks summary/marker
+                    // fields; reading them as missing → empty is the correct
+                    // upgrade path (the dual-track layer will seed from
+                    // chat_metadata on first toggle if needed).
+                    summary = typeof parsed.summary === 'string' ? parsed.summary : '';
+                    summaryHistory = Array.isArray(parsed.summaryHistory) ? parsed.summaryHistory : [];
+                    homeMarker = typeof parsed.homeMarker === 'string' ? parsed.homeMarker : '';
+                    if (parsed.schema !== CHAT_FILE_SCHEMA_VERSION) {
+                        // Two scenarios: (a) old schema (v1) — we just upgraded
+                        // it in memory and need to flush so the file ends up
+                        // at the current version; (b) future schema from a
+                        // parallel ST instance — we extracted what we
+                        // recognized, write-back will downgrade the file,
+                        // acceptable for a single-user tool.
+                        needsResave = true;
+                        console.log(`${LOG} schema ${parsed.schema} → ${CHAT_FILE_SCHEMA_VERSION} on next save (${nextKey.filename})`);
+                    }
+                } else {
+                    console.warn(`${LOG} unrecognized object shape in ${nextKey.filename}; starting empty`);
+                }
+            }
+
+            _cache = messages;
+            _nextFloor = nextFloor;
+            _summary = summary;
+            _summaryHistory = summaryHistory;
+            _homeMarker = homeMarker;
             _cacheReady = true;
             _cacheKey = nextKey.hash; // tag _cache with the key it belongs to
-            console.log(`${LOG} prewarm ${nextKey.filename}: ${_cache.length} messages loaded`);
+            console.log(`${LOG} prewarm ${nextKey.filename}: ${_cache.length} messages, nextFloor=${_nextFloor}, summary=${_summary.length}c, sumHist=${_summaryHistory.length}, marker=${_homeMarker ? 'yes' : 'no'}`);
 
             // Side-effect: refresh the lookup index used by phone chat search.
             // Fire-and-forget so a slow/failed index write never blocks chat
@@ -144,10 +241,20 @@ export async function prewarm(chatId, charId) {
             upsertIndexEntry(nextKey.hash, charId, chatId).catch(err => {
                 console.warn(`${LOG} index upsert failed (non-fatal):`, err.message);
             });
+
+            if (needsResave) {
+                // Flush the wrapped format so subsequent loads skip the
+                // bare-array branch. Fire-and-forget: failure just delays
+                // the rewrite to whenever the next saveHistory lands.
+                saveHistory(_cache).catch(err => {
+                    console.warn(`${LOG} bare-array→v1 resave failed for ${nextKey.filename} (will retry on next save):`, err.message);
+                });
+            }
         } catch (e) {
             console.warn(`${LOG} prewarm failed for ${nextKey.filename}; starting empty:`, e.message);
             if (_currentKey?.hash === nextKey.hash) {
                 _cache = [];
+                _nextFloor = 0;
                 _cacheReady = true;
                 _cacheKey = nextKey.hash;
             }
@@ -193,7 +300,14 @@ export function invalidate({ preservedHash = null } = {}) {
     if (!keepCache) {
         _cache = [];
         _cacheKey = null;
+        _nextFloor = 0;
+        _summary = '';
+        _summaryHistory = [];
+        _homeMarker = '';
     }
+    // When keepCache is true, _nextFloor / _summary / _summaryHistory /
+    // _homeMarker all stay at their preserved values so the allowStale
+    // snapshot is internally consistent until prewarm completes.
 }
 
 /**
@@ -274,6 +388,15 @@ export async function saveHistory(messages) {
     const snapshot = messages.slice();
     const keyAtCall = _currentKey;
     _cache = snapshot;
+    // Snapshot ALL persisted fields at queue-time so a save queued before
+    // a later mutation still writes the values that matched its snapshot.
+    // Without this freeze, a fast follow-up setNextFloor / setSummary /
+    // setHomeMarker could land the newer value alongside the older messages
+    // slice and create a torn-write window if the process dies mid-queue.
+    const floorAtCall = _nextFloor;
+    const summaryAtCall = _summary;
+    const summaryHistoryAtCall = _summaryHistory.slice();
+    const homeMarkerAtCall = _homeMarker;
 
     const next = _writeQueue
         .catch(() => {}) // isolate prior failures from later tasks
@@ -281,10 +404,141 @@ export async function saveHistory(messages) {
             // Even if the user switched chats after this save was queued, we
             // still want this write to go through against ITS original key
             // (snapshotted as keyAtCall) — those bytes ARE that file's truth.
-            await atomicWriteJSON(keyAtCall.filename, snapshot);
+            await atomicWriteJSON(keyAtCall.filename, buildFilePayload(snapshot, floorAtCall, {
+                summary: summaryAtCall,
+                summaryHistory: summaryHistoryAtCall,
+                homeMarker: homeMarkerAtCall,
+            }));
         });
     _writeQueue = next;
     return next;
+}
+
+/**
+ * Trigger a disk write of the current in-memory snapshot. Setters of summary /
+ * summaryHistory / homeMarker don't auto-save (same as setNextFloor), so the
+ * dual-track layer calls flushNow() after a mutation that must reach disk now.
+ *
+ * Skips if cache isn't ready — better to drop one mid-prewarm flush than to
+ * crash the chat lifecycle path. The next genuine saveHistory will pick up
+ * the in-memory value anyway.
+ *
+ * @returns {Promise<void>}
+ */
+export async function flushNow() {
+    if (!_cacheReady || !_currentKey) return;
+    await saveHistory(_cache);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Floor counter (persisted alongside messages)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Current next-to-assign floor id for the loaded key. Returns null when the
+ * cache hasn't been primed yet (caller forgot ensureReady) so the failure
+ * is loud rather than silently allocating from 0 against the wrong key.
+ * @returns {number | null}
+ */
+export function getNextFloor() {
+    if (!_cacheReady) return null;
+    return _nextFloor;
+}
+
+/**
+ * Overwrite the next-floor counter. Persists on the next saveHistory call,
+ * which is the same write that lands the message that consumed the previous
+ * id — so the (messages, nextFloor) pair stays atomic from the file's POV.
+ * @param {number} n
+ */
+export function setNextFloor(n) {
+    if (!_cacheReady) return;
+    _nextFloor = n;
+}
+
+/**
+ * Wrap (messages, nextFloor, extras) into the on-disk schema payload. Exposed
+ * so the migrate-from-legacy and fresh-file branches in chatStorage.js can
+ * write the same shape without each importer hard-coding the schema field.
+ *
+ * @param {Array} messages
+ * @param {number} nextFloor
+ * @param {{ summary?: string, summaryHistory?: Array, homeMarker?: string }} [extras]
+ * @returns {{ schema: number, messages: Array, nextFloor: number, summary: string, summaryHistory: Array, homeMarker: string }}
+ */
+export function buildFilePayload(messages, nextFloor, extras = {}) {
+    return {
+        schema: CHAT_FILE_SCHEMA_VERSION,
+        messages,
+        nextFloor: typeof nextFloor === 'number' ? nextFloor : (Array.isArray(messages) ? messages.length : 0),
+        summary: typeof extras.summary === 'string' ? extras.summary : '',
+        summaryHistory: Array.isArray(extras.summaryHistory) ? extras.summaryHistory : [],
+        homeMarker: typeof extras.homeMarker === 'string' ? extras.homeMarker : '',
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Summary triplet (current rolling summary, summary history, home marker)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// All three live in the same file as messages so backup/restore and chat-
+// switch operate atomically — particularly important now that summaryHistory
+// entries can carry floorRange that references messages by floor id. Before
+// schema v2 these lived in chat_metadata and went out of sync on restore.
+//
+// Setters do not auto-save (mirror of setNextFloor): the dual-track layer in
+// chatStorage.js calls flushNow() after a mutation that must reach disk.
+// Getters return null when the cache isn't ready so the failure is loud
+// rather than serving '' / [] against the wrong key.
+
+/**
+ * @returns {string | null} current rolling summary, or null if cache not ready
+ */
+export function getSummary() {
+    if (!_cacheReady) return null;
+    return _summary;
+}
+
+/**
+ * @param {string} text
+ */
+export function setSummary(text) {
+    if (!_cacheReady) return;
+    _summary = typeof text === 'string' ? text : '';
+}
+
+/**
+ * Shallow copy so callers can't mutate the in-memory array directly — keeps
+ * the "all writes go through setSummaryHistory" contract intact.
+ * @returns {Array | null}
+ */
+export function getSummaryHistory() {
+    if (!_cacheReady) return null;
+    return _summaryHistory.slice();
+}
+
+/**
+ * @param {Array} arr
+ */
+export function setSummaryHistory(arr) {
+    if (!_cacheReady) return;
+    _summaryHistory = Array.isArray(arr) ? arr.slice() : [];
+}
+
+/**
+ * @returns {string | null} ISO timestamp of last 回家'd message, or null if cache not ready
+ */
+export function getHomeMarker() {
+    if (!_cacheReady) return null;
+    return _homeMarker;
+}
+
+/**
+ * @param {string} marker
+ */
+export function setHomeMarker(marker) {
+    if (!_cacheReady) return;
+    _homeMarker = typeof marker === 'string' ? marker : '';
 }
 
 /**
@@ -335,5 +589,9 @@ export function debugInfo() {
         currentKey: _currentKey,
         cacheReady: _cacheReady,
         cacheLength: _cache.length,
+        nextFloor: _nextFloor,
+        summaryChars: _summary.length,
+        summaryHistoryCount: _summaryHistory.length,
+        homeMarker: _homeMarker || '(none)',
     };
 }

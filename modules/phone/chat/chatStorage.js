@@ -82,6 +82,8 @@ const META_KEY_PENDING_RESULT = 'gf_phoneChatPendingResult';
 const META_KEY_ST_SYNC_MARKER = 'gf_phoneChatLastSTMarker'; // send_date of last ST msg absorbed into summary
 const META_KEY_HOME_MARKER = 'gf_phoneChatLastHomeMarker';  // ISO timestamp of last phone msg already 回家'd
 const META_KEY_NICKNAME = 'gf_phoneChatNickname';           // user-set display nickname for the character (UI-only)
+const META_KEY_NEXT_FLOOR = 'gf_phoneChatNextFloor';        // persistent floor-id counter for the chat_metadata backend
+const META_KEY_RETURN_HOME_ARCHIVE = 'gf_phoneReturnHomeArchive'; // per-chat 回家 archive (Phase 6) — array, time-ordered, oldest first
 
 // ═══════════════════════════════════════════════════════════════════════
 // Serialized save queue
@@ -516,8 +518,13 @@ export async function clearSTSyncMarker() {
 }
 
 // Messages with timestamp <= marker have already been "sent home" and must
-// not be re-sent on subsequent 回家.
+// not be re-sent on subsequent 回家. Same dual-track + stale-fallback pattern
+// as loadChatSummary.
 export function loadHomeMarker() {
+    if (_useExternalStorage()) {
+        const val = chatHistoryStore.getHomeMarker();
+        if (val !== null) return val;
+    }
     try {
         return chat_metadata?.[META_KEY_HOME_MARKER] || '';
     } catch {
@@ -527,7 +534,20 @@ export function loadHomeMarker() {
 
 // Immediate save: a dropped marker would resend the entire phone transcript
 // on the next 回家, which is very visible to the user.
+//
+// External-mode failures throw (same policy as saveChatHistory / saveChatSummary).
 export async function saveHomeMarker(marker) {
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            chatHistoryStore.setHomeMarker(marker || '');
+            await chatHistoryStore.flushNow();
+            return;
+        } catch (e) {
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore home marker save failed (NOT falling back):`, e);
+            throw e;
+        }
+    }
     try {
         if (!chat_metadata) return;
         if (marker) {
@@ -939,7 +959,16 @@ ${userName}现在已经和${charName}结束了异地。请${charName}根据手�
 // Rolling Chat Summary (per-character)
 // ═══════════════════════════════════════════════════════════════════════
 
+// Dual-track read: in self-managed mode the file is the source of truth, with
+// chat_metadata as a stale-fallback for the prewarm-race window (mirrors
+// loadChatHistory). An empty string from a ready external cache is genuine and
+// wins over any leftover chat_metadata value; the only path back to chat_metadata
+// is getSummary() returning null (cache not primed yet).
 export function loadChatSummary() {
+    if (_useExternalStorage()) {
+        const val = chatHistoryStore.getSummary();
+        if (val !== null) return val;
+    }
     try {
         return chat_metadata?.[META_KEY_SUMMARY] || '';
     } catch {
@@ -949,7 +978,22 @@ export function loadChatSummary() {
 
 // Immediate save: the rolling summary represents 40k+ tokens of folded
 // history; losing it forces re-summarization on the next round.
+//
+// External-mode failures throw rather than fall back to chat_metadata —
+// same policy as saveChatHistory. Splitting the summary across two backends
+// would let the next prewarm overwrite the external file with stale data.
 export async function saveChatSummary(summaryText) {
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            chatHistoryStore.setSummary(summaryText || '');
+            await chatHistoryStore.flushNow();
+            return;
+        } catch (e) {
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore summary save failed (NOT falling back):`, e);
+            throw e;
+        }
+    }
     try {
         if (!chat_metadata) return;
         chat_metadata[META_KEY_SUMMARY] = summaryText;
@@ -960,7 +1004,12 @@ export async function saveChatSummary(summaryText) {
 }
 
 // Entries are stored in chronological order — oldest first, newest at tail.
+// Same dual-track + stale-fallback pattern as loadChatSummary.
 export function loadChatSummaryHistory() {
+    if (_useExternalStorage()) {
+        const arr = chatHistoryStore.getSummaryHistory();
+        if (arr !== null) return arr;
+    }
     try {
         const arr = chat_metadata?.[META_KEY_SUMMARY_HISTORY];
         return Array.isArray(arr) ? arr : [];
@@ -972,19 +1021,50 @@ export function loadChatSummaryHistory() {
 // Called by maybeAutoSummarize (source='auto') and by the 查看总结 edit page
 // (source='manual') before the live summary is overwritten. Empty/whitespace
 // summaries are silently skipped so we don't pollute history with placeholders.
+//
+// floorRange (optional, closed interval) lets the 查看总结 page later offer
+// "delete this entry & restore the messages it covered" — see plan/chat-floor-id.md.
+// Entries written before Phase 2 (or by edit-page archive paths that don't
+// know which range the current summary covered) omit floorRange and render
+// as "范围未知（旧版总结）".
 export async function pushChatSummaryHistory(entry) {
+    const text = (entry?.summary || '').trim();
+    if (!text) return; // never archive an empty/placeholder summary
+
+    const fr = entry?.floorRange;
+    const hasValidFloorRange =
+        fr && typeof fr.from === 'number' && typeof fr.to === 'number'
+        && Number.isFinite(fr.from) && Number.isFinite(fr.to)
+        && fr.from <= fr.to;
+
+    const newEntry = {
+        savedAt: new Date().toISOString(),
+        summary: text,
+        source: entry.source === 'manual' ? 'manual' : 'auto',
+        ...(typeof entry.msgCount === 'number' ? { msgCount: entry.msgCount } : {}),
+        ...(hasValidFloorRange ? { floorRange: { from: fr.from, to: fr.to } } : {}),
+    };
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            // getSummaryHistory returns a shallow copy, so mutating + setting
+            // back is the documented contract — never write through the live
+            // internal array.
+            const arr = chatHistoryStore.getSummaryHistory() || [];
+            arr.push(newEntry);
+            chatHistoryStore.setSummaryHistory(arr);
+            await chatHistoryStore.flushNow();
+            return;
+        } catch (e) {
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore summary history push failed (NOT falling back):`, e);
+            throw e;
+        }
+    }
     try {
         if (!chat_metadata) return;
-        const text = (entry?.summary || '').trim();
-        if (!text) return; // never archive an empty/placeholder summary
-
         const history = loadChatSummaryHistory();
-        history.push({
-            savedAt: new Date().toISOString(),
-            summary: text,
-            source: entry.source === 'manual' ? 'manual' : 'auto',
-            ...(typeof entry.msgCount === 'number' ? { msgCount: entry.msgCount } : {}),
-        });
+        history.push(newEntry);
         chat_metadata[META_KEY_SUMMARY_HISTORY] = history;
         await queueSaveChat();
     } catch (e) {
@@ -1044,75 +1124,38 @@ export async function clearAllSummarizedMarks() {
     }
 }
 
-/**
- * Mark the oldest N currently-unsummarized messages as summarized. Used by
- * the manual-hide UI to fold off a prefix of in-prompt history without running
- * an LLM summarize cycle — the bubbles stay visible in the chat list but stop
- * appearing in the prompt <chat_history> block.
- *
- * Walks the live array in order and counts only the messages that are NOT
- * already summarized, so the wall already-folded prefix is skipped. Returns
- * the count actually marked (may be less than n if there were fewer
- * unsummarized messages available).
- *
- * @param {number} n
- * @returns {Promise<number>}
- */
-export async function markOldestNAsSummarized(n) {
-    if (!Number.isFinite(n) || n <= 0) return 0;
-    const target = Math.floor(n);
-
-    const apply = (live) => {
-        if (!Array.isArray(live)) return 0;
-        let count = 0;
-        for (let i = 0; i < live.length && count < target; i++) {
-            const msg = live[i];
-            if (msg && !msg.summarized) {
-                msg.summarized = true;
-                count++;
-            }
-        }
-        return count;
-    };
+// Indices reference the on-disk chronological order (oldest-first).
+// Out-of-range / duplicate indices are tolerated and skipped.
+export async function removeChatSummaryHistoryByIndices(indices) {
+    if (!Array.isArray(indices) || indices.length === 0) return 0;
+    // Splice from the tail so earlier indices stay valid.
+    const sorted = [...new Set(indices)].sort((a, b) => b - a);
 
     if (_useExternalStorage()) {
         try {
             await chatHistoryStore.ensureReady();
-            let count = 0;
-            await chatHistoryStore.mutateInPlace((live) => {
-                count = apply(live);
-            });
-            console.log(`${CHAT_LOG_PREFIX} markOldestNAsSummarized(${target}): marked ${count} (external storage)`);
-            return count;
+            const history = chatHistoryStore.getSummaryHistory();
+            if (!history || history.length === 0) return 0;
+            let removed = 0;
+            for (const idx of sorted) {
+                if (Number.isInteger(idx) && idx >= 0 && idx < history.length) {
+                    history.splice(idx, 1);
+                    removed++;
+                }
+            }
+            if (removed === 0) return 0;
+            chatHistoryStore.setSummaryHistory(history);
+            await chatHistoryStore.flushNow();
+            return removed;
         } catch (e) {
-            console.warn(`${CHAT_LOG_PREFIX} markOldestNAsSummarized (external) failed:`, e);
-            return 0;
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore summary history remove failed (NOT falling back):`, e);
+            throw e;
         }
     }
     try {
         if (!chat_metadata) return 0;
-        const live = chat_metadata[META_KEY_HISTORY];
-        if (!Array.isArray(live) || live.length === 0) return 0;
-        const count = apply(live);
-        if (count > 0) await queueSaveChat();
-        console.log(`${CHAT_LOG_PREFIX} markOldestNAsSummarized(${target}): marked ${count} (chat_metadata)`);
-        return count;
-    } catch (e) {
-        console.warn(`${CHAT_LOG_PREFIX} markOldestNAsSummarized failed:`, e);
-        return 0;
-    }
-}
-
-// Indices reference the on-disk chronological order (oldest-first).
-// Out-of-range / duplicate indices are tolerated and skipped.
-export async function removeChatSummaryHistoryByIndices(indices) {
-    try {
-        if (!chat_metadata) return 0;
-        if (!Array.isArray(indices) || indices.length === 0) return 0;
         const history = loadChatSummaryHistory();
         if (history.length === 0) return 0;
-        // Splice from the tail so earlier indices stay valid.
-        const sorted = [...new Set(indices)].sort((a, b) => b - a);
         let removed = 0;
         for (const idx of sorted) {
             if (Number.isInteger(idx) && idx >= 0 && idx < history.length) {
@@ -1127,6 +1170,528 @@ export async function removeChatSummaryHistoryByIndices(indices) {
     } catch (e) {
         console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary history remove failed:`, e);
         return 0;
+    }
+}
+
+/**
+ * Replace the entire summary-history array. Used by phone-backup-import to
+ * restore an exported summaryHistory in one shot (the previous import path
+ * silently dropped it — that bug is the reason Phase 1.5c exposes this).
+ *
+ * Non-array input is coerced to []. Dual-track: writes go to whichever
+ * backend is active right now — restore doesn't force a switch.
+ *
+ * @param {Array} arr
+ * @returns {Promise<void>}
+ */
+export async function replaceChatSummaryHistory(arr) {
+    const next = Array.isArray(arr) ? arr.slice() : [];
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            chatHistoryStore.setSummaryHistory(next);
+            await chatHistoryStore.flushNow();
+            return;
+        } catch (e) {
+            console.error(`${CHAT_LOG_PREFIX} chatHistoryStore summary history replace failed (NOT falling back):`, e);
+            throw e;
+        }
+    }
+    try {
+        if (!chat_metadata) return;
+        chat_metadata[META_KEY_SUMMARY_HISTORY] = next;
+        await queueSaveChat();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} chat_metadata summary history replace failed:`, e);
+    }
+}
+
+/**
+ * Set `summarized = true` on every currently-unsummarized message whose floor
+ * lies inside the closed interval [fromFloor, toFloor]. Already-summarized
+ * messages and messages without a `floor` are left alone. Returns the count
+ * actually flipped so the caller can surface "已隐藏 N 条" feedback (which may
+ * be 0 if the range covers a deleted gap or an already-hidden span).
+ *
+ * Counterpart to `unmarkRangeAsSummarized` — together they back the manual
+ * hide/restore UI in chatVisibility.js (Phase 4).
+ *
+ * @param {number} fromFloor
+ * @param {number} toFloor
+ * @returns {Promise<number>}
+ */
+export async function markRangeAsSummarized(fromFloor, toFloor) {
+    if (!Number.isFinite(fromFloor) || !Number.isFinite(toFloor)) return 0;
+    if (fromFloor > toFloor) return 0;
+
+    const apply = (live) => {
+        if (!Array.isArray(live)) return 0;
+        let count = 0;
+        for (const msg of live) {
+            if (typeof msg?.floor !== 'number') continue;
+            if (msg.floor < fromFloor || msg.floor > toFloor) continue;
+            if (!msg.summarized) {
+                msg.summarized = true;
+                count++;
+            }
+        }
+        return count;
+    };
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            let count = 0;
+            await chatHistoryStore.mutateInPlace((live) => {
+                count = apply(live);
+            });
+            console.log(`${CHAT_LOG_PREFIX} markRangeAsSummarized([${fromFloor},${toFloor}]): marked ${count} (external)`);
+            return count;
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} markRangeAsSummarized (external) failed:`, e);
+            return 0;
+        }
+    }
+    try {
+        if (!chat_metadata) return 0;
+        const live = chat_metadata[META_KEY_HISTORY];
+        if (!Array.isArray(live) || live.length === 0) return 0;
+        const count = apply(live);
+        if (count > 0) await queueSaveChat();
+        console.log(`${CHAT_LOG_PREFIX} markRangeAsSummarized([${fromFloor},${toFloor}]): marked ${count} (chat_metadata)`);
+        return count;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} markRangeAsSummarized failed:`, e);
+        return 0;
+    }
+}
+
+/**
+ * Flip `summarized` back to false on every message whose floor lies inside
+ * the closed interval [fromFloor, toFloor]. Messages whose floor does not
+ * exist in the live history are silently skipped — that's the documented
+ * tradeoff for letting floors gap on mid-history deletes (see
+ * plan/chat-floor-id.md §Risk 7). Returns the count actually flipped so the
+ * caller can surface "已恢复 N 条" feedback.
+ *
+ * @param {number} fromFloor
+ * @param {number} toFloor
+ * @returns {Promise<number>}
+ */
+export async function unmarkRangeAsSummarized(fromFloor, toFloor) {
+    if (!Number.isFinite(fromFloor) || !Number.isFinite(toFloor)) return 0;
+    if (fromFloor > toFloor) return 0;
+
+    const apply = (live) => {
+        if (!Array.isArray(live)) return 0;
+        let count = 0;
+        for (const msg of live) {
+            if (typeof msg?.floor !== 'number') continue;
+            if (msg.floor < fromFloor || msg.floor > toFloor) continue;
+            if (msg.summarized) {
+                delete msg.summarized;
+                count++;
+            }
+        }
+        return count;
+    };
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            let count = 0;
+            await chatHistoryStore.mutateInPlace((live) => {
+                count = apply(live);
+            });
+            console.log(`${CHAT_LOG_PREFIX} unmarkRangeAsSummarized([${fromFloor},${toFloor}]): unmarked ${count} (external)`);
+            return count;
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} unmarkRangeAsSummarized (external) failed:`, e);
+            return 0;
+        }
+    }
+    try {
+        if (!chat_metadata) return 0;
+        const live = chat_metadata[META_KEY_HISTORY];
+        if (!Array.isArray(live) || live.length === 0) return 0;
+        const count = apply(live);
+        if (count > 0) await queueSaveChat();
+        console.log(`${CHAT_LOG_PREFIX} unmarkRangeAsSummarized([${fromFloor},${toFloor}]): unmarked ${count} (chat_metadata)`);
+        return count;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} unmarkRangeAsSummarized failed:`, e);
+        return 0;
+    }
+}
+
+/**
+ * Remove a single summary-history entry by its chronological index and
+ * return the removed entry (or null if the index was out of range). The
+ * caller decides what to do with the returned entry — typically pass its
+ * floorRange to unmarkRangeAsSummarized so the messages that summary covered
+ * become prompt-visible again.
+ *
+ * Kept separate from removeChatSummaryHistoryByIndices because Phase 3's
+ * delete-and-restore UI needs the removed entry handed back; the indices
+ * batch path used by multi-select doesn't need it and would have to load
+ * the entries up front to return them.
+ *
+ * @param {number} index
+ * @returns {Promise<object|null>}
+ */
+export async function deleteChatSummaryHistoryEntry(index) {
+    if (!Number.isInteger(index) || index < 0) return null;
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            const history = chatHistoryStore.getSummaryHistory();
+            if (!history || index >= history.length) return null;
+            const [removed] = history.splice(index, 1);
+            chatHistoryStore.setSummaryHistory(history);
+            await chatHistoryStore.flushNow();
+            return removed || null;
+        } catch (e) {
+            console.error(`${CHAT_LOG_PREFIX} deleteChatSummaryHistoryEntry (external) failed:`, e);
+            throw e;
+        }
+    }
+    try {
+        if (!chat_metadata) return null;
+        const history = loadChatSummaryHistory();
+        if (index >= history.length) return null;
+        const [removed] = history.splice(index, 1);
+        chat_metadata[META_KEY_SUMMARY_HISTORY] = history;
+        await queueSaveChat();
+        return removed || null;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} deleteChatSummaryHistoryEntry failed:`, e);
+        return null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Return-Home Archive (Phase 6 — paper trail of "我已回家" runs)
+// ═══════════════════════════════════════════════════════════════════════
+// Each successful 回家 appends an entry recording what was sent to ST main
+// chat (summary or raw transcript), how many phone messages it covered, and
+// the floor range so the user can later "delete & restore" — same semantics
+// as the rolling-summary history page, but for a flow that never wrote into
+// chatSummaryHistory. Entries are read-only from the user's perspective
+// (the payload already went to ST main chat; local edits would have no effect
+// on that copy).
+//
+// Lives on the chat_metadata backend regardless of useExternalChatStorage —
+// the data is not consulted on the prompt hot-path, so the strict same-file
+// invariant that the rolling summary triplet needs (§5 of the plan) does not
+// apply here. A backup-restore mismatch will at worst surface as an archive
+// entry whose floor range no longer resolves to any live message — that path
+// is handled defensively by unmarkRangeAsSummarized returning 0.
+
+function _validateArchiveEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const mode = entry.mode === 'raw' ? 'raw' : 'summary';
+    const payload = typeof entry.payload === 'string' ? entry.payload : '';
+    if (!payload.trim()) return null; // never archive an empty body — that flow shouldn't have reached us
+    const msgCount = Number.isFinite(entry.msgCount) ? entry.msgCount : 0;
+
+    const fr = entry.floorRange;
+    const hasValidFloorRange =
+        fr && typeof fr.from === 'number' && typeof fr.to === 'number'
+        && Number.isFinite(fr.from) && Number.isFinite(fr.to)
+        && fr.from <= fr.to;
+
+    // prevHomeMarker is the homeMarker value the chat had BEFORE this 回家 run
+    // advanced it — explicitly recorded so deleteReturnHomeArchiveEntry can
+    // roll the marker back to that point. Without this, even clearing the
+    // summarized marks on the covered range still leaves the messages
+    // invisible to getMessagesSinceHome (whose only gate is the marker), and
+    // the user's next 回家 reports "上次回家之后还没有新的聊天记录" — exactly
+    // the boundary bug this field is here to fix. Empty string is a valid
+    // value (first-ever 回家); only non-string / undefined gets dropped.
+    const prevHomeMarker = typeof entry.prevHomeMarker === 'string' ? entry.prevHomeMarker : undefined;
+
+    const out = {
+        archivedAt: typeof entry.archivedAt === 'string' && entry.archivedAt
+            ? entry.archivedAt
+            : new Date().toISOString(),
+        mode,
+        payload,
+        msgCount,
+        ...(hasValidFloorRange ? { floorRange: { from: fr.from, to: fr.to } } : {}),
+        ...(Number.isFinite(entry.memoryFragmentCount) && entry.memoryFragmentCount > 0
+            ? { memoryFragmentCount: entry.memoryFragmentCount } : {}),
+        ...(prevHomeMarker !== undefined ? { prevHomeMarker } : {}),
+    };
+    return out;
+}
+
+/** Read the full archive list (chronological, oldest first). */
+export function loadReturnHomeArchive() {
+    try {
+        const arr = chat_metadata?.[META_KEY_RETURN_HOME_ARCHIVE];
+        return Array.isArray(arr) ? arr.slice() : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Append one archive entry. Normalizes/validates input before writing — bad
+ * entries (empty payload, etc.) are dropped silently so a malformed call from
+ * handleReturnHome doesn't poison the on-disk array.
+ */
+export async function pushReturnHomeArchive(entry) {
+    const normalized = _validateArchiveEntry(entry);
+    if (!normalized) return;
+    try {
+        if (!chat_metadata) return;
+        const arr = Array.isArray(chat_metadata[META_KEY_RETURN_HOME_ARCHIVE])
+            ? chat_metadata[META_KEY_RETURN_HOME_ARCHIVE]
+            : [];
+        arr.push(normalized);
+        chat_metadata[META_KEY_RETURN_HOME_ARCHIVE] = arr;
+        await queueSaveChat();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} pushReturnHomeArchive failed:`, e);
+    }
+}
+
+/**
+ * Remove one archive entry by its chronological index and return it (or null
+ * when out of range). Caller typically passes the removed entry's floorRange
+ * to unmarkRangeAsSummarized so the messages it covered become prompt-visible
+ * again — same pattern as deleteChatSummaryHistoryEntry.
+ */
+export async function deleteReturnHomeArchiveEntry(index) {
+    if (!Number.isInteger(index) || index < 0) return null;
+    try {
+        if (!chat_metadata) return null;
+        const arr = Array.isArray(chat_metadata[META_KEY_RETURN_HOME_ARCHIVE])
+            ? chat_metadata[META_KEY_RETURN_HOME_ARCHIVE]
+            : [];
+        if (index >= arr.length) return null;
+        const [removed] = arr.splice(index, 1);
+        chat_metadata[META_KEY_RETURN_HOME_ARCHIVE] = arr;
+        await queueSaveChat();
+        return removed || null;
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} deleteReturnHomeArchiveEntry failed:`, e);
+        return null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Floor IDs (stable per-message addressing)
+// ═══════════════════════════════════════════════════════════════════════
+// Each phone-chat message gets a monotonically-increasing integer `floor`
+// assigned at push time. The next-to-assign id is persisted alongside the
+// chat data — never derived from max(history.floor) + 1 — so deleting the
+// tail doesn't recycle ids back to a value that a stored summary's
+// floorRange might still be pointing at.
+//
+// Two storage backends carry the counter in different places:
+//   - chat_metadata mode: chat_metadata[META_KEY_NEXT_FLOOR]
+//   - self-managed mode: chatHistoryStore's persisted `nextFloor` field
+//
+// `assignNextFloor()` is the only sanctioned way to mint a new id. Callers
+// MUST stamp the returned value onto the message object BEFORE pushing it
+// into the history array; the next saveChatHistory() will then carry both
+// the message and the bumped counter to disk in one write.
+
+/**
+ * Allocate and consume the next floor id for the active backend. Always
+ * pair with a subsequent saveChatHistory() / save path so the bumped
+ * counter is durably persisted alongside the message that consumed it.
+ *
+ * Idempotency: each call returns a fresh integer — never call twice for
+ * the same logical message, or you'll create an unused gap.
+ *
+ * @returns {number}
+ */
+export function assignNextFloor() {
+    if (_useExternalStorage()) {
+        let n = chatHistoryStore.getNextFloor();
+        if (n === null) {
+            // Cache not primed. Usually means the caller forgot ensureChatHistoryReady,
+            // or a race ate the prewarm result. Returning 0 here would risk
+            // reusing an existing id; bail with a warn so the offending path
+            // is fixed instead of silently corrupting floorRange references.
+            console.warn(`${CHAT_LOG_PREFIX} assignNextFloor: external cache not ready — falling back to 0 (caller likely missed ensureChatHistoryReady)`);
+            chatHistoryStore.setNextFloor(1);
+            return 0;
+        }
+        chatHistoryStore.setNextFloor(n + 1);
+        return n;
+    }
+    // chat_metadata backend
+    if (!chat_metadata) return 0;
+    _migrateFloorsIfNeededLegacy();
+    let n = chat_metadata[META_KEY_NEXT_FLOOR];
+    if (typeof n !== 'number') n = 0;
+    chat_metadata[META_KEY_NEXT_FLOOR] = n + 1;
+    return n;
+}
+
+/**
+ * Legacy-backend floor backfill. Runs the first time assignNextFloor() is
+ * called against a chat that predates the floor system: walks the existing
+ * history array, stamps floor 0..N-1 in index order, sets the counter to N.
+ *
+ * Subsequent calls are no-ops because the counter now exists. Index-order
+ * is the only signal we have for pre-migration data; once written, these
+ * ids are the contract going forward (same convention as the self-managed
+ * file's bare-array migration in chatHistoryStore.prewarm).
+ */
+function _migrateFloorsIfNeededLegacy() {
+    if (!chat_metadata) return;
+    if (typeof chat_metadata[META_KEY_NEXT_FLOOR] === 'number') return;
+    const live = chat_metadata[META_KEY_HISTORY];
+    if (!Array.isArray(live) || live.length === 0) {
+        chat_metadata[META_KEY_NEXT_FLOOR] = 0;
+        return;
+    }
+    // Defensive: if some messages already carry a floor (e.g. partial
+    // import from a newer export) use max+1 instead of clobbering them.
+    let maxFloor = -1;
+    let anyHasFloor = false;
+    for (const m of live) {
+        if (typeof m.floor === 'number') {
+            anyHasFloor = true;
+            if (m.floor > maxFloor) maxFloor = m.floor;
+        }
+    }
+    if (!anyHasFloor) {
+        for (let i = 0; i < live.length; i++) {
+            live[i].floor = i;
+        }
+        chat_metadata[META_KEY_NEXT_FLOOR] = live.length;
+        console.log(`${CHAT_LOG_PREFIX} migrated ${live.length} chat_metadata messages with floor 0..${live.length - 1}`);
+    } else {
+        // Partial-floor state shouldn't happen in practice. Walk again and
+        // fill the holes from maxFloor+1 upward so we don't leave NaN
+        // floors, but otherwise honor what's already on disk.
+        let next = maxFloor + 1;
+        for (const m of live) {
+            if (typeof m.floor !== 'number') {
+                m.floor = next++;
+            }
+        }
+        chat_metadata[META_KEY_NEXT_FLOOR] = next;
+        console.warn(`${CHAT_LOG_PREFIX} partial floor state in chat_metadata: filled holes, counter=${next}`);
+    }
+}
+
+/**
+ * Reset the active backend's floor state to match an imported history.
+ *
+ * Behavior:
+ *   - Backfills `floor` on any message that lacks one (index order for
+ *     pre-floor exports; resumes from max+1 for partial exports).
+ *   - Picks the counter as max(payloadNextFloor, max(history.floor)+1) so
+ *     a freshly-imported chat never recycles an id the import itself
+ *     stamped on a message, even if the source's counter was lower
+ *     (corrupted export, hand-edited file, etc.).
+ *   - Writes the counter into the active backend's in-memory state. The
+ *     caller's subsequent saveChatHistory() carries it to disk.
+ *
+ * MUST be called BEFORE saveChatHistory() during import — saveHistory's
+ * write payload reads the counter at queue time, so a later setNextFloor
+ * would land in a follow-up file write rather than the import's.
+ *
+ * @param {Array} history - the imported messages array; mutated in place
+ * @param {number} [payloadNextFloor] - export's recorded counter, if any
+ * @returns {Promise<number>} the counter actually set
+ */
+export async function prepareImportedFloors(history, payloadNextFloor) {
+    if (!Array.isArray(history)) return 0;
+
+    let maxFloor = -1;
+    let anyHasFloor = false;
+    for (const m of history) {
+        if (typeof m?.floor === 'number') {
+            anyHasFloor = true;
+            if (m.floor > maxFloor) maxFloor = m.floor;
+        }
+    }
+
+    if (!anyHasFloor) {
+        // Pre-floor export — stamp 0..N-1 in arrival order.
+        for (let i = 0; i < history.length; i++) {
+            if (history[i]) history[i].floor = i;
+        }
+        maxFloor = history.length - 1;
+    } else {
+        // Mixed state — fill the holes from max+1 upward so every message
+        // ends up with a number without overwriting ids already on disk.
+        let next = maxFloor + 1;
+        for (const m of history) {
+            if (m && typeof m.floor !== 'number') {
+                m.floor = next++;
+            }
+        }
+        maxFloor = next - 1;
+    }
+
+    const explicit = typeof payloadNextFloor === 'number' && Number.isFinite(payloadNextFloor) ? payloadNextFloor : -Infinity;
+    const counter = Math.max(explicit, maxFloor + 1, 0);
+
+    if (_useExternalStorage()) {
+        try {
+            await chatHistoryStore.ensureReady();
+            chatHistoryStore.setNextFloor(counter);
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} prepareImportedFloors (external) failed to set counter:`, e.message);
+        }
+    } else if (chat_metadata) {
+        chat_metadata[META_KEY_NEXT_FLOOR] = counter;
+    }
+    return counter;
+}
+
+/**
+ * Ensure the active backend's floor data is migrated and the counter is
+ * set. Idempotent. Call after CHAT_CHANGED settles, after a successful
+ * import, and anywhere a caller needs a "floors are ready" guarantee
+ * without yet wanting to consume an id.
+ *
+ * @returns {Promise<void>}
+ */
+export async function ensureFloorsMigrated() {
+    if (_useExternalStorage()) {
+        // Self-managed backend's prewarm() already handles bare-array migration
+        // and triggers a resave. Just gate on prewarm completing so callers
+        // can rely on getNextFloor() returning a number afterwards.
+        try {
+            await chatHistoryStore.ensureReady();
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} ensureFloorsMigrated (external) skipped — cache not ready:`, e.message);
+        }
+        return;
+    }
+    // chat_metadata path: migrate inline. If the migration actually wrote
+    // floor fields onto live messages, queue a save so the new floors hit
+    // disk even if the user doesn't immediately send another message.
+    const hadCounter = typeof chat_metadata?.[META_KEY_NEXT_FLOOR] === 'number';
+    _migrateFloorsIfNeededLegacy();
+    const nowHasCounter = typeof chat_metadata?.[META_KEY_NEXT_FLOOR] === 'number';
+    const historyHasContent = Array.isArray(chat_metadata?.[META_KEY_HISTORY]) && chat_metadata[META_KEY_HISTORY].length > 0;
+    if (!hadCounter && nowHasCounter && historyHasContent) {
+        // Same guard the legacy-cleanup path uses: an empty ST chat array
+        // means saveChatConditional would write a blank chat back to the
+        // .jsonl (事故 B). Defer the floor migration save to the next
+        // CHAT_CHANGED in that case — the in-memory counter is set, and
+        // any subsequent user send will land it through the normal save
+        // path anyway.
+        if (!_isSTChatReady()) {
+            console.warn(`${CHAT_LOG_PREFIX} ensureFloorsMigrated: ST chat array empty; deferring counter persist`);
+            return;
+        }
+        try {
+            await queueSaveChat();
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} ensureFloorsMigrated post-migration save failed:`, e);
+        }
     }
 }
 
@@ -1371,8 +1936,12 @@ export async function maybeAutoSummarize() {
         }
 
         // ─── Step 2: Rolling summary via LLM ───
-        // Also fold in the ST main-chat increment so future prompts can stop
-        // re-injecting raw ST history every turn.
+        // Only the phone SMS transcript is sent. ST main-chat content is
+        // explicitly NOT included — the summary is a record of what happened
+        // inside the chat app, not a re-compression of offline storyline. The
+        // offline storyline is already injected separately as
+        // <storyline_context> in the regular chat prompt builder, so the
+        // model still sees it at chat time without being asked to summarize it.
         //
         // CRITICAL: Step 3 (marking messages summarized) MUST be gated on
         // step 2 actually landing the new summary on disk. An earlier version
@@ -1387,38 +1956,22 @@ export async function maybeAutoSummarize() {
         card.setStage('鬼面正在奋笔疾书 …');
         const existingSummary = loadChatSummary();
         let newSummaryText = null;
-        let stIncrementSnapshot = [];
         try {
             const transcript = messagesToSummarize.map(msg => {
                 const role = msg.role === 'user' ? userName : charName;
                 return formatTranscriptLine(role, msg);
             }).join('\n');
 
-            // Snapshot ST increment BEFORE the LLM call. Any ST messages that
-            // arrive during the call will be picked up next round (marker only
-            // advances to this snapshot's tail, not to "current end of chat").
-            stIncrementSnapshot = getSTChatHistory({ sinceMarker: true, tokenLimit: ST_HISTORY_TOKEN_LIMIT });
-            const stTranscript = stIncrementSnapshot.length > 0
-                ? stIncrementSnapshot.map(m => formatTranscriptLine(m.role === 'user' ? userName : charName, { content: m.content, timestamp: m.send_date })).join('\n')
-                : '';
-
             const summarySystemPrompt = buildRollingSummarizePrompt();
 
-            let summaryUserPrompt;
-            if (existingSummary && stTranscript) {
-                summaryUserPrompt = `旧总结：\n${existingSummary}\n\n新的手机聊天记录：\n${transcript}\n\n相关的主线背景片段（线下互动，请作为环境信息纳入）：\n${stTranscript}\n\n请合并为一份完整的总结。`;
-            } else if (existingSummary) {
-                summaryUserPrompt = `旧总结：\n${existingSummary}\n\n新的聊天记录：\n${transcript}\n\n请合并为一份完整的总结。`;
-            } else if (stTranscript) {
-                summaryUserPrompt = `手机聊天记录：\n${transcript}\n\n相关的主线背景片段（线下互动，请作为环境信息纳入）：\n${stTranscript}\n\n请生成一份完整的总结。`;
-            } else {
-                summaryUserPrompt = `聊天记录：\n${transcript}\n\n请生成总结。`;
-            }
+            const summaryUserPrompt = existingSummary
+                ? `旧总结：\n${existingSummary}\n\n新的聊天记录：\n${transcript}\n\n请合并为一份完整的总结。`
+                : `聊天记录：\n${transcript}\n\n请生成总结。`;
 
             const newSummary = await callPhoneLLMWithTimeout(
                 summarySystemPrompt,
                 summaryUserPrompt,
-                { maxTokens: 2000 },
+                { maxTokens: 40000 },
             );
 
             if (!newSummary || !newSummary.trim()) {
@@ -1435,26 +1988,30 @@ export async function maybeAutoSummarize() {
         }
 
         // ─── Step 3 (only on confirmed Step 2 success) ───
-        // Archive the old summary, persist the new one, advance the ST sync
-        // marker, then mark the folded messages as summarized. Each await is
-        // ordered so an interruption mid-sequence leaves at most one of these
-        // unwritten — never a state where messages are marked but the summary
-        // is stale.
+        // Archive the old summary, persist the new one, then mark the folded
+        // messages as summarized. Each await is ordered so an interruption
+        // mid-sequence leaves at most one of these unwritten — never a state
+        // where messages are marked but the summary is stale.
         card.setStage('收尾归档 …');
+        // floorRange describes the slice this round newly folded (same semantics
+        // as msgCount). Skipped when any message in the slice is missing .floor
+        // — that only happens for messages predating Phase 1 migration; pushing
+        // a NaN range would poison the "delete & restore" lookup downstream.
+        const foldedFloors = messagesToSummarize
+            .map(m => m.floor)
+            .filter(f => typeof f === 'number' && Number.isFinite(f));
+        const foldedFloorRange = foldedFloors.length === messagesToSummarize.length
+            ? { from: Math.min(...foldedFloors), to: Math.max(...foldedFloors) }
+            : undefined;
         await pushChatSummaryHistory({
             summary: existingSummary,
             source: 'auto',
             msgCount: messagesToSummarize.length,
+            floorRange: foldedFloorRange,
         });
         await saveChatSummary(newSummaryText);
 
-        let newMarker = '';
-        for (let i = stIncrementSnapshot.length - 1; i >= 0; i--) {
-            if (stIncrementSnapshot[i].send_date) { newMarker = stIncrementSnapshot[i].send_date; break; }
-        }
-        if (newMarker) await saveSTSyncMarker(newMarker);
-
-        console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummaryText.length} 字), ST marker → ${newMarker || '(unchanged)'}`);
+        console.log(`${CHAT_LOG_PREFIX} ✅ 滚动总结已更新 (${newSummaryText.length} 字)`);
 
         // Re-load the live history and match by identity stamp (not index) to
         // safely handle messages added during the async LLM call above.
@@ -1531,18 +2088,162 @@ function _isSTChatReady() {
     }
 }
 
+/**
+ * Read the rolling-summary triplet (summary / summaryHistory / homeMarker) out
+ * of chat_metadata, with type coercion so callers can rely on shape. Returns
+ * the empty triplet when chat_metadata is missing.
+ */
+function _readMetaTriplet() {
+    if (!chat_metadata) return { summary: '', summaryHistory: [], homeMarker: '' };
+    return {
+        summary: typeof chat_metadata[META_KEY_SUMMARY] === 'string' ? chat_metadata[META_KEY_SUMMARY] : '',
+        summaryHistory: Array.isArray(chat_metadata[META_KEY_SUMMARY_HISTORY]) ? chat_metadata[META_KEY_SUMMARY_HISTORY] : [],
+        homeMarker: typeof chat_metadata[META_KEY_HOME_MARKER] === 'string' ? chat_metadata[META_KEY_HOME_MARKER] : '',
+    };
+}
+
+function _tripletHasContent(t) {
+    return !!(t && (t.summary || (Array.isArray(t.summaryHistory) && t.summaryHistory.length > 0) || t.homeMarker));
+}
+
 // Only flushes if ST's chat array is populated — otherwise queueSaveChat
 // would write an empty chat slice to disk. Idempotent.
-async function _maybeCleanupLegacyKey(reason) {
+//
+// Phase 1.5c: also clears the rolling-summary triplet keys. Callers that pass
+// `{ keepTriplet: true }` opt out (e.g. Branch A in self-managed file path,
+// where triplet absorption happens BEFORE cleanup and we want absorption to
+// see the keys still present).
+async function _maybeCleanupLegacyKey(reason, { keepTriplet = false } = {}) {
     if (!chat_metadata) return;
-    if (!Array.isArray(chat_metadata[META_KEY_HISTORY])) return;
+    const hasHistory = Array.isArray(chat_metadata[META_KEY_HISTORY]);
+    const hasFloorCounter = typeof chat_metadata[META_KEY_NEXT_FLOOR] === 'number';
+    const hasSummary = !keepTriplet && (META_KEY_SUMMARY in chat_metadata);
+    const hasSummaryHistory = !keepTriplet && (META_KEY_SUMMARY_HISTORY in chat_metadata);
+    const hasHomeMarker = !keepTriplet && (META_KEY_HOME_MARKER in chat_metadata);
+    if (!hasHistory && !hasFloorCounter && !hasSummary && !hasSummaryHistory && !hasHomeMarker) return;
     if (!_isSTChatReady()) {
         console.warn(`${CHAT_LOG_PREFIX} skipping LEGACY cleanup (${reason}) — ST chat array empty; will retry on next CHAT_CHANGED`);
         return;
     }
-    delete chat_metadata[META_KEY_HISTORY];
+    if (hasHistory) delete chat_metadata[META_KEY_HISTORY];
+    // Counter must follow the messages — leaving it behind would let a future
+    // switch back to chat_metadata see a stale counter ahead of the (empty
+    // or re-populated) history and reuse floor ids that the self-managed
+    // file's old summaries still reference.
+    if (hasFloorCounter) delete chat_metadata[META_KEY_NEXT_FLOOR];
+    if (hasSummary) delete chat_metadata[META_KEY_SUMMARY];
+    if (hasSummaryHistory) delete chat_metadata[META_KEY_SUMMARY_HISTORY];
+    if (hasHomeMarker) delete chat_metadata[META_KEY_HOME_MARKER];
     await queueSaveChat();
-    console.log(`${CHAT_LOG_PREFIX} cleared LEGACY chat_metadata key (${reason})`);
+    console.log(`${CHAT_LOG_PREFIX} cleared LEGACY chat_metadata keys (${reason})`);
+}
+
+/**
+ * Branch A helper. The self-managed file exists, but its summary triplet may
+ * be empty if either (a) the user just upgraded to schema v2 (1.5a wrote
+ * empty fields), or (b) the user toggled OFF → ON and drain stashed data
+ * back in chat_metadata. In both cases chat_metadata may carry the real
+ * triplet — pull it into the file BEFORE cleanup runs (cleanup then clears
+ * chat_metadata as part of normal LEGACY cleanup with no special-case).
+ *
+ * Does nothing when chat_metadata is empty, or when the file already has
+ * non-empty triplet data (the file is truth — never overwrite from
+ * chat_metadata, mirrors the messages-side Branch A invariant).
+ *
+ * @param {object} existingFile - parsed file contents from readJSON
+ * @param {string} filename
+ * @returns {Promise<boolean>} true if absorbed
+ */
+async function _absorbMetaTripletIntoFileIfNeeded(existingFile, filename) {
+    const meta = _readMetaTriplet();
+    if (!_tripletHasContent(meta)) return false;
+
+    const fileTriplet = {
+        summary: typeof existingFile?.summary === 'string' ? existingFile.summary : '',
+        summaryHistory: Array.isArray(existingFile?.summaryHistory) ? existingFile.summaryHistory : [],
+        homeMarker: typeof existingFile?.homeMarker === 'string' ? existingFile.homeMarker : '',
+    };
+    if (_tripletHasContent(fileTriplet)) return false;
+
+    const messages = Array.isArray(existingFile?.messages) ? existingFile.messages : [];
+    const nextFloor = typeof existingFile?.nextFloor === 'number' ? existingFile.nextFloor : messages.length;
+
+    const merged = chatHistoryStore.buildFilePayload(messages, nextFloor, {
+        summary: meta.summary,
+        summaryHistory: meta.summaryHistory,
+        homeMarker: meta.homeMarker,
+    });
+    await atomicWriteJSON(filename, merged);
+    console.log(`${CHAT_LOG_PREFIX} ✅ absorbed chat_metadata triplet into existing self-managed file (summary=${meta.summary.length}c, history=${meta.summaryHistory.length}, marker=${meta.homeMarker ? 'yes' : 'no'})`);
+    return true;
+}
+
+/**
+ * OFF-direction migration: when the user has just flipped the external
+ * storage toggle off, chat_metadata's triplet is empty but the self-managed
+ * file may still hold the rolling summary data. Pull it back into chat_metadata
+ * once so the next chat-prompt build sees the carried-over summary, then clear
+ * the triplet from the file to prevent dual-source-of-truth confusion if the
+ * user toggles back on later (Branch A absorption will then re-seed the file).
+ *
+ * Idempotent: after a successful drain, chat_metadata triplet is non-empty,
+ * so subsequent calls bail at the early return.
+ */
+async function _drainFileTripletToMetaIfNeeded() {
+    if (!chat_metadata) return;
+
+    const existingMeta = _readMetaTriplet();
+    if (_tripletHasContent(existingMeta)) return; // already populated, nothing to drain
+
+    let chatId, charId;
+    try {
+        ({ chatId, charId } = _getCurrentKey());
+    } catch {
+        return;
+    }
+    if (!chatId || !charId) return;
+
+    const filename = await chatHistoryStore.filenameForKey(chatId, charId);
+    const parsed = await readJSON(filename);
+    if (!parsed || typeof parsed !== 'object') return;
+
+    const fileTriplet = {
+        summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+        summaryHistory: Array.isArray(parsed.summaryHistory) ? parsed.summaryHistory : [],
+        homeMarker: typeof parsed.homeMarker === 'string' ? parsed.homeMarker : '',
+    };
+    if (!_tripletHasContent(fileTriplet)) return;
+
+    if (fileTriplet.summary) chat_metadata[META_KEY_SUMMARY] = fileTriplet.summary;
+    if (fileTriplet.summaryHistory.length > 0) chat_metadata[META_KEY_SUMMARY_HISTORY] = fileTriplet.summaryHistory;
+    if (fileTriplet.homeMarker) chat_metadata[META_KEY_HOME_MARKER] = fileTriplet.homeMarker;
+
+    if (!_isSTChatReady()) {
+        console.warn(`${CHAT_LOG_PREFIX} drained file triplet → chat_metadata in-memory but skipping save — ST chat array empty`);
+        return;
+    }
+    try {
+        await queueSaveChat();
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} drain queueSaveChat failed:`, e?.message ?? e);
+        return;
+    }
+    console.log(`${CHAT_LOG_PREFIX} ✅ drained file triplet → chat_metadata (summary=${fileTriplet.summary.length}c, history=${fileTriplet.summaryHistory.length}, marker=${fileTriplet.homeMarker ? 'yes' : 'no'})`);
+
+    // Best-effort cleanup of the file's triplet so a future ON-flip's Branch A
+    // absorb step doesn't see stale data and overwrite a freshly summarized
+    // chat_metadata. Failure is non-fatal — duplicate data across both
+    // backends recovers to "file wins" on the next prewarm.
+    try {
+        const cleared = chatHistoryStore.buildFilePayload(
+            Array.isArray(parsed.messages) ? parsed.messages : [],
+            typeof parsed.nextFloor === 'number' ? parsed.nextFloor : 0,
+            { summary: '', summaryHistory: [], homeMarker: '' },
+        );
+        await atomicWriteJSON(filename, cleared);
+    } catch (e) {
+        console.warn(`${CHAT_LOG_PREFIX} file triplet cleanup after drain failed (non-fatal):`, e?.message ?? e);
+    }
 }
 
 /**
@@ -1570,7 +2271,12 @@ async function _ensureSelfManagedFile(chatId, charId) {
 
     const existing = await readJSON(filename);
     if (existing !== null) {
-        // Branch A — file is truth. Don't touch it.
+        // Branch A — file is truth. Don't touch its messages/counter.
+        // Triplet may still need absorbing: 1.5a-upgraded users have empty
+        // triplet fields in the file but real data in chat_metadata. Absorb
+        // BEFORE legacy cleanup so the data isn't lost when the keys get
+        // deleted in the next step. No-op when file triplet already non-empty.
+        await _absorbMetaTripletIntoFileIfNeeded(existing, filename);
         await _maybeCleanupLegacyKey('self-managed file already present');
         return { branch: 'exists', filename };
     }
@@ -1578,32 +2284,61 @@ async function _ensureSelfManagedFile(chatId, charId) {
     const legacy = chat_metadata?.[META_KEY_HISTORY];
     if (Array.isArray(legacy) && legacy.length > 0) {
         // Branch B — first-time migration.
-        console.log(`${CHAT_LOG_PREFIX} migrating ${legacy.length} messages → ${filename}`);
-        await atomicWriteJSON(filename, legacy);
+        // Make sure legacy data carries floor fields + counter BEFORE the
+        // file write, so the self-managed payload lands with full v1 shape
+        // in one go. Without this priming step, a chat that never triggered
+        // chat_metadata's lazy migration would move over as a bare array
+        // (no floors, no counter) and chatHistoryStore.prewarm would have
+        // to re-migrate on the next load — wasted write + an extra resave.
+        _migrateFloorsIfNeededLegacy();
+        const legacyCounter = typeof chat_metadata[META_KEY_NEXT_FLOOR] === 'number'
+            ? chat_metadata[META_KEY_NEXT_FLOOR]
+            : legacy.length;
+        // Phase 1.5c: also carry the rolling-summary triplet over so the same
+        // file write lands the full v2 shape. The post-write cleanup deletes
+        // those keys from chat_metadata as part of LEGACY cleanup.
+        const triplet = _readMetaTriplet();
+
+        console.log(`${CHAT_LOG_PREFIX} migrating ${legacy.length} messages (nextFloor=${legacyCounter}, summary=${triplet.summary.length}c, history=${triplet.summaryHistory.length}, marker=${triplet.homeMarker ? 'yes' : 'no'}) → ${filename}`);
+        await atomicWriteJSON(filename, chatHistoryStore.buildFilePayload(legacy, legacyCounter, triplet));
 
         const readback = await readJSON(filename);
-        if (!Array.isArray(readback) || readback.length !== legacy.length) {
-            throw new Error(`migrate verify: length mismatch (legacy=${legacy.length} readback=${readback?.length ?? 'null'})`);
+        const readbackMessages = Array.isArray(readback?.messages) ? readback.messages : null;
+        if (!readbackMessages || readbackMessages.length !== legacy.length) {
+            throw new Error(`migrate verify: length mismatch (legacy=${legacy.length} readback=${readbackMessages?.length ?? 'null'})`);
         }
         const last = legacy.length - 1;
-        const firstOk = readback[0]?.content === legacy[0]?.content
-            && readback[0]?.timestamp === legacy[0]?.timestamp;
-        const lastOk = readback[last]?.content === legacy[last]?.content
-            && readback[last]?.timestamp === legacy[last]?.timestamp;
+        const firstOk = readbackMessages[0]?.content === legacy[0]?.content
+            && readbackMessages[0]?.timestamp === legacy[0]?.timestamp;
+        const lastOk = readbackMessages[last]?.content === legacy[last]?.content
+            && readbackMessages[last]?.timestamp === legacy[last]?.timestamp;
         if (!firstOk || !lastOk) {
             throw new Error(`migrate verify: first/last content mismatch`);
         }
-        console.log(`${CHAT_LOG_PREFIX} ✅ migration verified: ${legacy.length} messages → ${filename}`);
+        if (readback.nextFloor !== legacyCounter) {
+            throw new Error(`migrate verify: nextFloor mismatch (expected ${legacyCounter}, got ${readback.nextFloor})`);
+        }
+        console.log(`${CHAT_LOG_PREFIX} ✅ migration verified: ${legacy.length} messages, nextFloor=${legacyCounter} → ${filename}`);
 
         await _maybeCleanupLegacyKey('migration just completed');
         return { branch: 'migrated', filename, migratedCount: legacy.length };
     }
 
-    // Branch C — fresh start. Create an empty self-managed file so future
-    // reads have something to find. atomicWriteJSON([]) only touches /user/files/,
+    // Branch C — fresh start. Create an empty v2 self-managed file so future
+    // reads have something to find. atomicWriteJSON only touches /user/files/,
     // never ST's jsonl, so there is no chance of blanking the chat.
-    await atomicWriteJSON(filename, []);
-    console.log(`${CHAT_LOG_PREFIX} created empty self-managed file ${filename}`);
+    //
+    // Defensive: a user who has no chat history but somehow has a triplet in
+    // chat_metadata (unlikely but possible after edge-case import / chat
+    // reset) gets it carried into the new empty file, then chat_metadata is
+    // cleaned. Without this, the triplet would be silently lost when 1.5a's
+    // prewarm read picks up the freshly-written empty file.
+    const triplet = _readMetaTriplet();
+    await atomicWriteJSON(filename, chatHistoryStore.buildFilePayload([], 0, triplet));
+    console.log(`${CHAT_LOG_PREFIX} created empty self-managed file ${filename} (triplet seed=${_tripletHasContent(triplet) ? 'yes' : 'no'})`);
+    if (_tripletHasContent(triplet)) {
+        await _maybeCleanupLegacyKey('fresh file seeded with chat_metadata triplet');
+    }
     return { branch: 'fresh', filename };
 }
 
@@ -1616,6 +2351,20 @@ export async function handleChatChanged() {
         // Backend disabled — force-clear cache; legacy chat_metadata is the
         // truth and the in-memory cache is irrelevant.
         chatHistoryStore.invalidate();
+        // Backfill floor ids + counter for the chat_metadata backend so the
+        // next assignNextFloor() lands on a real, persisted starting point.
+        // Self-managed prewarm handles this internally below.
+        await ensureFloorsMigrated();
+        // Phase 1.5c: handle the user-flipped-toggle-off case. If a
+        // self-managed file still holds the rolling-summary triplet and
+        // chat_metadata's slots are empty, drain the file's triplet back into
+        // chat_metadata once so the next prompt build sees the summary.
+        // Idempotent: subsequent calls bail when chat_metadata is populated.
+        try {
+            await _drainFileTripletToMetaIfNeeded();
+        } catch (e) {
+            console.warn(`${CHAT_LOG_PREFIX} drainFileTripletToMeta failed (non-fatal):`, e?.message ?? e);
+        }
         return;
     }
 
