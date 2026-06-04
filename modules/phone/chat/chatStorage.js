@@ -867,7 +867,11 @@ export async function sendSummaryAsUserMessage(summary, history) {
 }
 
 // Used by the "原文灌入" return-home mode (raw transcript instead of summary).
-export async function sendRawTranscriptAsUserMessage(history) {
+// priorSummary covers earlier rolling-summarized messages whose raw content is
+// no longer in `history` (auto-summarize folded them out). When non-empty it
+// gets prefixed to the transcript so ST main chat still sees the entire 回家
+// span — without this, raw-mode loses the same chunk that summary-mode would.
+export async function sendRawTranscriptAsUserMessage(history, priorSummary = '') {
     const charName = getCharacterInfo()?.name || '角色';
     const userName = getUserName();
     const timespan = extractChatTimespan(history);
@@ -878,17 +882,25 @@ export async function sendRawTranscriptAsUserMessage(history) {
         return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
     }).join('\n');
 
+    const hasPrior = typeof priorSummary === 'string' && priorSummary.trim().length > 0;
+    const introLine = hasPrior
+        ? '以下是这段时间的手机聊天记录（早期对话已被压缩为总结，最新对话保留原文）：'
+        : '以下是这段时间的完整手机聊天记录原文：';
+    const recordBody = hasPrior
+        ? `【更早些时候已被压缩的对话（仅总结形式）】\n${priorSummary}\n\n【尚未压缩的对话原文】\n${transcript}`
+        : transcript;
+
     const messageText = timespan.hasTime
         ? `<恶灵QR>[手机聊天记录同步 — 原文]
-${buildTimeAdvanceBlock(timespan, userName, charName)}以下是这段时间的完整手机聊天记录原文：
+${buildTimeAdvanceBlock(timespan, userName, charName)}${introLine}
 
-${transcript}
+${recordBody}
 
 请${charName}基于当前已推进到 ${timespan.endStr} 的时间，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`
         : `<恶灵QR>[手机聊天记录同步 — 原文]
-在异地状态时，${userName}和${charName}进行了一些聊天。以下是完整的手机聊天记录原文：
+在异地状态时，${userName}和${charName}进行了一些聊天。${introLine}
 
-${transcript}
+${recordBody}
 
 ${userName}现在已经和${charName}结束了异地。请${charName}根据手机聊天的内容和当前的情境，自然地继续线下互动。可以提到手机里聊过的话题，但不要机械地复述。</恶灵QR>`;
 

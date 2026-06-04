@@ -24,9 +24,7 @@ const COMPLETE_HOLD_MS = 1500;
 const FAIL_HOLD_MS = 3000;
 const CLOSE_ANIM_MS = 250;
 
-// Playful sister-circle tips rotated under the stage text. Pure static array
-// so we don't pull in extra state. Style guide: no emoji, no he/him, keep it
-// warm and a touch silly — matches the workspace voice.
+
 const TIPS = [
     '鬼面戴着老花镜在奋笔疾书',
     '把零散的便签订成厚厚一本',

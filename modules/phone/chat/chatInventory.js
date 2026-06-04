@@ -223,45 +223,69 @@ export async function handleReturnHome() {
         return;
     }
 
+    // Drop manually-hidden / already-folded messages (`summarized: true`).
+    // Same field the prompt builder uses to exclude bubbles from <chat_history>,
+    // so the manual-hide gesture must apply here too — otherwise 回家 silently
+    // re-sends what the user just chose to hide and burns a fortune in tokens.
+    const visibleNewMessages = newMessages.filter(m => !m.summarized);
+    const hiddenCount = newMessages.length - visibleNewMessages.length;
+
+    if (visibleNewMessages.length === 0) {
+        alert(`上次回家之后的 ${newMessages.length} 条新消息全部被手动隐藏了，没有可同步的内容～`);
+        return;
+    }
+
     // Read user preferences from persistent settings
     const doMemoryFragments = getPhoneSetting('rhMemory', false);
     const syncMode = getPhoneSetting('rhSyncMode', 'summary');
 
-    const modeLabel = syncMode === 'raw' ? '原文灌入' : 'AI压缩总结';
+    const modeLabel = syncMode === 'raw' ? '原文灌入' : '压缩总结';
     const memoryLabel = doMemoryFragments ? '[ ON ] 提取记忆碎片' : '[ OFF ] 不提取记忆碎片';
-    const scopeLabel = newMessages.length === history.length
-        ? `本次同步 ${newMessages.length} 条消息`
-        : `本次同步 ${newMessages.length} 条新消息（共 ${history.length} 条，已跳过上次回家前的 ${history.length - newMessages.length} 条）`;
+    const skippedBeforeMarker = history.length - newMessages.length;
 
-    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n${scopeLabel}\n同步方式: ${modeLabel}\n${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
+    // Headline stays a single number so the user can't misread how much is
+    // about to be sent. Skip details drop into a quiet second-line parenthetical
+    // only when they're non-zero — and only the entries actually present show up.
+    const skipNotes = [];
+    if (hiddenCount > 0) skipNotes.push(`手动隐藏 ${hiddenCount} 条`);
+    if (skippedBeforeMarker > 0) skipNotes.push(`上次回家前 ${skippedBeforeMarker} 条`);
+    const scopeLabel = skipNotes.length > 0
+        ? `本次将总结 ${visibleNewMessages.length} 条消息\n（已自动跳过：${skipNotes.join('、')}）`
+        : `本次将总结 ${visibleNewMessages.length} 条消息`;
+
+    if (!confirm(`确定要结束手机聊天并回到线下吗？\n\n${scopeLabel}\n\n同步方式: ${modeLabel}\n${memoryLabel}\n\n（可在 设置 → 聊天 中修改）`)) {
         return;
     }
 
     const charName = getCharacterInfo()?.name || '角色';
     const userName = getUserName();
 
-    // Show a "syncing" status
-    const messagesArea = document.getElementById('chat_messages_area');
-    if (messagesArea) {
-        messagesArea.insertAdjacentHTML('beforeend',
-            `<div class="chat-retract" id="chat_sync_status"><i class="ph ph-house"></i> 正在处理回家流程…</div>`
-        );
-    }
-    scrollToBottom(true);
+    // Progress card lives on the phone shell, not the chat DOM — survives the
+    // user switching to another app while the LLM call is still running.
+    const card = openProgressCard({ title: '回家流程' });
+
+    // Snapshot the rolling chat summary BEFORE running any LLM call. It
+    // covers the earlier portion of this 回家 cycle that auto-summarize
+    // already folded out of <chat_history> — those raw messages now carry
+    // summarized: true and are filtered from visibleNewMessages, so this
+    // summary is the only remaining record of that span. We must fold it
+    // into the LLM input or that whole span gets silently dropped on the
+    // way to ST main chat, then permanently erased by saveChatSummary('')
+    // at the end of the flow.
+    const existingSummary = loadChatSummary();
 
     try {
         // ─── Optional Step: Memory Fragment Extraction ───
         if (doMemoryFragments) {
-            const statusEl = document.getElementById('chat_sync_status');
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-puzzle-piece"></i> 正在提取记忆碎片…';
-
+            card.setStage('正在提取记忆碎片 …');
             console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
 
             try {
                 // Convert phone chat messages to the format generateSummary() expects.
-                // Use newMessages (post-marker slice) so we don't re-extract memory
-                // from chats that a previous 回家 already processed.
-                const summarizerMessages = newMessages.map(msg => ({
+                // Use visibleNewMessages (post-marker slice, minus manually-hidden)
+                // so we don't re-extract memory from chats that a previous 回家
+                // already processed, and so the user's hide gesture is honored here too.
+                const summarizerMessages = visibleNewMessages.map(msg => ({
                     parsedContent: msg.content || '',
                     parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
                     is_user: msg.role === 'user',
@@ -275,36 +299,33 @@ export async function handleReturnHome() {
                 if (Array.isArray(fragments) && fragments.length > 0) {
                     await saveToWorldBook(fragments, null, null, isContentSimilar);
                     console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
-                    if (statusEl) statusEl.innerHTML = `<i class="ph ph-puzzle-piece"></i> 记忆碎片提取完成！写入 ${fragments.length} 条。正在同步…`;
+                    card.setStage(`记忆碎片已写入 ${fragments.length} 条 …`);
                 } else {
                     console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
-                    if (statusEl) statusEl.innerHTML = '<i class="ph ph-puzzle-piece"></i> 无新记忆碎片。正在同步…';
+                    card.setStage('无新记忆碎片 …');
                 }
             } catch (memErr) {
                 console.error(`${CHAT_LOG_PREFIX} 记忆碎片提取失败:`, memErr);
-                if (statusEl) statusEl.innerHTML = '<i class="ph ph-warning"></i> 记忆碎片提取失败，继续同步…';
+                card.setStage('记忆碎片提取失败，继续同步 …');
                 // Don't abort — continue with sync
             }
         }
 
         // ─── Sync to ST main chat ───
-        const statusEl = document.getElementById('chat_sync_status');
-
         if (syncMode === 'raw') {
             // ── Raw transcript mode ──
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-file-text"></i> 正在将原文聊天记录同步…';
-            console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript (${newMessages.length} new msgs)...`);
+            card.setStage('正在发送原文聊天记录 …');
+            const priorNote = existingSummary ? ` (+ ${existingSummary.length}-char prior summary prefix)` : '';
+            console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript (${visibleNewMessages.length} visible / ${newMessages.length} total new, ${hiddenCount} hidden)${priorNote}...`);
 
-            await sendRawTranscriptAsUserMessage(newMessages);
-
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！原文聊天记录已发送，你对象正在回应～';
+            await sendRawTranscriptAsUserMessage(visibleNewMessages, existingSummary);
 
         } else {
             // ── AI compressed summary mode (default) ──
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-robot"></i> 正在生成总结…';
-            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${newMessages.length} new msgs)...`);
+            card.setStage('鬼面正在浓缩今日聊天 …');
+            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${visibleNewMessages.length} visible / ${newMessages.length} total new, ${hiddenCount} hidden)...`);
 
-            const transcript = newMessages.map(msg => {
+            const transcript = visibleNewMessages.map(msg => {
                 const role = msg.role === 'user' ? userName : charName;
                 const timeStr = msg.timestamp
                     ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -313,7 +334,17 @@ export async function handleReturnHome() {
             }).join('\n');
 
             const summarizePrompt = buildSummarizePrompt();
-            const summaryUserPrompt = `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
+
+            // When a rolling chat summary exists, the visible transcript only
+            // covers the unsummarized tail — the earlier span lives in that
+            // summary. Hand both halves to the LLM and ask for an integrated
+            // recap so ST main chat receives the whole 回家 cycle, not just
+            // the recent leftovers.
+            const summaryUserPrompt = existingSummary
+                ? `以下是今日手机聊天的内容，请整合成一份完整的回顾给线下场景使用：\n\n` +
+                  `【之前的对话总结】\n${existingSummary}\n\n` +
+                  `【最近的对话】\n${transcript}`
+                : `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
 
             const summary = await callPhoneLLM(summarizePrompt, summaryUserPrompt, { maxTokens: 2000 });
 
@@ -323,11 +354,9 @@ export async function handleReturnHome() {
 
             console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
 
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-check-circle"></i> 总结生成成功！正在发送…';
+            card.setStage('总结生成成功，正在送达 …');
 
-            await sendSummaryAsUserMessage(summary.trim(), newMessages);
-
-            if (statusEl) statusEl.innerHTML = '<i class="ph ph-house"></i> 已回家！总结已作为消息发送，你对象正在回应～';
+            await sendSummaryAsUserMessage(summary.trim(), visibleNewMessages);
         }
 
         // Advance the 回家 marker. Re-read history here instead of using
@@ -364,14 +393,11 @@ export async function handleReturnHome() {
         }
 
         console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);
+        card.complete('已回家！');
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} Return home failed:`, error);
-
-        const statusEl = document.getElementById('chat_sync_status');
-        if (statusEl) {
-            statusEl.innerHTML = `<i class="ph ph-warning"></i> 同步失败: ${error.message}`;
-        }
+        card.fail(`同步失败：${error.message}`);
     }
 }
 
