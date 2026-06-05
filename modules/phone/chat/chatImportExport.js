@@ -22,32 +22,24 @@ import {
     replaceChatSummaryHistory,
     loadHomeMarker,
     saveHomeMarker,
-    loadSTSyncMarker,
     saveSTSyncMarker,
-    loadCharacterNickname,
     saveCharacterNickname,
     getCharacterInfo,
     getCharacterDisplayName,
-    getCharacterId,
     ensureChatHistoryReady,
     prepareImportedFloors,
 } from './chatStorage.js';
 import * as chatHistoryStore from '../../storage/chatHistoryStore.js';
-import { getContext } from '../../../../../../extensions.js';
 
 const LOG = '[ChatImportExport]';
-const FORMAT_ID = 'ghostface-chat-export';
-// v2 added optional `data.nextFloor` so round-tripping an export keeps the
-// floor-id counter aligned with the messages it covers. v1 files import fine
-// — the loader synthesizes a counter from the message data (see
-// prepareImportedFloors in chatStorage).
-// v3 (Phase 1.5c) adds `data.summaryHistory` so backup/restore stops silently
-// dropping the archived rolling-summary entries — this also unblocks the
-// upcoming "delete summary entry & restore covered messages" flow, which
-// would be useless if a backup-restore wiped the entries it points at.
-// v1 / v2 imports still work; the loader treats missing summaryHistory as
-// "leave the current chat's summary history untouched".
-const FORMAT_VERSION = 3;
+// Legacy export envelope. New exports produce the raw self-managed-storage
+// shape directly (see buildPhoneChatExportPayload below) so backups match
+// what chatHistoryStore writes to /user/files/ghostface_chat_*.json. These
+// constants stay so the import path keeps recognizing older envelope-shaped
+// backups produced before the switch (v1 / v2 / v3) — same forward-
+// compatibility courtesy that v1/v2 imports got when v3 launched.
+const LEGACY_FORMAT_ID = 'ghostface-chat-export';
+const LEGACY_MAX_VERSION = 3;
 
 let _backHandler = null;
 let _fileInputEl = null;
@@ -100,21 +92,16 @@ function _buildPage() {
                 <div class="chat-settings-card">
                     <div class="chat-settings-item" id="chat_ie_export_btn">
                         <i class="ph ph-download-simple chat-settings-item-icon"></i>
-                        <span class="chat-settings-item-label">导出聊天记录</span>
+                        <span class="chat-settings-item-label">导出聊天文件</span>
                         <i class="ph ph-caret-right chat-settings-item-chevron"></i>
                     </div>
                     <div class="chat-settings-item" id="chat_ie_import_btn">
                         <i class="ph ph-upload-simple chat-settings-item-icon"></i>
-                        <span class="chat-settings-item-label">导入聊天记录</span>
+                        <span class="chat-settings-item-label">导入聊天文件</span>
                         <i class="ph ph-caret-right chat-settings-item-chevron"></i>
                     </div>
                 </div>
             </div>
-
-            <div class="chat-importexport-note">
-                导入会<strong>完全覆盖</strong>当前会话的聊天记录、滚动总结和昵称设置。建议先导出做一份备份。
-            </div>
-
         </div>
     </div>`;
 }
@@ -186,6 +173,18 @@ async function _runExport() {
  * than surface an error (an empty phone chat is a normal state for a freshly
  * created character).
  *
+ * Output shape: the same `{ schema, messages, nextFloor, summary,
+ * summaryHistory, homeMarker }` that chatHistoryStore writes to
+ * /user/files/ghostface_chat_*.json. This holds even on the chat_metadata
+ * backend — we synthesize the same shape so the user's mental model
+ * ("a backup is the chat database snapshot") works regardless of which
+ * storage backend is active. stSyncMarker and nickname live in chat_metadata
+ * as ST-integration / UI state, not phone-chat content, and are intentionally
+ * NOT part of this shape: restoring without them re-absorbs the main ST chat
+ * on the next injection and keeps the existing nickname intact — both
+ * acceptable side-effects, and extending the raw shape would diverge from
+ * the on-disk format that defines the import contract.
+ *
  * Filename style:
  *   - 'manual'     → 鬼面聊天-{角色}-{YYYYMMDD-HHmm}.json   (user-facing download)
  *   - 'backup'     → {角色}_phonechat_{ISO-19}.json         (matches backup.js
@@ -206,41 +205,21 @@ export async function buildPhoneChatExportPayload({ filenameStyle = 'manual' } =
     const history = loadChatHistory();
     if (!Array.isArray(history) || history.length === 0) return null;
 
-    const ctx = (() => { try { return getContext(); } catch { return {}; } })();
     const charInfo = getCharacterInfo() || {};
     const charName = charInfo.name || '';
 
-    const payload = {
-        format: FORMAT_ID,
-        version: FORMAT_VERSION,
-        exportedAt: new Date().toISOString(),
-        source: {
-            charName,
-            charId: getCharacterId(),
-            chatId: ctx?.chatId || ctx?.chat_id || '',
-            nickname: loadCharacterNickname() || '',
-        },
-        stats: {
-            messageCount: history.length,
-            firstMessageAt: history[0]?.timestamp || '',
-            lastMessageAt: history[history.length - 1]?.timestamp || '',
-        },
-        data: {
-            history,
+    const payload = chatHistoryStore.buildFilePayload(
+        history,
+        _readActiveNextFloor(history),
+        {
             summary: loadChatSummary() || '',
             // Archived rolling-summary entries. Carries floorRange on Phase 2+
             // entries so a restored backup can still drive the "delete &
             // restore covered messages" flow against its imported history.
             summaryHistory: loadChatSummaryHistory(),
             homeMarker: loadHomeMarker() || '',
-            stSyncMarker: loadSTSyncMarker() || '',
-            // Persisted floor-id counter — read from whichever backend is
-            // active right now. Importing this export later restores the
-            // exact same next-id boundary, so floorRange references inside
-            // summary history keep matching live messages.
-            nextFloor: _readActiveNextFloor(history),
         },
-    };
+    );
 
     const json = JSON.stringify(payload, null, 2);
     const filename = _buildExportFilename(charName || '角色', filenameStyle);
@@ -276,6 +255,47 @@ function _triggerBrowserDownload(filename, content) {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// Silent backup (summarize hook)
+// ───────────────────────────────────────────────────────────────────────
+
+// Lightweight escape hatch read from extension_settings — defaults to on so
+// users get a backup-before-summarize safety net without configuring anything.
+// Setting `extension_settings.the_ghost_face.silentChatBackupOnSummarize = false`
+// turns the auto-download off without touching code.
+function _isSilentBackupEnabled() {
+    try {
+        const ext = window?.extension_settings?.the_ghost_face;
+        if (ext && ext.silentChatBackupOnSummarize === false) return false;
+    } catch { /* settings not loaded yet — fall through to default-on */ }
+    return true;
+}
+
+/**
+ * Auto-download a phone-chat raw backup as a side-effect of rolling
+ * summarize. Surfaces no UI and never throws: failure logs and returns,
+ * so a backup hiccup can never block the summarize success path.
+ *
+ * Default-on; users disable via extension_settings (see _isSilentBackupEnabled).
+ *
+ * @param {{ reason?: string }} [opts]
+ */
+export async function triggerSilentPhoneChatBackup({ reason = '' } = {}) {
+    if (!_isSilentBackupEnabled()) return;
+    try {
+        await ensureChatHistoryReady();
+        const result = await buildPhoneChatExportPayload({ filenameStyle: 'backup' });
+        if (!result) {
+            console.log(`${LOG} silent backup skipped (no messages)${reason ? ` — ${reason}` : ''}`);
+            return;
+        }
+        _triggerBrowserDownload(result.filename, result.json);
+        console.log(`${LOG} silent backup downloaded: ${result.filename} (${result.messageCount} msgs)${reason ? ` — ${reason}` : ''}`);
+    } catch (err) {
+        console.warn(`${LOG} silent backup failed (non-fatal):`, err?.message || err);
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // Import
 // ───────────────────────────────────────────────────────────────────────
 
@@ -306,62 +326,132 @@ async function _onFilePicked(e) {
         return;
     }
 
-    let payload;
+    let parsed;
     try {
-        payload = JSON.parse(text);
+        parsed = JSON.parse(text);
     } catch (err) {
         _toast('文件不是合法的 JSON', 'error');
         return;
     }
 
-    const validation = _validatePayload(payload);
+    // One step normalizes both supported input shapes into a single canonical
+    // raw-shape object + an extras bag for envelope-only fields (stSyncMarker,
+    // nickname) — the rest of the path treats both inputs uniformly.
+    const norm = _normalizeImportPayload(parsed);
+    if (!norm.ok) {
+        _toast(`导入文件格式错误：${norm.error}`, 'error');
+        return;
+    }
+
+    const validation = _validateCanonical(norm.canonical);
     if (!validation.ok) {
         _toast(`导入文件格式错误：${validation.error}`, 'error');
         return;
     }
 
-    const history = payload.data.history;
-    const sourceCharName = payload.source?.charName || '未知角色';
+    const messages = norm.canonical.messages;
     const currentCharName = getCharacterInfo()?.name || '当前角色';
 
-    const confirmMsg = `准备导入 ${history.length} 条消息（来源：${sourceCharName}）。\n\n此操作将完全覆盖当前与「${currentCharName}」的会话记录、滚动总结和昵称。\n\n确定要继续吗？`;
+    const confirmMsg = `准备导入 ${messages.length} 条消息（来源：${norm.sourceLabel}）。\n\n此操作将完全覆盖当前与「${currentCharName}」的会话记录、滚动总结和昵称。\n\n确定要继续吗？`;
     if (!confirm(confirmMsg)) return;
 
     try {
-        await _applyImport(payload);
+        await _applyImport(norm.canonical, norm.extras);
     } catch (err) {
         console.error(LOG, 'apply import failed:', err);
         _toast(`导入失败：${err?.message || err}`, 'error');
         return;
     }
 
-    _toast(`已导入 ${history.length} 条消息`, 'success');
+    _toast(`已导入 ${messages.length} 条消息`, 'success');
     _unregisterBackHandler();
     // Re-open chat app so the user sees the freshly imported conversation.
     openChatApp().catch(err => console.warn(LOG, 'openChatApp after import failed:', err));
 }
 
-function _validatePayload(p) {
-    if (!p || typeof p !== 'object') {
-        return { ok: false, error: '内容为空' };
+/**
+ * Reduce any supported input file into a canonical raw-shape object plus
+ * the envelope-only extras that aren't part of the raw shape.
+ *
+ * Two recognized inputs:
+ *   1. Raw self-managed storage file (current export format and the file
+ *      chatHistoryStore writes to /user/files/ghostface_chat_*.json):
+ *        { schema: number, messages, nextFloor, summary, summaryHistory, homeMarker }
+ *      Direct mapping; extras is empty.
+ *   2. Legacy export envelope (`format: 'ghostface-chat-export'`, v1/v2/v3):
+ *      Unwrap `data.*` into raw shape, lift `data.stSyncMarker` and
+ *      `source.nickname` into extras so _applyImport can restore them when
+ *      present.
+ *
+ * Returned `canonical.summaryHistory` is undefined (NOT []) when the input
+ * lacked it — _applyImport uses that distinction to leave the destination's
+ * existing summary archive intact instead of wiping it. Same convention for
+ * `extras.stSyncMarker` and `extras.nickname`: undefined ⇒ "do not touch".
+ */
+function _normalizeImportPayload(p) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+        return { ok: false, error: '内容为空或不是对象' };
     }
-    if (p.format !== FORMAT_ID) {
-        return { ok: false, error: '不是鬼面聊天导出文件' };
+
+    // Legacy envelope path.
+    if (p.format === LEGACY_FORMAT_ID) {
+        if (typeof p.version !== 'number' || p.version < 1 || p.version > LEGACY_MAX_VERSION) {
+            return { ok: false, error: `不支持的版本 ${p.version}` };
+        }
+        const d = p.data;
+        if (!d || typeof d !== 'object') {
+            return { ok: false, error: '缺少 data 段' };
+        }
+        if (!Array.isArray(d.history)) {
+            return { ok: false, error: 'history 不是数组' };
+        }
+        return {
+            ok: true,
+            canonical: {
+                schema: 2,
+                messages: d.history,
+                nextFloor: typeof d.nextFloor === 'number' ? d.nextFloor : undefined,
+                summary: typeof d.summary === 'string' ? d.summary : '',
+                summaryHistory: Array.isArray(d.summaryHistory) ? d.summaryHistory : undefined,
+                homeMarker: typeof d.homeMarker === 'string' ? d.homeMarker : '',
+            },
+            extras: {
+                stSyncMarker: typeof d.stSyncMarker === 'string' ? d.stSyncMarker : undefined,
+                nickname: typeof p.source?.nickname === 'string' ? p.source.nickname : undefined,
+            },
+            sourceLabel: p.source?.charName || '未知角色',
+        };
     }
-    if (typeof p.version !== 'number' || p.version < 1 || p.version > FORMAT_VERSION) {
-        return { ok: false, error: `不支持的版本 ${p.version}` };
+
+    // Raw storage shape path.
+    if (typeof p.schema === 'number' && Array.isArray(p.messages)) {
+        return {
+            ok: true,
+            canonical: {
+                schema: p.schema,
+                messages: p.messages,
+                nextFloor: typeof p.nextFloor === 'number' ? p.nextFloor : undefined,
+                summary: typeof p.summary === 'string' ? p.summary : '',
+                summaryHistory: Array.isArray(p.summaryHistory) ? p.summaryHistory : undefined,
+                homeMarker: typeof p.homeMarker === 'string' ? p.homeMarker : '',
+            },
+            extras: {},
+            sourceLabel: '聊天数据快照',
+        };
     }
-    if (!p.data || typeof p.data !== 'object') {
-        return { ok: false, error: '缺少 data 段' };
-    }
-    if (!Array.isArray(p.data.history)) {
-        return { ok: false, error: 'history 不是数组' };
+
+    return { ok: false, error: '无法识别的文件格式' };
+}
+
+function _validateCanonical(c) {
+    if (!Array.isArray(c.messages)) {
+        return { ok: false, error: 'messages 不是数组' };
     }
     // Light shape check on the first message — guards against someone uploading
     // a different ST export by mistake. We don't deeply validate every message:
     // forward compatibility wins over strictness, and our own loader is lenient.
-    if (p.data.history.length > 0) {
-        const m = p.data.history[0];
+    if (c.messages.length > 0) {
+        const m = c.messages[0];
         if (!m || typeof m !== 'object' || typeof m.content !== 'string' || !('role' in m)) {
             return { ok: false, error: '消息结构不符合预期' };
         }
@@ -369,32 +459,35 @@ function _validatePayload(p) {
     return { ok: true };
 }
 
-async function _applyImport(payload) {
-    const d = payload.data;
+async function _applyImport(canonical, extras) {
+    const messages = canonical.messages;
     // Stamp floor ids on every imported message + seed the counter BEFORE
     // saveChatHistory queues the write — saveHistory snapshots the counter
     // at queue time, so a later setNextFloor would land on the next write
     // instead of this one. Works for both backends; see prepareImportedFloors.
-    await prepareImportedFloors(d.history, typeof d.nextFloor === 'number' ? d.nextFloor : undefined);
+    await prepareImportedFloors(messages, canonical.nextFloor);
     // Order matters mildly: history first (largest write, most likely to fail),
     // then markers / summary / nickname. If history save throws we abort before
     // touching anything else, leaving the chat in its prior state.
-    await saveChatHistory(d.history);
-    await saveChatSummary(typeof d.summary === 'string' ? d.summary : '');
-    // summaryHistory is only present in v3+ exports. For v1/v2 imports we leave
-    // the destination's current summaryHistory untouched — preserves the user's
-    // existing summary archive instead of silently wiping it on a partial-shape
-    // backup. Explicit `null` / `[]` from a v3 export still replaces (overwrite
-    // semantics match the rest of _applyImport's contract).
-    if (Array.isArray(d.summaryHistory)) {
-        await replaceChatSummaryHistory(d.summaryHistory);
+    await saveChatHistory(messages);
+    await saveChatSummary(canonical.summary);
+    // summaryHistory undefined ⇒ source file had no entry (raw shape default
+    // OR legacy v1/v2 envelope) — leave the destination's existing summary
+    // archive intact instead of wiping it. Explicit [] from a v3 envelope /
+    // raw file still replaces (overwrite semantics match the rest of the
+    // contract).
+    if (Array.isArray(canonical.summaryHistory)) {
+        await replaceChatSummaryHistory(canonical.summaryHistory);
     }
-    await saveHomeMarker(typeof d.homeMarker === 'string' ? d.homeMarker : '');
-    await saveSTSyncMarker(typeof d.stSyncMarker === 'string' ? d.stSyncMarker : '');
-
-    const nickname = payload.source?.nickname;
-    if (typeof nickname === 'string') {
-        saveCharacterNickname(nickname);
+    await saveHomeMarker(canonical.homeMarker);
+    // stSyncMarker / nickname only exist on legacy envelopes; on raw-shape
+    // imports they're undefined and we leave the destination's values alone
+    // (an undefined nickname must not clobber the current one with '').
+    if (typeof extras.stSyncMarker === 'string') {
+        await saveSTSyncMarker(extras.stSyncMarker);
+    }
+    if (typeof extras.nickname === 'string') {
+        saveCharacterNickname(extras.nickname);
     }
 }
 

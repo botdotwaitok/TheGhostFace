@@ -600,6 +600,13 @@ export async function handleManualSummarize() {
         console.log(`${CHAT_LOG_PREFIX} ✅ 手动总结完成: ${newSummary.trim().length} 字, 标记 ${markedCount} 条`);
         card.complete(`压缩完成，折叠 ${markedCount} 条`);
 
+        // Silent backup hook: same safety-net snapshot as the auto-summarize
+        // path. Dynamic import to mirror chatStorage's pattern and avoid
+        // bundling chatImportExport into the inventory entry chunk.
+        import('./chatImportExport.js')
+            .then(m => m.triggerSilentPhoneChatBackup({ reason: 'manual-rolling-summarize' }))
+            .catch(err => console.warn(`${CHAT_LOG_PREFIX} silent backup import failed:`, err?.message));
+
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} ❌ 手动总结失败:`, error);
         card.fail(`压缩失败：${error.message}`);

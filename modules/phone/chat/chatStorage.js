@@ -2029,6 +2029,15 @@ export async function maybeAutoSummarize() {
         console.log(`${CHAT_LOG_PREFIX} ✅ 已标记 ${markedCount} 条消息为已总结`);
         card.complete('压缩完成');
 
+        // Silent backup hook: drop a raw-shape snapshot of the post-summarize
+        // state into the user's downloads so they always have a restore point
+        // around destructive summarize folds. Dynamic import avoids the
+        // chatStorage ↔ chatImportExport circular dep; fire-and-forget keeps
+        // the success path latency-free and the helper swallows its own errors.
+        import('./chatImportExport.js')
+            .then(m => m.triggerSilentPhoneChatBackup({ reason: 'auto-rolling-summarize' }))
+            .catch(err => console.warn(`${CHAT_LOG_PREFIX} silent backup import failed:`, err?.message));
+
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} ❌ 自动总结流程失败:`, error);
         card.fail('压缩失败');

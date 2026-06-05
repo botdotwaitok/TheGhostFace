@@ -16,6 +16,36 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 const RELEASE_NOTES = {
+        '4.4.3': {
+        date: '2026-06-05',
+        sections: [
+            {
+                title: '本次主题：聊天导出/导入+自动备份',
+                items: [
+                    '<strong>导出的 JSON 现在和 <code>/user/files/ghostface_chat_*.json</code> 完全是同一份 shape</strong>——也就是说，导出文件就是数据库快照本身。',
+                ],
+            },
+            {
+                title: '修复',
+                items: [
+                    '<strong>原始 <code>ghostface_chat_*.json</code> 文件导入失败</strong>——这次让导入路径同时识别两种 shape，原始文件和导出文件都能导回来。',
+                ],
+            },
+            {
+                title: '新增',
+                items: [
+                    '<strong>手动/自动总结后自动备份</strong>——每次手动/自动总结成功后，浏览器会默默下载一份当前会话的json文件，恢复路径就是普通的"导入聊天文件"。',
+                ],
+            },
+            {
+                title: '一些说明',
+                items: [
+                    '<strong>老备份文件仍然能导入</strong>——v1 / v2 / v3 envelope 格式的 <code>鬼面聊天-*.json</code> 老导出文件，识别路径仍然保留，不会因为这次格式变化失效。',
+                    '原始 raw shape 里没有 <code>stSyncMarker</code> 和昵称——前者用来记录"ST 主聊天已吸收到哪条"，后者是 UI 层的本地命名，都不算手机聊天数据本身。从 raw 文件恢复后：下次注入会重新吸收一遍 ST 主聊天（无害，只是多算一次），昵称保持现状不被清空。',
+                ],
+            },
+        ],
+    },
     '4.4.2': {
         date: '2026-06-04',
         sections: [
