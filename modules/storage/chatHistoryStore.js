@@ -49,6 +49,14 @@ let _cacheReady = false;
 let _pendingPrewarm = null;   // Promise<void> currently loading (for ensureReady)
 let _writeQueue = Promise.resolve();
 
+// Flips to true when the last prewarm() attempt threw before populating the
+// cache. saveHistory refuses to write while this is set — without that guard,
+// the catch block's previous behavior of forcing _cache=[] + _cacheReady=true
+// let any subsequent loadChatHistory+saveChatHistory cycle reverse-publish an
+// empty snapshot back to disk, deleting the user's real history. invalidate()
+// and the next successful prewarm both clear it back to false.
+let _prewarmFailed = false;
+
 // Floor counter for the currently loaded key. Always read/written through
 // getNextFloor / setNextFloor so the in-memory value and the on-disk
 // `nextFloor` field stay in lockstep. Monotonically increasing; never reused
@@ -154,6 +162,8 @@ export async function prewarm(chatId, charId) {
     const nextKey = { chatId, charId, hash, filename: _filenameFor(hash) };
     _currentKey = nextKey;
     _cacheReady = false;
+    // Clear any prior failure flag — this attempt gets to decide its own fate.
+    _prewarmFailed = false;
 
     const work = (async () => {
         try {
@@ -186,7 +196,16 @@ export async function prewarm(chatId, charId) {
                 // Backfill floor on every message that lacks one. Index-order
                 // is the only signal we have for legacy data; once written,
                 // these ids become the contract going forward.
+                //
+                // Null guard: a corrupt entry (null / undefined / non-object)
+                // used to throw TypeError on `.floor` here, tipping the whole
+                // prewarm into the catch block — which then forced the cache
+                // to []+ready and let the next save overwrite the file with
+                // an empty payload. One bad row trashed the whole chat. Now
+                // we just skip the bad slot and keep going; the file gets
+                // rewritten at v2 schema with the rest of the messages intact.
                 for (let i = 0; i < messages.length; i++) {
+                    if (!messages[i] || typeof messages[i] !== 'object') continue;
                     if (typeof messages[i].floor !== 'number') {
                         messages[i].floor = i;
                     }
@@ -251,12 +270,25 @@ export async function prewarm(chatId, charId) {
                 });
             }
         } catch (e) {
-            console.warn(`${LOG} prewarm failed for ${nextKey.filename}; starting empty:`, e.message);
+            // CRITICAL: do NOT mark the cache ready here, do NOT reset _cache,
+            // do NOT touch _cacheKey. The previous version of this block did
+            // all three and shipped an empty cache forward as if it were the
+            // truth — every saveHistory after that overwrote the on-disk file
+            // with [] and silently deleted the user's chat (reported in 4.4.2).
+            //
+            // Leaving _cacheReady=false has two effects:
+            //   - loadHistory({ allowStale: true }) still serves the previous
+            //     snapshot if _cacheKey survived a same-chat invalidate, so
+            //     same-chat refreshes keep painting the existing messages.
+            //   - saveHistory throws via the _prewarmFailed guard below,
+            //     refusing to publish an unverified-empty cache to disk.
+            //
+            // Race check: only set the flag if we're still the active key —
+            // a later prewarm against a different chat may have already taken
+            // over and we don't want to poison its state.
+            console.error(`${LOG} prewarm failed for ${nextKey.filename}; cache will NOT be marked ready, writes will be refused until next prewarm:`, e.message);
             if (_currentKey?.hash === nextKey.hash) {
-                _cache = [];
-                _nextFloor = 0;
-                _cacheReady = true;
-                _cacheKey = nextKey.hash;
+                _prewarmFailed = true;
             }
         }
     })();
@@ -297,6 +329,9 @@ export function invalidate({ preservedHash = null } = {}) {
     _currentKey = null;
     _cacheReady = false;
     _pendingPrewarm = null;
+    // Always reset the failure flag — invalidate marks a fresh attempt boundary.
+    // Whatever the next prewarm decides will overwrite this.
+    _prewarmFailed = false;
     if (!keepCache) {
         _cache = [];
         _cacheKey = null;
@@ -381,9 +416,23 @@ export function loadHistory({ allowStale = false } = {}) {
  * @param {Array} messages
  * @returns {Promise<void>}
  */
-export async function saveHistory(messages) {
+export async function saveHistory(messages, { allowEmpty = false } = {}) {
     if (!_currentKey) {
         throw new Error('chatHistoryStore.saveHistory: no active key — call prewarm() first');
+    }
+    // Refuse to write when the active key's prewarm never produced a verified
+    // snapshot. Writing here would let the caller's loadChatHistory()→[]
+    // (served from the catch-block fallback in older versions, or simply from
+    // a never-loaded cache) round-trip back to disk and overwrite the real
+    // file with an empty payload. The caller sees an exception and can
+    // surface it; saveChatHistory's race-retry path will then call
+    // handleChatChanged → re-prewarm and either succeed cleanly or fail loud
+    // — never silently delete data.
+    if (_prewarmFailed) {
+        throw new Error(
+            `chatHistoryStore.saveHistory: prewarm failed for ${_currentKey.filename} — ` +
+            'refusing to write; would risk overwriting on-disk history with an empty cache'
+        );
     }
     const snapshot = messages.slice();
     const keyAtCall = _currentKey;
@@ -401,6 +450,36 @@ export async function saveHistory(messages) {
     const next = _writeQueue
         .catch(() => {}) // isolate prior failures from later tasks
         .then(async () => {
+            // Empty-write safety net. Last-line-of-defense against any path
+            // (current bug, future bug, or our own oversight) that ends up
+            // calling saveHistory with [] against a populated on-disk file.
+            // Only triggers when the in-memory snapshot is empty — steady-state
+            // save cost is unchanged. Legitimate clears pass allowEmpty: true
+            // (clearHistory, user-initiated 清空, the delete-last-message
+            // path) so they get through without a round-trip.
+            if (snapshot.length === 0 && !allowEmpty) {
+                let diskMessages;
+                try {
+                    const existing = await readJSON(keyAtCall.filename);
+                    diskMessages = Array.isArray(existing)
+                        ? existing
+                        : (Array.isArray(existing?.messages) ? existing.messages : []);
+                } catch (e) {
+                    // Can't confirm disk is safe to overwrite — refuse. Better
+                    // a failed save than a silent wipe.
+                    throw new Error(
+                        `chatHistoryStore.saveHistory: cannot verify ${keyAtCall.filename} ` +
+                        `before empty-write (readJSON failed: ${e.message}); refusing to write`
+                    );
+                }
+                if (diskMessages.length > 0) {
+                    throw new Error(
+                        `chatHistoryStore.saveHistory: refusing to overwrite ${keyAtCall.filename} ` +
+                        `(${diskMessages.length} messages on disk) with empty snapshot; ` +
+                        'pass { allowEmpty: true } if this is an intentional clear'
+                    );
+                }
+            }
             // Even if the user switched chats after this save was queued, we
             // still want this write to go through against ITS original key
             // (snapshotted as keyAtCall) — those bytes ARE that file's truth.
@@ -573,12 +652,14 @@ export async function mutateInPlace(mutator) {
 }
 
 /**
- * Empty the current key's history both in memory and on disk.
+ * Empty the current key's history both in memory and on disk. Passes
+ * allowEmpty so the saveHistory empty-write safety net lets us through —
+ * this is the sanctioned way to actually publish an empty file.
  * @returns {Promise<void>}
  */
 export async function clearHistory() {
     if (!_currentKey) return;
-    await saveHistory([]);
+    await saveHistory([], { allowEmpty: true });
 }
 
 /**
@@ -588,6 +669,7 @@ export function debugInfo() {
     return {
         currentKey: _currentKey,
         cacheReady: _cacheReady,
+        prewarmFailed: _prewarmFailed,
         cacheLength: _cache.length,
         nextFloor: _nextFloor,
         summaryChars: _summary.length,

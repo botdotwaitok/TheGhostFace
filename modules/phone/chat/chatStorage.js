@@ -402,11 +402,11 @@ export function commitHistoryInMemory(messages) {
  * @param {Array} messages
  * @returns {Promise<void>}
  */
-export async function saveChatHistory(messages) {
+export async function saveChatHistory(messages, options = {}) {
     if (_useExternalStorage()) {
         try {
             await chatHistoryStore.ensureReady();
-            await chatHistoryStore.saveHistory(messages);
+            await chatHistoryStore.saveHistory(messages, options);
             return;
         } catch (e) {
             // Self-heal a prewarm race: if ST dispatched CHAT_CHANGED while
@@ -418,12 +418,18 @@ export async function saveChatHistory(messages) {
             // Re-running handleChatChanged is idempotent (it always invalidates
             // first then rebuilds), so we can safely re-prime the cache here
             // and retry the save once.
-            const racey = /no active key|cache not ready/i.test(e?.message || '');
+            //
+            // The "prewarm failed" / "refusing to write" branch covers the
+            // 4.4.2 data-loss path: an earlier prewarm threw (network blip on
+            // remote/tailscale, transient readJSON failure, etc.) and the
+            // cache is parked in the failed state. Re-running handleChatChanged
+            // restarts prewarm cleanly — usually succeeds on retry.
+            const racey = /no active key|cache not ready|prewarm failed|refusing to write/i.test(e?.message || '');
             if (racey) {
                 console.warn(`${CHAT_LOG_PREFIX} prewarm race detected during save; re-running handleChatChanged + retry...`);
                 try {
                     await handleChatChanged();
-                    await chatHistoryStore.saveHistory(messages);
+                    await chatHistoryStore.saveHistory(messages, options);
                     console.log(`${CHAT_LOG_PREFIX} ✅ save retry succeeded after handleChatChanged`);
                     return;
                 } catch (retryErr) {
@@ -635,7 +641,11 @@ export async function markMessagesSummarizedUntil(marker) {
 }
 
 export async function clearChatHistory() {
-    await saveChatHistory([]);
+    // User-initiated wipe — pass allowEmpty so the empty-write safety net
+    // in chatHistoryStore.saveHistory lets the clear through. Without this,
+    // the guard would treat the call as a suspected accidental empty-write
+    // and refuse.
+    await saveChatHistory([], { allowEmpty: true });
     await saveChatSummary('');       // also clear rolling summary so no stale context lingers
     await clearSTSyncMarker();       // reset ST sync progress; next injection re-absorbs main chat
     await clearHomeMarker();         // reset home progress; next 回家 starts fresh
@@ -645,7 +655,9 @@ export async function deleteMessageByIndex(index) {
     const history = loadChatHistory();
     if (index < 0 || index >= history.length) return false;
     history.splice(index, 1);
-    await saveChatHistory(history);
+    // Deleting the last remaining message is a legitimate empty-write —
+    // tag it so the saveHistory safety net lets it through.
+    await saveChatHistory(history, { allowEmpty: history.length === 0 });
     return true;
 }
 
@@ -661,7 +673,8 @@ export async function deleteMessagesByIndices(indices) {
             deleted++;
         }
     }
-    if (deleted > 0) await saveChatHistory(history);
+    // Multi-select delete down to zero is also a legitimate empty-write.
+    if (deleted > 0) await saveChatHistory(history, { allowEmpty: history.length === 0 });
     return deleted;
 }
 

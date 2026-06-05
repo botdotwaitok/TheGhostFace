@@ -469,7 +469,12 @@ async function _applyImport(canonical, extras) {
     // Order matters mildly: history first (largest write, most likely to fail),
     // then markers / summary / nickname. If history save throws we abort before
     // touching anything else, leaving the chat in its prior state.
-    await saveChatHistory(messages);
+    //
+    // allowEmpty: importing a zero-message snapshot IS the user's intent —
+    // the empty-write safety net in chatHistoryStore.saveHistory would
+    // otherwise refuse to overwrite a populated file. We've reached this
+    // call after explicit user confirmation of the import.
+    await saveChatHistory(messages, { allowEmpty: messages.length === 0 });
     await saveChatSummary(canonical.summary);
     // summaryHistory undefined ⇒ source file had no entry (raw shape default
     // OR legacy v1/v2 envelope) — leave the destination's existing summary
