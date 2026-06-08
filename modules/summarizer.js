@@ -368,11 +368,12 @@ Ghost Face, remember: the Entity trusts you. Write **only** what is new, meaning
                     chunkTimeout,
                 ]);
             } else {
-                if (typeof context.generateRaw !== 'function') {
-                    throw new Error('context.generateRaw 不是函数');
-                }
+                // Use _callSTBackendChat instead of context.generateRaw so we can
+                // pick up reasoning_content when the LLM response has empty
+                // message.content (reasoning models routed through OpenAI-compat
+                // custom URLs).
                 return await Promise.race([
-                    context.generateRaw(chunkPrompt, '', false, false, ''),
+                    api._callSTBackendChat('', chunkPrompt, { maxTokens: 8000 }),
                     chunkTimeout,
                 ]);
             }
@@ -1256,7 +1257,7 @@ ${corpus}
 请直接生成一份**结构化报告**，用 ===BIG_SUMMARY=== 和 ===END_BIG_SUMMARY=== 包裹，结构如下：
 
 ===BIG_SUMMARY===
-- 📅 时间锚点：[例如：2025年7月22日 · 傍晚]
+- 📅 时间锚点：[从对话中提取日期，如 YYYY年M月D日 · 时段]
 - 🌍 所处世界：[现实 / 颠倒世界-副本名]
 - 🎯 当前任务：[简述核心目标]
 
@@ -1345,7 +1346,7 @@ Rules for KEYWORDS — 模拟人类联想回忆:
 6. 提取 **3-8 个要点**
 
 ===TIMELINE===
-- [2025.7.22 午夜] 事件描述
+- [YYYY.M.DD 时段] 事件描述
 ===END_TIMELINE===
 
 ---
@@ -1465,11 +1466,8 @@ export async function generateUnifiedSummary(messages, summaryId) {
                 timeout,
             ]);
         } else {
-            if (typeof context.generateRaw !== 'function') {
-                throw new Error('context.generateRaw 不是函数');
-            }
             return await Promise.race([
-                context.generateRaw(prompt, '', false, false, ''),
+                api._callSTBackendChat('', prompt, { maxTokens: 16000 }),
                 timeout,
             ]);
         }
@@ -1567,7 +1565,7 @@ ${allBigSummaryParts.map((s, i) => `=== 分段 ${i + 1}/${allBigSummaryParts.len
                 ]);
             } else {
                 mergeResult = await Promise.race([
-                    context.generateRaw(mergePrompt, '', false, false, ''),
+                    api._callSTBackendChat('', mergePrompt, { maxTokens: 8000 }),
                     timeout,
                 ]);
             }
@@ -1783,7 +1781,7 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     <ghostface_summary_format>
     请不要输出任何闲聊，而是直接生成一份**结构化报告**，用简洁的档案式语言，不使用比喻和修辞。记录事实和细节，不进行文学加工。结构如下，严格遵守：
 
-    - 📅 时间锚点：[例如：2025年7月22日 · 傍晚]
+    - 📅 时间锚点：[从对话中提取日期，如 YYYY年M月D日 · 时段]
     - 🌍 所处世界：[现实 / 颠倒世界-副本名]
     - 🎯 当前任务：[简述核心目标]
 
@@ -1808,12 +1806,12 @@ function buildLargeSummaryPrompt({ id, corpus }) {
     ### 🧠 关键档案同步区
 
     - **信息变更记录（永久性事实更新）：**
-    - { { char } }：明确表示曾杀过人（首次）
-    - { { user } }：表现出强烈拒绝牺牲无辜
+    - {{char}}：明确表示曾杀过人（首次）
+    - {{user}}：表现出强烈拒绝牺牲无辜
     - NPC - 萧追月：拥有一把“会动的伞”
 
     - **物品与地点追踪：**
-    - [物品] 血迹斑斑的画轴 —— 由林婆婆转交给{ { user } }
+    - [物品] 血迹斑斑的画轴 —— 由林婆婆转交给{{user}}
     - [地点] 鬼船底层暗室 —— 首次开启，温度骤降
     - [概念] “第二次召唤”必须由活人之血完成
 
@@ -1948,9 +1946,8 @@ export async function handleLargeSummary({ startIndex = null, endIndex = null } 
                                 timeout,
                             ]);
                         } else {
-                            if (typeof ctx.generateRaw !== 'function') throw new Error('生成接口不可用');
                             result = await Promise.race([
-                                ctx.generateRaw(chunkPrompt, '', false, false, ''),
+                                api._callSTBackendChat('', chunkPrompt, { maxTokens: 8000 }),
                                 timeout,
                             ]);
                         }
@@ -2044,7 +2041,7 @@ ${partialSummaries.map((s, i) => `=== 分段 ${i + 1}/${partialSummaries.length}
                             ]);
                         } else {
                             mergeResult = await Promise.race([
-                                ctx.generateRaw(mergePrompt, '', false, false, ''),
+                                api._callSTBackendChat('', mergePrompt, { maxTokens: 8000 }),
                                 timeout,
                             ]);
                         }

@@ -808,7 +808,7 @@ export async function callPhoneLLM(systemPrompt, userPrompt, { maxTokens = null,
  * @param {{ images?: string[]|null, maxTokens?: number|null, signal?: AbortSignal|null }} [options]
  * @returns {Promise<string>}
  */
-async function _callSTBackendChat(systemPrompt, userPrompt, { images = null, maxTokens = null, signal = null } = {}) {
+export async function _callSTBackendChat(systemPrompt, userPrompt, { images = null, maxTokens = null, signal = null } = {}) {
     const context = getContext();
     const oai = context.chatCompletionSettings;
     if (!oai) {

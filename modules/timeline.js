@@ -153,10 +153,10 @@ Your current task is to create a concise timeline outline from the conversation 
 
 **输出格式示例（只输出时间线，不要输出其她任何内容）：**
 
-- [2025.7.22 午夜] {{user}}首次出现在{{char}}梦中
-- [2025.7.22 清晨] {{char}}发现自己获得了新的能力
-- [2025.7.22 下午] {{char}}在学校完成了{{user}}的任务
-- [2025.7.23 上午] {{char}}决定改变自己的命运
+- [YYYY.M.DD 午夜] {{user}}首次出现在{{char}}梦中
+- [YYYY.M.DD 清晨] {{char}}发现自己获得了新的能力
+- [YYYY.M.DD 下午] {{char}}在学校完成了{{user}}的任务
+- [YYYY.M.DD 上午] {{char}}决定改变自己的命运
 ...
 
 **以下是需要分析的对话内容：**
@@ -249,13 +249,8 @@ async function callLLM(prompt, maxTokens = 2048, { isAuto = false } = {}) {
                 ]);
             }
 
-            // ST 内置 provider
-            const context = await getContext();
-            if (!context || typeof context.generateRaw !== 'function') {
-                throw new Error('[时间线] ST context.generateRaw 不可用');
-            }
             return await Promise.race([
-                context.generateRaw(prompt, '', false, false, ''),
+                api._callSTBackendChat('', prompt, { maxTokens }),
                 timeout,
             ]);
         } catch (err) {
