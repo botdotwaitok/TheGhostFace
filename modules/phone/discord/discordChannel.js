@@ -11,11 +11,12 @@ import {
     getMemberAvatarUrl, getChannelPermissions,
 } from './discordStorage.js';
 import { sendUserMessages, generateAutoConversation, onMessageReceived, onTypingStateChange, getTypingState } from './discordMessageHandler.js';
-import { openStickerPanel, closeStickerPanel, getQuickReactions, renderStickersInText } from './discordEmoji.js';
+import { openStickerPanel, closeStickerPanel, renderStickersInText } from './discordEmoji.js';
 import { openServerSettings, showChannelEditDialogCore } from './discordServerSettings.js';
 import { handleDiscordImageSelection, showDiscordImageLightbox } from './discordImage.js';
 import { editMemberFromChat } from './discordMembers.js';
 import { isKeepAliveEnabled, setKeepAliveEnabled, startKeepAlive, stopKeepAlive } from '../keepAlive.js';
+import { attachDiscordBubbleLongPress, cancelDiscordLongPress, isDiscordBubbleMenuActiveOrRecent } from './discordBubbleMenu.js';
 
 const LOG = '[Discord Channel]';
 
@@ -39,7 +40,6 @@ let _selectedEditMsgId = null; // msg ID being edited
 let _isGenerating = false;     // reroll lock
 let _menuOpenedAt = 0;         // timestamp guard for overlay dismiss
 let _plusOpenedAt = 0;         // timestamp guard for plus panel dismiss
-let _contextMenuOpen = false;  // whether long-press context menu is visible
 let _replyToMsg = null;        // message being replied to { id, authorName, content }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -196,8 +196,6 @@ function _renderChannelView() {
                 </div>
                 <div class="dc-drawer-body" id="dc_drawer_body"></div>
             </div>
-            <!-- Context Menu -->
-            <div class="dc-context-menu" id="dc_context_menu" style="display:none;"></div>
         </div>
     `;
 
@@ -753,40 +751,32 @@ function _bindChannelEvents() {
                 }
             }
         });
-        // Long press for context menu
-        let longPressTimer = null;
-        let longPressTarget = null;
-
-        messagesContainer.addEventListener('pointerdown', (e) => {
-            if (_isDeleteMode || _isEditMode || _contextMenuOpen) return;
-            const msgEl = e.target.closest('.dc-message');
-            if (!msgEl) return;
-            longPressTarget = msgEl;
-            longPressTimer = setTimeout(() => {
-                _showContextMenu(msgEl, e);
-            }, 500);
-        });
-
-        messagesContainer.addEventListener('pointerup', () => {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        });
-
-        messagesContainer.addEventListener('pointerleave', () => {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        });
-
-        // Show custom context menu on right-click, suppress native menu
-        messagesContainer.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (_isDeleteMode || _isEditMode || _contextMenuOpen) return;
-            const msgEl = e.target.closest('.dc-message');
-            if (msgEl) {
-                clearTimeout(longPressTimer);
-                longPressTimer = null;
-                _showContextMenu(msgEl, e);
-            }
+        // Long-press / right-click context menu. discordBubbleMenu.js owns the
+        // detection + render; data actions are injected so it stays out of this
+        // module's import cycle.
+        attachDiscordBubbleLongPress(messagesContainer, {
+            isDisabled: () => _isDeleteMode || _isEditMode,
+            resolveMsg: (msgId) => {
+                const messages = loadChannelMessages(_currentChannelId);
+                const msg = messages.find(m => m.id === msgId);
+                if (!msg) return null;
+                const userMember = getUserMember();
+                return { msg, isMine: msg.authorId === userMember?.id };
+            },
+            onReply: (msgId) => _setReplyTo(msgId),
+            onDelete: (msgId) => _deleteMessage(msgId),
+            onReact: (msgId, emoji) => _addReactionToMessage(msgId, emoji),
+            onStickerMore: (msgId) => {
+                openStickerPanel(
+                    (sticker) => _addReactionToMessage(msgId, sticker),
+                    () => {
+                        _cleanup();
+                        openServerSettings(() => {
+                            if (typeof openChannel !== 'undefined') openChannel(_currentChannelId, _currentChannelName, _onReturn);
+                        });
+                    }
+                );
+            },
         });
 
         // ── Swipe-left to reply gesture ──
@@ -829,8 +819,8 @@ function _bindChannelEvents() {
                 return;
             }
 
-            // Cancel long press
-            clearTimeout(longPressTimer);
+            // Cancel pending long press (the menu detection lives in discordBubbleMenu)
+            cancelDiscordLongPress();
 
             // Clamp max swipe to -100px
             const clampedX = Math.max(deltaX, -100);
@@ -866,6 +856,10 @@ function _bindChannelEvents() {
 
         // Click delegation: delete mode, edit mode, reactions, spoilers, lightbox
         messagesContainer.addEventListener('click', (e) => {
+            // Ignore the click that belongs to (or just dismissed) a long-press
+            // menu so it doesn't fall through to a reaction pill / lightbox.
+            if (isDiscordBubbleMenuActiveOrRecent()) return;
+
             // Delete mode: toggle selection
             if (_isDeleteMode) {
                 const msgEl = e.target.closest('.dc-message');
@@ -911,7 +905,7 @@ function _bindChannelEvents() {
         });
     }
 
-    // Context menu dismiss is now handled by the backdrop in _showContextMenu
+    // Context menu open/dismiss is owned by discordBubbleMenu.js (its backdrop).
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1360,143 +1354,8 @@ function _updateMessageReactions(message) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Context Menu (Long Press)
-// ═══════════════════════════════════════════════════════════════════════
-
-function _showContextMenu(msgEl, event) {
-    const menu = document.getElementById('dc_context_menu');
-    if (!menu) return;
-
-    const msgId = msgEl.dataset.msgId;
-    const messages = loadChannelMessages(_currentChannelId);
-    const msg = messages.find(m => m.id === msgId);
-    if (!msg) return;
-
-    const userMember = getUserMember();
-    const isMyMessage = msg.authorId === userMember?.id;
-
-    // Quick reaction row
-    const quickReactions = getQuickReactions();
-    const quickReactionHtml = quickReactions.map(emoji =>
-        `<div class="dc-ctx-reaction" data-emoji="${emoji}" data-msg-id="${msgId}">${emoji}</div>`
-    ).join('');
-
-    let menuItems = `
-        <div class="dc-ctx-reactions-row">
-            ${quickReactionHtml}
-            <div class="dc-ctx-reaction dc-ctx-reaction-more" data-action="reaction-more" data-msg-id="${msgId}">
-                <i class="ph ph-sticker"></i>
-            </div>
-        </div>
-        <div class="dc-ctx-divider"></div>
-        <div class="dc-ctx-item" data-action="reply" data-msg-id="${msgId}">
-            <i class="ph ph-arrow-bend-up-left"></i>
-            <span>回复</span>
-        </div>
-    `;
-
-    if (isMyMessage) {
-        menuItems += `
-            <div class="dc-ctx-item dc-ctx-danger" data-action="delete" data-msg-id="${msgId}">
-                <i class="ph ph-trash"></i>
-                <span>删除消息</span>
-            </div>
-        `;
-    }
-
-    menu.innerHTML = menuItems;
-
-    // Position menu near the long-press point
-    const page = document.getElementById('dc_channel_page');
-    if (page) {
-        const pageRect = page.getBoundingClientRect();
-        let top = event.clientY - pageRect.top;
-        let left = event.clientX - pageRect.left;
-
-        // Keep within bounds
-        const menuWidth = 220;
-        const menuHeight = 160;
-        if (left + menuWidth > pageRect.width) left = pageRect.width - menuWidth - 8;
-        if (top + menuHeight > pageRect.height) top = top - menuHeight;
-        if (left < 8) left = 8;
-        if (top < 8) top = 8;
-
-        menu.style.top = `${top}px`;
-        menu.style.left = `${left}px`;
-    }
-
-    menu.style.display = 'flex';
-    _contextMenuOpen = true;
-
-    // ── Create transparent backdrop to capture dismiss clicks ──
-    let backdrop = document.getElementById('dc_context_backdrop');
-    if (!backdrop) {
-        backdrop = document.createElement('div');
-        backdrop.id = 'dc_context_backdrop';
-        backdrop.className = 'dc-context-backdrop';
-        page?.appendChild(backdrop);
-    }
-    backdrop.style.display = 'block';
-
-    // Dismiss on backdrop click/touch (single use)
-    const dismissHandler = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        backdrop.removeEventListener('pointerdown', dismissHandler);
-        _hideContextMenu();
-    };
-    backdrop.addEventListener('pointerdown', dismissHandler);
-
-    // ── Bind context menu events ──
-
-    // Reply
-    menu.querySelector('[data-action="reply"]')?.addEventListener('click', () => {
-        _setReplyTo(msgId);
-        _hideContextMenu();
-    });
-
-    // Quick reaction
-    menu.querySelectorAll('.dc-ctx-reaction:not(.dc-ctx-reaction-more)').forEach(el => {
-        el.addEventListener('click', () => {
-            const emoji = el.dataset.emoji;
-            _addReactionToMessage(msgId, emoji);
-            _hideContextMenu();
-        });
-    });
-
-    // Custom sticker reaction
-    menu.querySelector('[data-action="reaction-more"]')?.addEventListener('click', () => {
-        _hideContextMenu();
-        openStickerPanel(
-            (sticker) => {
-                _addReactionToMessage(msgId, sticker);
-            },
-            () => {
-                _cleanup();
-                openServerSettings(() => {
-                    if (typeof openChannel !== 'undefined') openChannel(_currentChannelId, _currentChannelName, _onReturn);
-                });
-            }
-        );
-    });
-
-    // Delete
-    menu.querySelector('[data-action="delete"]')?.addEventListener('click', () => {
-        _deleteMessage(msgId);
-        _hideContextMenu();
-    });
-}
-
-function _hideContextMenu() {
-    const menu = document.getElementById('dc_context_menu');
-    if (menu) menu.style.display = 'none';
-    _contextMenuOpen = false;
-
-    // Remove backdrop
-    const backdrop = document.getElementById('dc_context_backdrop');
-    if (backdrop) backdrop.style.display = 'none';
-}
+// Long-press context menu render + dismiss now live in discordBubbleMenu.js,
+// wired up via attachDiscordBubbleLongPress in the event-binding section above.
 
 // ═══════════════════════════════════════════════════════════════════════
 // Reaction Handling

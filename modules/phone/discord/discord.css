@@ -1649,6 +1649,11 @@
     margin-top: 12px;
     position: relative;
     transition: background 0.1s;
+    /* Prevent native text selection & callout on long-press (mobile), same as
+       chat's .chat-bubble-row — the long-press menu is the only intended action. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 
 .dc-message:hover {
@@ -2337,16 +2342,15 @@
 
 .dc-draft-area {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--dc-divider);
-    overflow-x: auto;
-    scrollbar-width: none;
     flex-shrink: 0;
 }
 
-.dc-draft-area::-webkit-scrollbar {
+.dc-draft-list::-webkit-scrollbar {
     display: none;
 }
 
@@ -2360,8 +2364,13 @@
 
 .dc-draft-list {
     display: flex;
-    gap: 6px;
-    flex-wrap: nowrap;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    max-height: 132px;
+    overflow-y: auto;
+    scrollbar-width: none;
 }
 
 .dc-draft-bubble {
@@ -2373,7 +2382,7 @@
     background: var(--dc-input-bg);
     color: var(--dc-text-primary);
     font-size: 13px;
-    max-width: 160px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2381,6 +2390,7 @@
     transition: all 0.15s;
     user-select: none;
     flex-shrink: 0;
+    padding-right: 18px;
 }
 
 .dc-draft-bubble:hover {
@@ -2842,18 +2852,16 @@
     flex-direction: column;
     padding: 6px;
     min-width: 200px;
-    animation: dc-ctx-enter 0.15s ease-out;
+    /* .visible-driven enter/exit so dismissal animates too (JS adds/removes
+       .visible; removal waits out this 0.15s before detaching the node). */
+    opacity: 0;
+    transform: scale(0.92);
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
-@keyframes dc-ctx-enter {
-    from {
-        opacity: 0;
-        transform: scale(0.92);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+.dc-context-menu.visible {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .dc-ctx-reactions-row {
