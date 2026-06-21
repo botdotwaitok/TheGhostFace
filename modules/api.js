@@ -935,9 +935,26 @@ export async function _callSTBackendChat(systemPrompt, userPrompt, { images = nu
     const data = await response.json();
 
     // ── 解析响应（兼容不同 provider 的返回格式） ──
+    // content may be a plain string or an array of typed blocks. When extended
+    // thinking is on, Claude puts a thinking block first and the answer text is
+    // a later block — so scan the whole array instead of trusting index 0.
+    const extractText = (content) => {
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(p => p && typeof p.text === 'string'
+                    && p.type !== 'thinking' && p.type !== 'redacted_thinking' && !p.thought)
+                .map(p => p.text)
+                .join('');
+        }
+        return '';
+    };
+
     // OpenAI / Custom / most providers
-    if (data.choices?.[0]?.message?.content) {
-        return data.choices[0].message.content.trim();
+    const choiceMsg = data.choices?.[0]?.message;
+    if (choiceMsg) {
+        const text = extractText(choiceMsg.content);
+        if (text.trim()) return text.trim();
     }
     // Gemini / Makersuite
     if (data.candidates?.[0]?.content?.parts) {
@@ -946,15 +963,17 @@ export async function _callSTBackendChat(systemPrompt, userPrompt, { images = nu
             .map(p => p.text);
         if (textParts.length > 0) return textParts.join('').trim();
     }
-    // Claude
-    if (data.content?.[0]?.text) {
-        return data.content[0].text.trim();
-    }
-    // Fallback: try reasoning_content
-    if (data.choices?.[0]?.message?.reasoning_content) {
-        return data.choices[0].message.reasoning_content.trim();
+    // Claude (native Anthropic shape) — text block may not be at index 0
+    const claudeText = extractText(data.content);
+    if (claudeText.trim()) return claudeText.trim();
+    // Fallback: reasoning_content only (some thinking proxies omit content)
+    if (choiceMsg?.reasoning_content) {
+        return choiceMsg.reasoning_content.trim();
     }
 
-    console.error('📱 [Phone LLM] ST后端代理响应格式异常:', JSON.stringify(data).substring(0, 500));
-    throw new Error('ST后端代理响应格式异常');
+    // Surface a compact shape in the error itself so it shows up in diag packs
+    // (the console.error below is not captured there).
+    const shape = JSON.stringify(data).substring(0, 300);
+    console.error('📱 [Phone LLM] ST后端代理响应格式异常:', shape);
+    throw new Error(`ST后端代理响应格式异常: ${shape}`);
 }
