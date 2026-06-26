@@ -68,6 +68,10 @@ function _buildPage() {
                         <span class="chat-stats-summary-value" id="chat_stats_visible_msgs_tokens">—</span>
                     </div>
                     <div class="chat-stats-summary-row chat-stats-summary-subrow">
+                        <span class="chat-stats-summary-sublabel">└ 短信总结</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_summary_tokens">—</span>
+                    </div>
+                    <div class="chat-stats-summary-row chat-stats-summary-subrow">
                         <span class="chat-stats-summary-sublabel">└ 自动总结阈值</span>
                         <span class="chat-stats-summary-value" id="chat_stats_summarize_threshold">${SUMMARIZE_PROMPT_TOKEN_THRESHOLD.toLocaleString('en-US')}</span>
                     </div>
@@ -336,6 +340,10 @@ async function _estimateNextRoundTokens(myToken) {
     const stBlock = _extractTagBlock(userPrompt, 'storyline_context');
     const wiBlock = _extractTagBlock(systemPrompt, 'world_info');
     const chBlock = _extractTagBlock(userPrompt, 'chat_history');
+    // Rolling chat summary is a <chat_summary> block in the user prompt. Count
+    // it on its own line instead of letting it fall into the 系统Prompt catch-all,
+    // so the summary's token weight reads separately under 可见短信消息.
+    const sumBlock = _extractTagBlock(userPrompt, 'chat_summary');
 
     const stTokens = stBlock ? countTokensFromPromptData(stBlock) : 0;
     if (myToken !== _runToken) return;
@@ -343,15 +351,18 @@ async function _estimateNextRoundTokens(myToken) {
     if (myToken !== _runToken) return;
     const chTokens = chBlock ? countTokensFromPromptData(chBlock) : 0;
     if (myToken !== _runToken) return;
+    const sumTokens = sumBlock ? countTokensFromPromptData(sumBlock) : 0;
+    if (myToken !== _runToken) return;
 
     // Tokenizer boundaries between blocks can make the sub-counts not perfectly
     // additive; clamp at 0 just in case.
-    const sysTokens = Math.max(0, totalTokens - stTokens - wiTokens - chTokens);
+    const sysTokens = Math.max(0, totalTokens - stTokens - wiTokens - chTokens - sumTokens);
 
     _setText('chat_stats_system_prompt_tokens', _fmtNumber(sysTokens));
     _setText('chat_stats_st_chat_tokens', _fmtNumber(stTokens));
     _setText('chat_stats_world_info_tokens', _fmtNumber(wiTokens));
     _setText('chat_stats_visible_msgs_tokens', _fmtNumber(chTokens));
+    _setText('chat_stats_summary_tokens', _fmtNumber(sumTokens));
 
     // Flag the threshold row red/green so it reads at a glance.
     const thresholdEl = document.getElementById('chat_stats_summarize_threshold');

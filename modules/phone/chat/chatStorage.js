@@ -35,7 +35,7 @@ const CHAT_LOG_PREFIX = '[聊天]';
 // let prompts sail past 100k+ without ever folding. Reusing the precise
 // estimator means the trigger fires when context actually matters.
 export const SUMMARIZE_PROMPT_TOKEN_THRESHOLD = 50000;
-const KEEP_RECENT = 30;                  // Keep the most recent N messages unsummarized
+const KEEP_RECENT = 10;                  // Keep the most recent N messages unsummarized (~5 round-trips)
 // Per-round upper bound on how many messages a single summarize cycle folds.
 // Without this, a long-deferred chat (or a救援操作 that wiped all summarized
 // marks) can force one LLM call to digest thousands of messages — guaranteed

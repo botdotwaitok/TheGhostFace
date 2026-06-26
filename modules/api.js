@@ -566,8 +566,21 @@ export async function loadApiModels() {
             console.error('加载模型失败:', error);
         }
 
+        // The model list is fetched directly from the browser, so the most
+        // common failures are timeout, CORS/network ("Failed to fetch" — a
+        // generic TypeError with no detail), or an HTTP status. Turn each into
+        // an actionable hint instead of the opaque raw message.
+        let friendly;
+        if (error.name === 'AbortError') {
+            friendly = '请求超时（10秒）：API 地址可能无法访问，或网络太慢';
+        } else if (error instanceof TypeError) {
+            friendly = `无法连接到 ${modelsUrl}：可能是地址错误、该接口不允许浏览器跨域(CORS)，或网络/代理不通`;
+        } else {
+            friendly = error.message;
+        }
+
         modelSelect.innerHTML = '<option value="">加载失败</option>';
-        toastr.error('模型加载失败: ' + error.message);
+        toastr.error('模型加载失败: ' + friendly);
 
     } finally {
         // 恢复按钮状态

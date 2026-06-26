@@ -4841,6 +4841,24 @@ input#chat_search_input.chat-search-input {
     background: rgba(10, 132, 255, 0.15) !important;
 }
 
+/* 回家总结确认页 — reuses .chat-summary-edit-page / -textarea / -action.
+   The hint banner sits above the textarea (which still flex:1-fills the rest). */
+.chat-rh-confirm-page .chat-rh-confirm-hint {
+    flex: 0 0 auto;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #6b6b70;
+    background: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.phone-dark-mode .chat-rh-confirm-page .chat-rh-confirm-hint {
+    color: #98989d;
+    background: #1c1c1e;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
 /* Pulse the bubble row briefly after a search-result jump so the user can
    re-find the message at a glance when it sits in a dense scrollback. */
 @keyframes chatSearchJumpPulse {

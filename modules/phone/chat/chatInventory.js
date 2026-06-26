@@ -3,7 +3,7 @@
 
 import { getPhoneSetting } from '../phoneSettings.js';
 
-import { escHtml, CHAT_LOG_PREFIX, scrollToBottom } from './chatApp.js';
+import { escHtml, CHAT_LOG_PREFIX, scrollToBottom, openChatApp } from './chatApp.js';
 import {
     loadChatHistory, getCharacterInfo, getUserName,
     sendSummaryAsUserMessage, sendRawTranscriptAsUserMessage,
@@ -17,6 +17,7 @@ import {
     isAnySummarizing, setManualSummarizingFlag,
 } from './chatStorage.js';
 import { openProgressCard } from './chatProgressCard.js';
+import { openReturnHomeConfirmPage } from './chatReturnHomeConfirm.js';
 import { callPhoneLLM } from '../../api.js';
 import { generateSummary, isContentSimilar } from '../../summarizer.js';
 import { saveToWorldBook } from '../../worldbook.js';
@@ -275,56 +276,18 @@ export async function handleReturnHome() {
     // at the end of the flow.
     const existingSummary = loadChatSummary();
 
-    // Captured across the try-block so the archive push at the end sees the
-    // same content that actually went to ST main chat. payloadText holds the
-    // user-meaningful body (LLM summary for summary mode; transcript +
-    // optional prior-summary prefix for raw mode), memoryFragmentCount notes
-    // how many world-book entries this run produced (0 when extraction was
-    // off or returned nothing).
-    let archivePayload = '';
-    let archiveMemoryFragmentCount = 0;
-
     try {
-        // ─── Optional Step: Memory Fragment Extraction ───
-        if (doMemoryFragments) {
-            card.setStage('正在提取记忆碎片 …');
-            console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
-
-            try {
-                // Convert phone chat messages to the format generateSummary() expects.
-                // Use visibleNewMessages (post-marker slice, minus manually-hidden)
-                // so we don't re-extract memory from chats that a previous 回家
-                // already processed, and so the user's hide gesture is honored here too.
-                const summarizerMessages = visibleNewMessages.map(msg => ({
-                    parsedContent: msg.content || '',
-                    parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
-                    is_user: msg.role === 'user',
-                    is_system: false,
-                    name: msg.role === 'user' ? userName : charName,
-                }));
-
-                // generateSummary returns { entries, timelineSegments }, not a bare array
-                const summaryResult = await generateSummary(summarizerMessages, true);
-                const fragments = summaryResult?.entries;
-                if (Array.isArray(fragments) && fragments.length > 0) {
-                    await saveToWorldBook(fragments, null, null, isContentSimilar);
-                    archiveMemoryFragmentCount = fragments.length;
-                    console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
-                    card.setStage(`记忆碎片已写入 ${fragments.length} 条 …`);
-                } else {
-                    console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
-                    card.setStage('无新记忆碎片 …');
-                }
-            } catch (memErr) {
-                console.error(`${CHAT_LOG_PREFIX} 记忆碎片提取失败:`, memErr);
-                card.setStage('记忆碎片提取失败，继续同步 …');
-                // Don't abort — continue with sync
-            }
-        }
-
-        // ─── Sync to ST main chat ───
         if (syncMode === 'raw') {
-            // ── Raw transcript mode ──
+            // ══ Raw transcript mode — instant, no confirm step ══
+            // Behavior unchanged: extract & write memory fragments immediately,
+            // send the raw transcript, then finalize. Only 压缩总结 routes through
+            // the confirm/edit page.
+            let memCount = 0;
+            if (doMemoryFragments) {
+                const fragments = await _extractMemoryFragments(visibleNewMessages, userName, charName, card);
+                memCount = await _persistMemoryFragments(fragments, card);
+            }
+
             card.setStage('正在发送原文聊天记录 …');
             const priorNote = existingSummary ? ` (+ ${existingSummary.length}-char prior summary prefix)` : '';
             console.log(`${CHAT_LOG_PREFIX} Return home: sending raw transcript (${visibleNewMessages.length} visible / ${newMessages.length} total new, ${hiddenCount} hidden)${priorNote}...`);
@@ -343,133 +306,286 @@ export async function handleReturnHome() {
                 return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
             }).join('\n');
             const hasPrior = typeof existingSummary === 'string' && existingSummary.trim().length > 0;
-            archivePayload = hasPrior
+            const archivePayload = hasPrior
                 ? `【更早些时候已被压缩的对话（仅总结形式）】\n${existingSummary}\n\n【尚未压缩的对话原文】\n${rawTranscript}`
                 : rawTranscript;
 
             await sendRawTranscriptAsUserMessage(visibleNewMessages, existingSummary);
 
-        } else {
-            // ── AI compressed summary mode (default) ──
-            card.setStage('鬼面正在浓缩今日聊天 …');
-            console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${visibleNewMessages.length} visible / ${newMessages.length} total new, ${hiddenCount} hidden)...`);
-
-            const transcript = visibleNewMessages.map(msg => {
-                const role = msg.role === 'user' ? userName : charName;
-                const timeStr = msg.timestamp
-                    ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : '';
-                return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
-            }).join('\n');
-
-            const summarizePrompt = buildSummarizePrompt();
-
-            // When a rolling chat summary exists, the visible transcript only
-            // covers the unsummarized tail — the earlier span lives in that
-            // summary. Hand both halves to the LLM and ask for an integrated
-            // recap so ST main chat receives the whole 回家 cycle, not just
-            // the recent leftovers.
-            const summaryUserPrompt = existingSummary
-                ? `以下是今日手机聊天的内容，请整合成一份完整的回顾给线下场景使用：\n\n` +
-                  `【之前的对话总结】\n${existingSummary}\n\n` +
-                  `【最近的对话】\n${transcript}`
-                : `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
-
-            const summary = await callPhoneLLM(summarizePrompt, summaryUserPrompt, { maxTokens: 40000 });
-
-            if (!summary || summary.trim().length === 0) {
-                throw new Error('总结生成失败');
-            }
-
-            console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
-
-            card.setStage('总结生成成功，正在送达 …');
-
-            archivePayload = summary.trim();
-            await sendSummaryAsUserMessage(summary.trim(), visibleNewMessages);
+            await _finalizeReturnHome({
+                syncMode: 'raw',
+                archivePayload,
+                archiveMemoryFragmentCount: memCount,
+                visibleNewMessages,
+                doMemoryFragments,
+                card,
+            });
+            return;
         }
 
-        // Advance the 回家 marker. Re-read history here instead of using
-        // newMessages.end — during the LLM call (5–30s) autoMessage or the
-        // user can append new messages to phone history. Anchoring to
-        // history's true tail folds those concurrent messages into "已处理"
-        // for the same 回家 batch, avoiding a re-sync window.
-        const latestHistory = loadChatHistory();
-        let newMarker = '';
-        for (let i = latestHistory.length - 1; i >= 0; i--) {
-            if (latestHistory[i].timestamp) { newMarker = latestHistory[i].timestamp; break; }
+        // ══ AI compressed summary mode — generate, then confirm/edit, then commit ══
+        // Memory fragments are EXTRACTED now but their world-book write is deferred
+        // to the confirm step, so cancelling at the confirm page leaves nothing on
+        // disk (per product decision: 取消 = 完全放弃).
+        let pendingFragments = [];
+        if (doMemoryFragments) {
+            pendingFragments = await _extractMemoryFragments(visibleNewMessages, userName, charName, card);
         }
-        if (newMarker) {
-            // Snapshot the marker BEFORE we advance it so the archive entry
-            // can record where to roll back to if the user later deletes it.
-            // Without this, deleting an archive entry would clear summarized
-            // marks but leave the home marker frozen at its new position —
-            // getMessagesSinceHome filters by marker only, so the next 回家
-            // would still see the just-restored slice as "already synced".
-            // Empty string is a valid value (first-ever 回家).
-            const prevHomeMarker = loadHomeMarker();
-            await saveHomeMarker(newMarker);
-            console.log(`${CHAT_LOG_PREFIX} 回家 marker → ${newMarker}`);
 
-            // Hide already-synced messages from future chat prompts. The
-            // content was just folded into ST main chat (summary or raw),
-            // so re-sending it through <chat_history> would waste tokens
-            // and tempt the LLM to repeat itself. UI still shows the
-            // bubbles — only the prompt-side filter skips them.
-            const markedCount = await markMessagesSummarizedUntil(newMarker);
-            if (markedCount > 0) {
-                console.log(`${CHAT_LOG_PREFIX} ✅ 已将 ${markedCount} 条回家前的消息标记为已总结，下次进入聊天不再回灌 LLM`);
-            }
+        card.setStage('鬼面正在浓缩今日聊天 …');
+        console.log(`${CHAT_LOG_PREFIX} Return home: generating AI summary (${visibleNewMessages.length} visible / ${newMessages.length} total new, ${hiddenCount} hidden)...`);
 
-            // ─── Phase 6: paper-trail archive ───
-            // Push only after the marker + summarized marks have already
-            // landed — those two are the load-bearing state changes; if any
-            // of them failed earlier the catch path runs and we never reach
-            // here. floorRange is the slice this run folded, sourced from
-            // visibleNewMessages (the exact set passed to the sender). Skip
-            // the range when any message lacks .floor (pre-Phase-1 data) so
-            // the archive UI doesn't try to "restore" a NaN range and unmark
-            // unrelated messages.
-            try {
-                const floors = visibleNewMessages
-                    .map(m => m.floor)
-                    .filter(f => typeof f === 'number' && Number.isFinite(f));
-                const archiveFloorRange = floors.length === visibleNewMessages.length && floors.length > 0
-                    ? { from: Math.min(...floors), to: Math.max(...floors) }
-                    : undefined;
-                await pushReturnHomeArchive({
-                    mode: syncMode === 'raw' ? 'raw' : 'summary',
-                    payload: archivePayload,
-                    msgCount: visibleNewMessages.length,
-                    prevHomeMarker,
-                    ...(archiveFloorRange ? { floorRange: archiveFloorRange } : {}),
-                    ...(archiveMemoryFragmentCount > 0 ? { memoryFragmentCount: archiveMemoryFragmentCount } : {}),
+        const transcript = visibleNewMessages.map(msg => {
+            const role = msg.role === 'user' ? userName : charName;
+            const timeStr = msg.timestamp
+                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
+            return timeStr ? `[${timeStr}] ${role}: ${msg.content}` : `${role}: ${msg.content}`;
+        }).join('\n');
+
+        const summarizePrompt = buildSummarizePrompt();
+
+        // When a rolling chat summary exists, the visible transcript only
+        // covers the unsummarized tail — the earlier span lives in that
+        // summary. Hand both halves to the LLM and ask for an integrated
+        // recap so ST main chat receives the whole 回家 cycle, not just
+        // the recent leftovers.
+        const summaryUserPrompt = existingSummary
+            ? `以下是今日手机聊天的内容，请整合成一份完整的回顾给线下场景使用：\n\n` +
+              `【之前的对话总结】\n${existingSummary}\n\n` +
+              `【最近的对话】\n${transcript}`
+            : `以下是今日手机聊天的完整记录，请进行总结：\n\n${transcript}`;
+
+        const summary = await callPhoneLLM(summarizePrompt, summaryUserPrompt, { maxTokens: 40000 });
+
+        if (!summary || summary.trim().length === 0) {
+            throw new Error('总结生成失败');
+        }
+
+        console.log(`${CHAT_LOG_PREFIX} Summary generated: ${summary.substring(0, 100)}...`);
+
+        // Generation done — hand off to the confirm/edit page. Close the progress
+        // card so it doesn't sit over the editor; the commit path reopens a fresh
+        // one when the user taps 确认发送.
+        card.close();
+
+        openReturnHomeConfirmPage({
+            initialText: summary.trim(),
+            msgCount: visibleNewMessages.length,
+            onConfirm: (editedSummary) => {
+                // Fire-and-forget: the confirm page already tore itself down.
+                _commitReturnHomeSummary({
+                    editedSummary,
+                    pendingFragments,
+                    visibleNewMessages,
+                    doMemoryFragments,
+                }).catch(err => {
+                    console.error(`${CHAT_LOG_PREFIX} Return home commit (unexpected) failed:`, err);
                 });
-                console.log(`${CHAT_LOG_PREFIX} ✅ 回家档案已记录 (mode=${syncMode}, msgs=${visibleNewMessages.length}, range=${archiveFloorRange ? `#${archiveFloorRange.from}-#${archiveFloorRange.to}` : 'unknown'})`);
-            } catch (archiveErr) {
-                // Archive failure must NOT roll back the successful sync —
-                // ST main chat already received the payload, the marker is
-                // already advanced. Log and continue so the user still sees
-                // 回家 succeed; the paper trail just misses one entry.
-                console.warn(`${CHAT_LOG_PREFIX} 回家档案写入失败（同步本身已成功）:`, archiveErr);
-            }
-
-            // Drop the rolling chat summary. 回家 is the canonical handoff
-            // to ST main chat — any compressed snapshot of pre-回家 content
-            // is now stale (the main story may advance past it) and would
-            // double-cover the same range that markMessagesSummarizedUntil
-            // already excludes from <chat_history>.
-            await saveChatSummary('');
-            console.log(`${CHAT_LOG_PREFIX} ✅ 已清空回家前的滚动总结，避免与 ST 主线重复`);
-        }
-
-        console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);
-        card.complete('已回家！');
+            },
+            onCancel: () => {
+                console.log(`${CHAT_LOG_PREFIX} Return home cancelled at confirm page — nothing committed`);
+                // Nothing landed: no ST send, no marker advance, no archive, no
+                // world-book write, rolling summary untouched. Just go back to chat.
+                openChatApp();
+            },
+        });
 
     } catch (error) {
         console.error(`${CHAT_LOG_PREFIX} Return home failed:`, error);
         card.fail(`同步失败：${error.message}`);
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Return Home — helpers (shared by raw / summary-confirm paths)
+// ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Extract memory fragments from the given phone messages WITHOUT writing them to
+ * the world book. The caller decides when to persist (raw mode writes immediately;
+ * summary mode defers until the user confirms). Never throws — extraction failure
+ * degrades to an empty list so the 回家 flow can continue.
+ * @returns {Promise<Array>} fragments array (possibly empty)
+ */
+async function _extractMemoryFragments(visibleNewMessages, userName, charName, card) {
+    card.setStage('正在提取记忆碎片 …');
+    console.log(`${CHAT_LOG_PREFIX} Return home: extracting memory fragments...`);
+    try {
+        // Convert phone chat messages to the format generateSummary() expects.
+        // Use visibleNewMessages (post-marker slice, minus manually-hidden) so we
+        // don't re-extract memory from chats a previous 回家 already processed, and
+        // so the user's hide gesture is honored here too.
+        const summarizerMessages = visibleNewMessages.map(msg => ({
+            parsedContent: msg.content || '',
+            parsedDate: msg.timestamp ? new Date(msg.timestamp).toLocaleDateString('zh-CN') : null,
+            is_user: msg.role === 'user',
+            is_system: false,
+            name: msg.role === 'user' ? userName : charName,
+        }));
+
+        // generateSummary returns { entries, timelineSegments }, not a bare array
+        const summaryResult = await generateSummary(summarizerMessages, true);
+        const fragments = summaryResult?.entries;
+        if (Array.isArray(fragments) && fragments.length > 0) {
+            console.log(`${CHAT_LOG_PREFIX} 记忆碎片提取完成: ${fragments.length} 条（待写入）`);
+            return fragments;
+        }
+        console.log(`${CHAT_LOG_PREFIX} ℹ️ 鬼面判断无新记忆碎片`);
+        card.setStage('无新记忆碎片 …');
+        return [];
+    } catch (memErr) {
+        console.error(`${CHAT_LOG_PREFIX} 记忆碎片提取失败:`, memErr);
+        card.setStage('记忆碎片提取失败，继续同步 …');
+        return [];
+    }
+}
+
+/**
+ * Persist extracted memory fragments to the world book. NON-FATAL: a missing
+ * world-book assignment (or any write error) only warns and returns 0 — it must
+ * never abort the 回家 flow, since the ST main-chat sync is the primary action and
+ * is orthogonal to whether fragments land. This restores the original inline
+ * try/catch semantics that the two-phase generate/commit split dropped.
+ * @returns {Promise<number>} number of fragments actually written (0 on skip/failure)
+ */
+async function _persistMemoryFragments(fragments, card) {
+    if (!Array.isArray(fragments) || fragments.length === 0) return 0;
+    if (card) card.setStage('正在写入记忆碎片 …');
+    try {
+        await saveToWorldBook(fragments, null, null, isContentSimilar);
+        console.log(`${CHAT_LOG_PREFIX} ✅ 记忆碎片已写入世界书: ${fragments.length} 条`);
+        if (card) card.setStage(`记忆碎片已写入 ${fragments.length} 条 …`);
+        return fragments.length;
+    } catch (wbErr) {
+        console.warn(`${CHAT_LOG_PREFIX} 记忆碎片写入世界书失败（继续同步）:`, wbErr?.message || wbErr);
+        if (typeof toastr !== 'undefined') {
+            toastr.warning(`记忆碎片未保存：${wbErr?.message || '未指定世界书'}`, '', { timeOut: 4000 });
+        }
+        if (card) card.setStage('记忆碎片写入失败，继续同步 …');
+        return 0;
+    }
+}
+
+/**
+ * Commit half of the summary-mode 回家 flow, run after the user taps 确认发送 on the
+ * confirm page. Writes the (deferred) memory fragments, sends the edited summary to
+ * ST main chat, finalizes the marker/archive/cleanup, then returns to the chat app.
+ * Opens its own progress card (the generate-phase card was already closed).
+ */
+async function _commitReturnHomeSummary({ editedSummary, pendingFragments, visibleNewMessages, doMemoryFragments }) {
+    const card = openProgressCard({ title: '回家流程' });
+    try {
+        // World-book write was deferred from the generate phase so a cancel leaves
+        // nothing behind — persist now that the user confirmed. Non-fatal: a
+        // missing world-book assignment must not block the ST main-chat sync.
+        const memCount = await _persistMemoryFragments(pendingFragments, card);
+
+        card.setStage('总结已确认，正在送达 …');
+        await sendSummaryAsUserMessage(editedSummary, visibleNewMessages);
+
+        await _finalizeReturnHome({
+            syncMode: 'summary',
+            archivePayload: editedSummary,
+            archiveMemoryFragmentCount: memCount,
+            visibleNewMessages,
+            doMemoryFragments,
+            card,
+        });
+    } catch (error) {
+        console.error(`${CHAT_LOG_PREFIX} Return home commit failed:`, error);
+        card.fail(`同步失败：${error.message}`);
+    } finally {
+        // The confirm page replaced the chat viewport — always restore it,
+        // whether the commit succeeded or failed. The progress card lives on the
+        // phone shell and stays visible over the re-rendered chat.
+        openChatApp();
+    }
+}
+
+/**
+ * Finalize a 回家 run after the payload has reached ST main chat: advance the home
+ * marker, mark the synced slice as summarized, write the paper-trail archive entry,
+ * and drop the now-stale rolling summary. Shared by the raw and summary-confirm
+ * paths. Completes the progress card on success.
+ */
+async function _finalizeReturnHome({ syncMode, archivePayload, archiveMemoryFragmentCount, visibleNewMessages, doMemoryFragments, card }) {
+    // Advance the 回家 marker. Re-read history here instead of using
+    // newMessages.end — during the LLM call (5–30s) autoMessage or the
+    // user can append new messages to phone history. Anchoring to
+    // history's true tail folds those concurrent messages into "已处理"
+    // for the same 回家 batch, avoiding a re-sync window.
+    const latestHistory = loadChatHistory();
+    let newMarker = '';
+    for (let i = latestHistory.length - 1; i >= 0; i--) {
+        if (latestHistory[i].timestamp) { newMarker = latestHistory[i].timestamp; break; }
+    }
+    if (newMarker) {
+        // Snapshot the marker BEFORE we advance it so the archive entry
+        // can record where to roll back to if the user later deletes it.
+        // Without this, deleting an archive entry would clear summarized
+        // marks but leave the home marker frozen at its new position —
+        // getMessagesSinceHome filters by marker only, so the next 回家
+        // would still see the just-restored slice as "already synced".
+        // Empty string is a valid value (first-ever 回家).
+        const prevHomeMarker = loadHomeMarker();
+        await saveHomeMarker(newMarker);
+        console.log(`${CHAT_LOG_PREFIX} 回家 marker → ${newMarker}`);
+
+        // Hide already-synced messages from future chat prompts. The
+        // content was just folded into ST main chat (summary or raw),
+        // so re-sending it through <chat_history> would waste tokens
+        // and tempt the LLM to repeat itself. UI still shows the
+        // bubbles — only the prompt-side filter skips them.
+        const markedCount = await markMessagesSummarizedUntil(newMarker);
+        if (markedCount > 0) {
+            console.log(`${CHAT_LOG_PREFIX} ✅ 已将 ${markedCount} 条回家前的消息标记为已总结，下次进入聊天不再回灌 LLM`);
+        }
+
+        // ─── Phase 6: paper-trail archive ───
+        // Push only after the marker + summarized marks have already
+        // landed — those two are the load-bearing state changes; if any
+        // of them failed earlier the catch path runs and we never reach
+        // here. floorRange is the slice this run folded, sourced from
+        // visibleNewMessages (the exact set passed to the sender). Skip
+        // the range when any message lacks .floor (pre-Phase-1 data) so
+        // the archive UI doesn't try to "restore" a NaN range and unmark
+        // unrelated messages.
+        try {
+            const floors = visibleNewMessages
+                .map(m => m.floor)
+                .filter(f => typeof f === 'number' && Number.isFinite(f));
+            const archiveFloorRange = floors.length === visibleNewMessages.length && floors.length > 0
+                ? { from: Math.min(...floors), to: Math.max(...floors) }
+                : undefined;
+            await pushReturnHomeArchive({
+                mode: syncMode === 'raw' ? 'raw' : 'summary',
+                payload: archivePayload,
+                msgCount: visibleNewMessages.length,
+                prevHomeMarker,
+                ...(archiveFloorRange ? { floorRange: archiveFloorRange } : {}),
+                ...(archiveMemoryFragmentCount > 0 ? { memoryFragmentCount: archiveMemoryFragmentCount } : {}),
+            });
+            console.log(`${CHAT_LOG_PREFIX} ✅ 回家档案已记录 (mode=${syncMode}, msgs=${visibleNewMessages.length}, range=${archiveFloorRange ? `#${archiveFloorRange.from}-#${archiveFloorRange.to}` : 'unknown'})`);
+        } catch (archiveErr) {
+            // Archive failure must NOT roll back the successful sync —
+            // ST main chat already received the payload, the marker is
+            // already advanced. Log and continue so the user still sees
+            // 回家 succeed; the paper trail just misses one entry.
+            console.warn(`${CHAT_LOG_PREFIX} 回家档案写入失败（同步本身已成功）:`, archiveErr);
+        }
+
+        // Drop the rolling chat summary. 回家 is the canonical handoff
+        // to ST main chat — any compressed snapshot of pre-回家 content
+        // is now stale (the main story may advance past it) and would
+        // double-cover the same range that markMessagesSummarizedUntil
+        // already excludes from <chat_history>.
+        await saveChatSummary('');
+        console.log(`${CHAT_LOG_PREFIX} ✅ 已清空回家前的滚动总结，避免与 ST 主线重复`);
+    }
+
+    console.log(`${CHAT_LOG_PREFIX} Return home flow completed successfully (mode: ${syncMode}, memory: ${doMemoryFragments})`);
+    card.complete('已回家！');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -505,11 +621,11 @@ export async function handleManualSummarize() {
     const card = openProgressCard({ title: '压缩聊天记忆' });
 
     try {
-        // Keep recent 30 messages unsummarized — manual summarize is meant for
-        // an explicit "compress now" user gesture and reuses a smaller floor
-        // than auto's 60, so a tap on the button actually folds something even
-        // when the chat is below the auto threshold.
-        const KEEP_RECENT = 30;
+        // Keep recent 10 messages unsummarized (~5 round-trips) — matches the
+        // auto-summarize floor in chatStorage.js so manual "compress now" trims
+        // the raw tail to the same depth, folding something even when the chat
+        // is below the auto threshold.
+        const KEEP_RECENT = 10;
         const toSummarizeCount = unsummarized.length - KEEP_RECENT;
 
         if (toSummarizeCount <= 0) {

@@ -41,8 +41,19 @@ export function replaceMacros(text, charName, userName) {
 /**
  * 将 phone 聊天历史转换为 checkWorldInfo 所需的 string[] 格式。
  * 各调用方应调用此函数，将结果传给 getPhoneWorldBookContext()。
+ *
+ * IMPORTANT — bubble→turn merging:
+ * Phone chats fragment a single LLM turn into many short bubbles, but ST's WI
+ * scan depth (`world_info_depth`) counts *messages*, assuming each message is a
+ * full turn. Feeding raw bubbles makes a depth of 2 see only the last two
+ * bubbles (often "嗯" / "好"), so a keyword mentioned earlier in the same turn
+ * never enters the scan window and its entry never fires — only constant entries
+ * (which ignore the buffer) survive. To realign the unit with ST's assumption,
+ * we merge consecutive same-sender bubbles into one logical message, so depth N
+ * again means "the last N exchanges", not "the last N bubbles".
+ *
  * @param {Array<{role: string, content: string}>} messages - Phone 格式消息 [{role, content, ...}]
- * @param {number} [limit=50] - 最多取多少条最近消息
+ * @param {number} [limit=50] - 最多取多少条最近气泡参与合并
  * @returns {string[]} "name: content" 格式的数组（正序，getPhoneWorldBookContext 内部会 reverse）
  */
 export function buildPhoneChatForWI(messages, limit = 50) {
@@ -51,13 +62,23 @@ export function buildPhoneChatForWI(messages, limit = 50) {
     const userName = context.name1 || 'User';
     const charName = context.name2 || 'Character';
 
-    return messages
+    const recent = messages
         .filter(m => m && m.content && m.content.trim())
-        .slice(-limit)
-        .map(m => {
-            const name = m.role === 'user' ? userName : charName;
-            return `${name}: ${m.content}`;
-        });
+        .slice(-limit);
+
+    // Collapse consecutive same-sender bubbles into one run.
+    const runs = [];
+    for (const m of recent) {
+        const name = m.role === 'user' ? userName : charName;
+        const last = runs[runs.length - 1];
+        if (last && last.role === m.role) {
+            last.lines.push(m.content);
+        } else {
+            runs.push({ role: m.role, name, lines: [m.content] });
+        }
+    }
+
+    return runs.map(run => `${run.name}: ${run.lines.join('\n')}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
