@@ -1223,15 +1223,15 @@ export async function autoManageWorldBook() {
         // 第1步：获取角色绑定的世界书
         const boundWorldBook = await utils.findActiveWorldBook();
 
-        if (!boundWorldBook) {
-            // console.log('🌍 [自动世界书] 角色未绑定世界书，跳过自动管理');
-            return false;
-        }
+        /*  if (!boundWorldBook) {
+             // console.log('🌍 [自动世界书] 角色未绑定世界书，跳过自动管理');
+             return false;
+         } */
 
         // console.log(`🌍 [自动世界书] 检测到绑定世界书: ${boundWorldBook}`);
 
         // 第2步：检查当前选中的世界书
-        const worldSelect = document.querySelector('#world_editor_select');
+        /* const worldSelect = document.querySelector('#world_editor_select');
         let currentSelectedBook = null;
 
         if (worldSelect && worldSelect.value) {
@@ -1248,8 +1248,8 @@ export async function autoManageWorldBook() {
         // console.log(`🌍 [自动世界书] 当前选中: ${currentSelectedBook || '无'}, 需要切换到: ${boundWorldBook}`);
 
         const success = await autoSelectWorldBook(boundWorldBook, worldSelect);
-
-        if (success) {
+ */
+        if (boundWorldBook) {
             // console.log(`🌍 [自动世界书] ✅ 成功自动选择世界书: ${boundWorldBook}`);
             // NOTE: Do NOT call ui.updateWorldBookDisplay() here — handleChatChange
             // already calls it after autoManageWorldBook returns, so a second call
