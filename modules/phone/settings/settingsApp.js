@@ -22,7 +22,7 @@ import { getCurrentSeason, getStageByGrowth } from '../tree/treeConfig.js';
 import { getPhoneCharInfo, getPhoneUserName } from '../phoneContext.js';
 import { getAllActiveWorldBookNames, getAllActiveEntries } from '../../worldbookManager.js';
 import { loadCallLogs } from '../voiceCall/vcStorage.js';
-import { loadChatHistory, purgeExternalChatHistory } from '../chat/chatStorage.js';
+import { loadChatHistory, purgeExternalChatHistory, getSummarizePromptTokenThreshold } from '../chat/chatStorage.js';
 import {
     uploadWallpaper, clearWallpaper, applyWallpaper as applyWallpaperManaged,
     migrateLegacyBase64 as migrateLegacyWallpaperBase64, getWallpaperValue,
@@ -896,6 +896,20 @@ export function openSettingsApp() {
                     开启后，聊天自动压缩时也会调用鬼面记忆碎片系统提取关键信息写入世界书。关闭则仅做滚动总结，省一次 API 调用。
                 </div>
 
+                <div class="phone-settings-row">
+                    <label>自动压缩 Token 阈值</label>
+                    <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; justify-content: flex-end;">
+                        <input id="${P}_summarize_threshold_input" type="number" class="phone-settings-input"
+                               style="width: 90px; text-align: right; height: 36px;"
+                               min="5000" max="500000" step="5000"
+                               value="${getSummarizePromptTokenThreshold()}" />
+                        <span style="font-size: 12px; color: #8e8e93; white-space: nowrap;">tokens</span>
+                    </div>
+                </div>
+                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                    当下一轮完整 Prompt 的 Token 数超过此阈值时，自动触发聊天记录压缩。建议根据你使用的模型上下文窗口大小来设定。默认 50,000。
+                </div>
+
                 <div class="phone-settings-group-title">回家模式</div>
                 <div class="phone-settings-row">
                     <div class="phone-settings-toggle-row">
@@ -1641,6 +1655,25 @@ export function openSettingsApp() {
                 autoSumMemToggle.classList.toggle('active', newState);
                 setPhoneSetting('autoSummarizeMemory', newState);
                 showToast(newState ? '自动压缩将提取记忆碎片 🧩' : '自动压缩仅做滚动总结');
+            });
+        }
+
+        // ═══ Auto-Summarize: Token Threshold Input ═══
+        const sumThresholdInput = document.getElementById(`${P}_summarize_threshold_input`);
+        if (sumThresholdInput) {
+            sumThresholdInput.addEventListener('change', (e) => {
+                let val = parseInt(e.target.value);
+                if (isNaN(val) || val < 5000) {
+                    val = 5000;
+                    e.target.value = val;
+                    showToast('阈值不能低于 5,000');
+                } else if (val > 500000) {
+                    val = 500000;
+                    e.target.value = val;
+                    showToast('阈值不能超过 500,000');
+                }
+                setPhoneSetting('summarizeTokenThreshold', val);
+                showToast(`自动压缩阈值: ${val.toLocaleString('en-US')} tokens`);
             });
         }
 
