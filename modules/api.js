@@ -649,17 +649,21 @@ export async function callCustomOpenAI(systemPrompt, userPrompt, { maxTokens = n
         top_p: 1,
         stream: false
     };
-    // Gemini's OpenAI-compat endpoint rejects unknown fields (top_k → 400).
-    // Claude rejects top_k whenever extended thinking is on (detect by model name,
-    // since users may route through proxies whose URL does not contain "anthropic").
-    // Other OpenAI-compat providers either accept it or silently ignore it.
+    const model = customApiConfig.model || '';
     const isGemini = apiUrl.includes('generativelanguage.googleapis.com');
-    const isClaude = /claude/i.test(customApiConfig.model || '');
-    if (!isGemini && !isClaude) {
+    const isClaude = /claude/i.test(model);
+    const isOpenAI = apiUrl.includes('api.openai.com') || /^(gpt-|o[1-9]|chatgpt)/i.test(model);
+    if (!isGemini && !isClaude && !isOpenAI) {
         requestBody.top_k = 63;
     }
     if (maxTokens) {
-        requestBody.max_tokens = maxTokens;
+        // o-series and gpt-5+ reject max_tokens; they need max_completion_tokens.
+        const needsMaxCompletionTokens = /^o[1-9]/i.test(model) || /^gpt-([5-9]|\d{2,})/i.test(model);
+        if (needsMaxCompletionTokens) {
+            requestBody.max_completion_tokens = maxTokens;
+        } else {
+            requestBody.max_tokens = maxTokens;
+        }
     }
 
     if (typeof window.logger !== 'undefined') {
@@ -895,18 +899,33 @@ export async function _callSTBackendChat(systemPrompt, userPrompt, { images = nu
         model,
         temperature: Number(oai.temp_openai) || 0.7,
         top_p: Number(oai.top_p_openai ?? 1.0),
-        max_tokens: effectiveMaxTokens,
         stream: false,
         chat_completion_source: chatCompletionSource,
     };
 
-    // top_k only when user explicitly set > 0 — ST default 0 means "disabled"
-    // and OpenAI rejects the param entirely. Claude additionally rejects top_k
-    // whenever extended thinking is enabled, and the user's ST `top_k_openai`
-    // is a single global value that doesn't know about Claude's constraint —
-    // so skip the param for Claude entirely.
+    // Token-cap param name diverges by model: OpenAI's o-series (o1/o3/…) and
+    // gpt-5 and above REJECT `max_tokens` and require `max_completion_tokens`;
+    // older models (gpt-4o, gpt-4, gpt-3.5) still take `max_tokens`. Only switch
+    // for models that demand it so existing configs keep working. Match o1-o9
+    // and gpt-5 through higher major versions (gpt-5.5, gpt-6, gpt-10, …).
+    const needsMaxCompletionTokens = /^o[1-9]/i.test(model) || /^gpt-([5-9]|\d{2,})/i.test(model);
+    if (needsMaxCompletionTokens) {
+        generateData.max_completion_tokens = effectiveMaxTokens;
+    } else {
+        generateData.max_tokens = effectiveMaxTokens;
+    }
+
+    // top_k only when user explicitly set > 0 — ST default 0 means "disabled".
+    // The user's ST `top_k_openai` is a single global value that doesn't know
+    // which provider the request targets, so a non-zero default leaks into
+    // providers that reject the param:
+    //   - OpenAI rejects it outright (400 "Unknown parameter: 'top_k'").
+    //   - Claude rejects it whenever extended thinking is enabled.
+    // Skip the param for both. Detect OpenAI by source and by model name
+    // (users may route gpt-* models through a "custom" proxy source).
+    const isOpenAIRequest = chatCompletionSource === 'openai' || /^(gpt-|o[1-9]|chatgpt)/i.test(model);
     const topK = Number(oai.top_k_openai);
-    if (Number.isFinite(topK) && topK > 0 && !isClaudeRequest) {
+    if (Number.isFinite(topK) && topK > 0 && !isClaudeRequest && !isOpenAIRequest) {
         generateData.top_k = topK;
     }
 
