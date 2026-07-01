@@ -9,7 +9,7 @@ import { openAppInViewport } from '../phoneController.js';
 import { fetchFile } from '../../storage/fileStore.js';
 import { filenameForHash } from '../../storage/chatHistoryStore.js';
 import { getEntriesForChar, removeEntry } from '../../storage/chatIndexStore.js';
-import { loadChatHistory, SUMMARIZE_PROMPT_TOKEN_THRESHOLD } from './chatStorage.js';
+import { loadChatHistory, getSummarizePromptTokenThreshold } from './chatStorage.js';
 import { openChatSettingsPage } from './chatSettings.js';
 import { buildChatSystemPrompt, buildChatUserPrompt } from './chatPromptBuilder.js';
 import { countTokensFromPromptData } from '../../core.js';
@@ -73,7 +73,7 @@ function _buildPage() {
                     </div>
                     <div class="chat-stats-summary-row chat-stats-summary-subrow">
                         <span class="chat-stats-summary-sublabel">└ 自动总结阈值</span>
-                        <span class="chat-stats-summary-value" id="chat_stats_summarize_threshold">${SUMMARIZE_PROMPT_TOKEN_THRESHOLD.toLocaleString('en-US')}</span>
+                        <span class="chat-stats-summary-value" id="chat_stats_summarize_threshold">${getSummarizePromptTokenThreshold().toLocaleString('en-US')}</span>
                     </div>
                 </div>
             </div>
@@ -367,7 +367,7 @@ async function _estimateNextRoundTokens(myToken) {
     // Flag the threshold row red/green so it reads at a glance.
     const thresholdEl = document.getElementById('chat_stats_summarize_threshold');
     if (thresholdEl) {
-        thresholdEl.classList.toggle('over-threshold', totalTokens >= SUMMARIZE_PROMPT_TOKEN_THRESHOLD);
+        thresholdEl.classList.toggle('over-threshold', totalTokens >= getSummarizePromptTokenThreshold());
     }
 }
 

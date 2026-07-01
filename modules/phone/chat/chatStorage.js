@@ -34,7 +34,19 @@ const CHAT_LOG_PREFIX = '[聊天]';
 // messages, which understated the real LLM context pressure dramatically and
 // let prompts sail past 100k+ without ever folding. Reusing the precise
 // estimator means the trigger fires when context actually matters.
-export const SUMMARIZE_PROMPT_TOKEN_THRESHOLD = 50000;
+const SUMMARIZE_PROMPT_TOKEN_THRESHOLD_DEFAULT = 50000;
+
+/**
+ * 获取自动总结 Token 阈值（用户可在 Phone 设置 → 聊天 → 自动压缩 中自定义）
+ * @returns {number}
+ */
+export function getSummarizePromptTokenThreshold() {
+    return getPhoneSetting('summarizeTokenThreshold', SUMMARIZE_PROMPT_TOKEN_THRESHOLD_DEFAULT);
+}
+
+// Backward-compat: re-export the default so any file that imported the old
+// constant by name still compiles. New code should call the function instead.
+export const SUMMARIZE_PROMPT_TOKEN_THRESHOLD = SUMMARIZE_PROMPT_TOKEN_THRESHOLD_DEFAULT;
 const KEEP_RECENT = 10;                  // Keep the most recent N messages unsummarized (~5 round-trips)
 // Per-round upper bound on how many messages a single summarize cycle folds.
 // Without this, a long-deferred chat (or a救援操作 that wiped all summarized
@@ -1852,20 +1864,21 @@ export async function maybeAutoSummarize() {
         return;
     }
 
+    const currentThreshold = getSummarizePromptTokenThreshold();
     console.log(
         `${CHAT_LOG_PREFIX} 自动总结诊断: history=${history.length} ` +
         `(已总结 ${summarizedCount} / 未总结 ${unsummarized.length}), ` +
-        `prompt≈${promptTokens} tokens, 阈值=${SUMMARIZE_PROMPT_TOKEN_THRESHOLD}, KEEP_RECENT=${KEEP_RECENT}`
+        `prompt≈${promptTokens} tokens, 阈值=${currentThreshold}, KEEP_RECENT=${KEEP_RECENT}`
     );
 
-    if (promptTokens < SUMMARIZE_PROMPT_TOKEN_THRESHOLD) {
-        console.log(`${CHAT_LOG_PREFIX} 未达阈值（${promptTokens} < ${SUMMARIZE_PROMPT_TOKEN_THRESHOLD}），不触发`);
+    if (promptTokens < currentThreshold) {
+        console.log(`${CHAT_LOG_PREFIX} 未达阈值（${promptTokens} < ${currentThreshold}），不触发`);
         return;
     }
 
     _isSummarizing = true;
     _armSummarizeWatchdog();
-    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条未总结消息, prompt≈${promptTokens} tokens (阈值 ${SUMMARIZE_PROMPT_TOKEN_THRESHOLD})`);
+    console.log(`${CHAT_LOG_PREFIX} 📝 触发自动总结: ${unsummarized.length} 条未总结消息, prompt≈${promptTokens} tokens (阈值 ${currentThreshold})`);
 
     const card = openProgressCard({ title: '后台压缩聊天记忆' });
 
