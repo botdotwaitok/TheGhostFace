@@ -44,9 +44,6 @@ export function getSummarizePromptTokenThreshold() {
     return getPhoneSetting('summarizeTokenThreshold', SUMMARIZE_PROMPT_TOKEN_THRESHOLD_DEFAULT);
 }
 
-// Backward-compat: re-export the default so any file that imported the old
-// constant by name still compiles. New code should call the function instead.
-export const SUMMARIZE_PROMPT_TOKEN_THRESHOLD = SUMMARIZE_PROMPT_TOKEN_THRESHOLD_DEFAULT;
 const KEEP_RECENT = 10;                  // Keep the most recent N messages unsummarized (~5 round-trips)
 // Per-round upper bound on how many messages a single summarize cycle folds.
 // Without this, a long-deferred chat (or a救援操作 that wiped all summarized
@@ -74,7 +71,7 @@ const SUMMARIZE_LLM_TIMEOUT_MS = 300_000; // Abort the rolling-summary LLM call 
 // prompt builder. Operates on the cheap CJK/ASCII heuristic over phone-chat
 // messages only — it's a last-resort guard against the prompt-history block
 // alone blowing up, NOT the full-prompt trigger that drives summarize.
-// Auto-summarize is gated on SUMMARIZE_PROMPT_TOKEN_THRESHOLD, which counts
+// Auto-summarize is gated on getSummarizePromptTokenThreshold(), which counts
 // the whole next-round prompt with ST's real tokenizer; this cap just makes
 // sure that when summarize is stalled / disabled / pre-migration, the prompt
 // still has a hard ceiling.

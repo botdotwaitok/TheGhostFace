@@ -979,6 +979,39 @@
     color: #1c1c1e !important;
 }
 
+/* ─── Input Row (compact input + trailing unit, sits on the right of a toggle-row) ─── */
+.phone-settings-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.phone-settings-input-row .phone-settings-input {
+    /* Fixed width so it reads as a right-aligned value beside its label,
+     * overriding the base .phone-settings-input width:100%. */
+    width: 108px;
+    /* !important: ST's global .text_pole sets text-align, would override otherwise. */
+    text-align: right !important;
+}
+
+.phone-settings-input-unit {
+    font-size: 12px;
+    color: #8e8e93;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ─── Field Hint (description under a control) ─── */
+/* Geometry matches the existing inline hint blocks across the settings page
+ * (padding: 0 16px 12px) so converted rows stay pixel-aligned with their siblings. */
+.phone-settings-hint {
+    padding: 0 16px 12px;
+    font-size: 12px;
+    color: #8e8e93;
+    line-height: 1.5;
+}
+
 /* ─── ID Row (input + small button) ─── */
 .phone-settings-id-row {
     display: flex;

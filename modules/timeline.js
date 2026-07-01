@@ -61,11 +61,7 @@ export async function readTimelineFromWorldbook() {
  * @param {string} content 时间线文本
  */
 export async function writeTimelineToWorldbook(content) {
-    let worldBookName = await utils.findActiveWorldBook();
-    /* if (!worldBookName) {
-        const sel = document.querySelector('#world_editor_select');
-        if (sel?.value) worldBookName = sel.selectedOptions[0].textContent.trim();
-    } */
+    const worldBookName = await utils.findActiveWorldBook();
     if (!worldBookName) throw new Error('[时间线] 未找到绑定的世界书');
 
     const wbOriginal = await loadWorldInfo(worldBookName);

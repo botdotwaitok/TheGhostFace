@@ -40,15 +40,8 @@ async function getBasicInfoOfThem() {
 
         // ── World book entries ───────────────────────────────────────
         try {
-            // Try character-bound world book first, then fall back to UI selector
-            let worldBookName = await findActiveWorldBook();
-
-            /* if (!worldBookName) {
-                const sel = document.querySelector('#world_editor_select');
-                if (sel && sel.value) {
-                    worldBookName = sel.selectedOptions[0]?.textContent;
-                }
-            } */
+            // Only use the character-bound world book; do not read the ST UI selector.
+            const worldBookName = await findActiveWorldBook();
 
             if (worldBookName) {
                 const wb = await loadWorldInfo(worldBookName);
@@ -73,7 +66,7 @@ async function getBasicInfoOfThem() {
                     }
                 }
             } else {
-                logger.warn('[鬼面Chat] 角色未绑定世界书');
+                console.warn('[鬼面Chat] 角色未绑定世界书');
             }
         } catch (wbErr) {
             console.warn('[鬼面Chat] Failed to load world book for chat:', wbErr);

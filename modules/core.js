@@ -1216,122 +1216,20 @@ export async function waitForSTReady() {
 }
 
 // 自动世界书管理函数
+// 解耦后：只判断角色是否绑定了世界书，不再劫持 ST 自带世界书编辑器的选中项。
+// 插件所有读取都通过 findActiveWorldBook() 走角色绑定，无需再同步 UI 选择器。
 export async function autoManageWorldBook() {
     try {
-        // console.log('🌍 [自动世界书] 开始自动管理世界书...');
-
-        // 第1步：获取角色绑定的世界书
         const boundWorldBook = await utils.findActiveWorldBook();
 
-        /*  if (!boundWorldBook) {
-             // console.log('🌍 [自动世界书] 角色未绑定世界书，跳过自动管理');
-             return false;
-         } */
-
-        // console.log(`🌍 [自动世界书] 检测到绑定世界书: ${boundWorldBook}`);
-
-        // 第2步：检查当前选中的世界书
-        /* const worldSelect = document.querySelector('#world_editor_select');
-        let currentSelectedBook = null;
-
-        if (worldSelect && worldSelect.value) {
-            currentSelectedBook = worldSelect.selectedOptions[0].textContent;
-        }
-
-        // 第3步：如果已经选中了正确的世界书，就不需要操作
-        if (currentSelectedBook === boundWorldBook) {
-            // console.log(`🌍 [自动世界书] 世界书已正确选中: ${boundWorldBook}`);
-            return true;
-        }
-
-        // 第4步：自动选择正确的世界书
-        // console.log(`🌍 [自动世界书] 当前选中: ${currentSelectedBook || '无'}, 需要切换到: ${boundWorldBook}`);
-
-        const success = await autoSelectWorldBook(boundWorldBook, worldSelect);
- */
-        if (boundWorldBook) {
-            // console.log(`🌍 [自动世界书] ✅ 成功自动选择世界书: ${boundWorldBook}`);
-            // NOTE: Do NOT call ui.updateWorldBookDisplay() here — handleChatChange
-            // already calls it after autoManageWorldBook returns, so a second call
-            // would produce duplicate log lines and potentially stale data.
-
-            return true;
-        } else {
-            console.warn(`🌍 [自动世界书] ❌ 无法自动选择世界书: ${boundWorldBook}`);
+        if (!boundWorldBook) {
+            console.warn('🌍 [自动世界书] 角色未绑定世界书');
             return false;
         }
 
+        return true;
     } catch (error) {
         console.error('🌍 [自动世界书] 自动管理失败:', error);
-        return false;
-    }
-}
-
-// 🔧 自动选择世界书的核心函数
-async function autoSelectWorldBook(targetWorldBook, worldSelect) {
-    try {
-        if (!worldSelect) {
-            // 🆕 如果选择器不存在，尝试自动创建/等待
-            // console.log('🌍 [自动选择] 世界书选择器不存在，尝试导航...');
-
-            // 方法1：尝试点击世界书导航
-            const worldInfoTab = document.querySelector('#WI_tab') ||
-                document.querySelector('[data-tab="world_info"]') ||
-                document.querySelector('a[href="#world_info"]');
-
-            if (worldInfoTab) {
-                // console.log('🌍 [自动选择] 点击世界书标签页...');
-                worldInfoTab.click();
-
-                // 等待页面加载
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                // 重新获取选择器
-                worldSelect = document.querySelector('#world_editor_select');
-            }
-
-            if (!worldSelect) {
-                // console.log('🌍 [自动选择] 无法访问世界书选择器');
-                return false;
-            }
-        }
-
-        // 🎯 在选择器中查找目标世界书
-        const options = Array.from(worldSelect.options);
-        const targetOption = options.find(option =>
-            option.textContent === targetWorldBook ||
-            option.value === targetWorldBook
-        );
-
-        if (!targetOption) {
-            // console.log(`🌍 [自动选择] 在选择器中未找到世界书: ${targetWorldBook}`);
-            // console.log('🌍 [自动选择] 可用的世界书:', options.map(opt => opt.textContent));
-            return false;
-        }
-
-        // 🎯 自动选择
-        // console.log(`🌍 [自动选择] 找到目标选项，正在选择...`);
-        worldSelect.value = targetOption.value;
-
-        // 触发change事件
-        const changeEvent = new Event('change', { bubbles: true });
-        worldSelect.dispatchEvent(changeEvent);
-
-        // 等待选择生效
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // 验证是否选择成功
-        const newSelected = worldSelect.selectedOptions[0]?.textContent;
-        if (newSelected === targetWorldBook) {
-            // console.log(`🌍 [自动选择] ✅ 选择成功: ${newSelected}`);
-            return true;
-        } else {
-            // console.log(`🌍 [自动选择] ❌ 选择失败，当前选中: ${newSelected}`);
-            return false;
-        }
-
-    } catch (error) {
-        console.error('🌍 [自动选择] 选择世界书时出错:', error);
         return false;
     }
 }

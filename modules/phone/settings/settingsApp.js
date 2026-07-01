@@ -892,21 +892,22 @@ export function openSettingsApp() {
                         </button>
                     </div>
                 </div>
-                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                <div class="phone-settings-hint">
                     开启后，聊天自动压缩时也会调用鬼面记忆碎片系统提取关键信息写入世界书。关闭则仅做滚动总结，省一次 API 调用。
                 </div>
 
                 <div class="phone-settings-row">
-                    <label>自动压缩 Token 阈值</label>
-                    <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; justify-content: flex-end;">
-                        <input id="${P}_summarize_threshold_input" type="number" class="phone-settings-input"
-                               style="width: 90px; text-align: right; height: 36px;"
-                               min="5000" max="500000" step="5000"
-                               value="${getSummarizePromptTokenThreshold()}" />
-                        <span style="font-size: 12px; color: #8e8e93; white-space: nowrap;">tokens</span>
+                    <div class="phone-settings-toggle-row">
+                        <span class="phone-settings-toggle-label">自动压缩 Token 阈值</span>
+                        <div class="phone-settings-input-row">
+                            <input id="${P}_summarize_threshold_input" type="number" class="phone-settings-input"
+                                   min="5000" max="500000" step="5000"
+                                   value="${getSummarizePromptTokenThreshold()}" />
+                            <span class="phone-settings-input-unit">tokens</span>
+                        </div>
                     </div>
                 </div>
-                <div style="padding: 0 16px 12px; font-size: 12px; color: #8e8e93; line-height: 1.5;">
+                <div class="phone-settings-hint">
                     当下一轮完整 Prompt 的 Token 数超过此阈值时，自动触发聊天记录压缩。建议根据你使用的模型上下文窗口大小来设定。默认 50,000。
                 </div>
 
@@ -1662,7 +1663,7 @@ export function openSettingsApp() {
         const sumThresholdInput = document.getElementById(`${P}_summarize_threshold_input`);
         if (sumThresholdInput) {
             sumThresholdInput.addEventListener('change', (e) => {
-                let val = parseInt(e.target.value);
+                let val = parseInt(e.target.value, 10);
                 if (isNaN(val) || val < 5000) {
                     val = 5000;
                     e.target.value = val;
