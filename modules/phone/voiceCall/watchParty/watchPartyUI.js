@@ -91,6 +91,9 @@ const watchPartyTemplate = String.raw`
             <button class="voice-control-btn mic" id="watch_party_mic_btn">
                 <i class="fa-solid fa-microphone"></i>
             </button>
+            <button class="voice-control-btn keyboard" id="watch_party_keyboard_btn" title="文字输入">
+                <i class="ph ph-keyboard"></i>
+            </button>
             <button class="voice-control-btn watch-pause" id="watch_party_pause_btn" title="暂停截屏">
                 <i class="ph ph-pause"></i>
             </button>
@@ -448,6 +451,12 @@ function _bindEvents() {
         };
     }
 
+    // Keyboard input toggle
+    const keyboardBtn = document.getElementById('watch_party_keyboard_btn');
+    if (keyboardBtn) {
+        keyboardBtn.onclick = () => _showTextInput();
+    }
+
     // Pause/resume frame capture
     const pauseBtn = document.getElementById('watch_party_pause_btn');
     if (pauseBtn) {
@@ -511,6 +520,9 @@ function _hideHangupConfirmation() {
     controls.innerHTML = `
         <button class="voice-control-btn mic" id="watch_party_mic_btn">
             <i class="fa-solid fa-microphone"></i>
+        </button>
+        <button class="voice-control-btn keyboard" id="watch_party_keyboard_btn" title="文字输入">
+            <i class="ph ph-keyboard"></i>
         </button>
         <button class="voice-control-btn watch-pause" id="watch_party_pause_btn" title="暂停截屏">
             <i class="ph ph-pause"></i>
@@ -699,6 +711,106 @@ function _addSystemSubtitle(text) {
         subs.insertAdjacentHTML('beforeend', `<div class="voice-subtitle-bubble system">${escapeHtml(text)}</div>`);
         _scrollToBottom();
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Text Input (keyboard alternative — ported from voiceCallUI)
+// ═══════════════════════════════════════════════════════════════════════
+
+const _wpTextInputBarHtml = String.raw`
+<div class="voice-text-input-bar" id="wp_text_input_bar">
+    <textarea id="wp_text_input" class="voice-text-input" placeholder="想说什么..." rows="1" maxlength="500"></textarea>
+    <button class="voice-text-input-close" id="wp_text_input_close" title="关闭">
+        <i class="ph ph-x"></i>
+    </button>
+</div>`;
+
+let _wpTextInputPrevMuted = false;
+
+function _showTextInput() {
+    const overlay = document.getElementById('phone_watch_party_overlay');
+    if (!overlay) return;
+    if (document.getElementById('wp_text_input_bar')) return;
+
+    const micBtn = document.getElementById('watch_party_mic_btn');
+    _wpTextInputPrevMuted = micBtn?.classList.contains('muted') || false;
+    if (!_wpTextInputPrevMuted) {
+        if (_sttEngine && _sttEngine.state === 'listening') {
+            _sttEngine.stopListening();
+        }
+        if (micBtn) {
+            micBtn.classList.add('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
+        }
+    }
+
+    const content = overlay.querySelector('.watch-party-content');
+    if (!content) return;
+    content.insertAdjacentHTML('beforeend', _wpTextInputBarHtml);
+    overlay.classList.add('text-input-active');
+
+    const ta = document.getElementById('wp_text_input');
+    const closeBtn = document.getElementById('wp_text_input_close');
+
+    if (ta) {
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.isComposing) {
+                e.preventDefault();
+                const text = ta.value.trim();
+                if (text) {
+                    _handleTextSubmit(text);
+                    ta.value = '';
+                }
+            }
+        });
+        setTimeout(() => ta.focus(), 50);
+    }
+
+    if (closeBtn) {
+        closeBtn.onclick = () => _hideTextInput();
+    }
+
+    _scrollToBottom();
+}
+
+function _hideTextInput() {
+    const bar = document.getElementById('wp_text_input_bar');
+    if (bar) bar.remove();
+    const overlay = document.getElementById('phone_watch_party_overlay');
+    if (overlay) overlay.classList.remove('text-input-active');
+
+    if (!_wpTextInputPrevMuted) {
+        const micBtn = document.getElementById('watch_party_mic_btn');
+        if (micBtn) {
+            micBtn.classList.remove('muted');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+        }
+        _restartSttAfterTts();
+    }
+}
+
+function _handleTextSubmit(text) {
+    if (!text) return;
+    const subs = document.getElementById('watch_party_subtitles');
+    if (subs) {
+        subs.insertAdjacentHTML('beforeend',
+            `<div class="voice-subtitle-bubble user">${escapeHtml(text)}</div>`);
+        _scrollToBottom();
+    }
+
+    _fullTranscript.push({
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString(),
+    });
+
+    const frame = captureFrame();
+    if (frame) {
+        _frameCount++;
+        _lastFrameDataUrl = frame;
+    }
+
+    _sendToLLM({ frameDataUrl: frame || _lastFrameDataUrl, spokenText: text, userTriggered: true });
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -197,8 +197,11 @@
     background: #FF3B30; /* iOS Red */
 }
 
-/* ─── Text Input Bar (slide-up keyboard alternative) ─── */
-.voice-text-input-bar {
+/* ─── Text Input Bar (slide-up keyboard alternative) ───
+   High-specificity selectors + !important on purpose: ST's global style.css
+   rules (bare `textarea` background/border/width, `textarea::placeholder`
+   color with !important) bleed into the overlay otherwise. */
+.phone-voice-call-overlay .voice-text-input-bar {
     position: absolute;
     left: 0;
     right: 0;
@@ -214,39 +217,50 @@
     animation: textInputSlideUp 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.voice-text-input {
+.phone-voice-call-overlay textarea.voice-text-input {
     flex: 1;
-    min-height: 40px;
-    max-height: 100px;
-    padding: 10px 14px;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    font-size: 15px;
+    width: auto !important;
+    display: block;
+    margin: 0 !important;
+    min-height: 40px !important;
+    max-height: 100px !important;
+    padding: 10px 14px !important;
+    border-radius: 20px !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    color: #fff !important;
+    font-size: 15px !important;
     line-height: 1.4;
-    resize: none;
-    outline: none;
-    font-family: inherit;
+    resize: none !important;
+    outline: none !important;
+    font-family: inherit !important;
 }
 
-.voice-text-input::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+.phone-voice-call-overlay textarea.voice-text-input::placeholder {
+    color: rgba(255, 255, 255, 0.4) !important;
+    opacity: 1;
 }
 
-.voice-text-input:focus {
-    border-color: rgba(255, 255, 255, 0.35);
-    background: rgba(255, 255, 255, 0.12);
+.phone-voice-call-overlay textarea.voice-text-input:focus,
+.phone-voice-call-overlay textarea.voice-text-input:focus-visible {
+    border-color: rgba(255, 255, 255, 0.35) !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
-.voice-text-input-close {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font-size: 16px;
+.phone-voice-call-overlay button.voice-text-input-close {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    border: none !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #fff !important;
+    font-size: 16px !important;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -255,7 +269,7 @@
     transition: all 0.15s ease;
 }
 
-.voice-text-input-close:active {
+.phone-voice-call-overlay button.voice-text-input-close:active {
     opacity: 0.7;
     transform: scale(0.92);
 }

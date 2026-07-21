@@ -281,7 +281,7 @@ export async function generateCallSummary(messages) {
     const userPrompt = `通话记录：\n${transcript}\n\n请生成通话概要。`;
 
     try {
-        const summary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 1000 });
+        const summary = await callPhoneLLM(systemPrompt, userPrompt, { maxTokens: 10000 });
         return summary?.trim() || '';
     } catch (e) {
         console.error('[VcPromptBuilder] 通话总结生成失败:', e);
